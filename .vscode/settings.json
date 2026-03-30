@@ -1,7 +1,6 @@
 {
-    "files.encoding": "gb18030",
+    "files.encoding": "utf8",
     "C_Cpp.default.compilerPath": "/usr/bin/g++",
-    
     // if you have clangd or whatever depends on compile databaes, you
     // could configure your arguments here
     "clangd.arguments": [
@@ -17,5 +16,9 @@
         "newt.h": "c",
         "stdio.h": "c",
         "__splash.h": "c"
-    }
+    },
+    "cmake.sourceDirectory": "src",
+    "rust-analyzer.linkedProjects": [
+        "src/mm/rust/Cargo.toml"
+    ]
 }

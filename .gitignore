@@ -1,3 +1,5 @@
 target
 build
 /tools/unix-v6pp-filesystem-editor
+.cache
+.codex

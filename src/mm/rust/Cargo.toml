@@ -1,0 +1,17 @@
+[package]
+name = "mm_rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mm_rust"
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = 2
