@@ -1,6 +1,3 @@
-#ifndef MM_RUST_FFI_H
-#define MM_RUST_FFI_H
-
 #include "MapNode.h"
 
 #ifdef __cplusplus
@@ -12,6 +9,4 @@ unsigned long mm_allocator_free(MapNode map[], unsigned long size, unsigned long
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

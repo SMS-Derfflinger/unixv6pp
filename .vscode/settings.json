@@ -17,8 +17,5 @@
         "stdio.h": "c",
         "__splash.h": "c"
     },
-    "cmake.sourceDirectory": "src",
-    "rust-analyzer.linkedProjects": [
-        "src/mm/rust/Cargo.toml"
-    ]
+    "cmake.sourceDirectory": "src"
 }
