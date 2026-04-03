@@ -8,6 +8,10 @@ boot.o: boot.asm
 sector2.o: sector2.asm
 	nasm $(NASMFLAGS) -o $@ -f elf32 $<
 
+objs := sector2.o
+
+include $(abs_srctree)/scripts/Makefile
+
 .PHONY: clean
 clean:
 	-rm sector2.o boot.o

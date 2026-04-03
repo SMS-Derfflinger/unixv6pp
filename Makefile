@@ -4,7 +4,7 @@ this-makefile := $(lastword $(MAKEFILE_LIST))
 export abs_srctree := $(realpath $(dir $(this-makefile)))
 export abs_objtree := $(CURDIR)
 
-target-dirs := lib shell programs src/boot
+target-dirs := lib shell programs src
 build-dirs := $(addprefix build-,$(target-dirs))
 clean-dirs := $(addprefix clean-,$(target-dirs))
 

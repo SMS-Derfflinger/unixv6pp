@@ -38,6 +38,14 @@ out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+hdrs += $(foreach d,$(include-path),$(wildcard $(d)/*.h) $(wildcard $(d)/*.hpp))
+objs.a: $(objs) $(hdrs) $(libs)
+	$(AR) $(ARFLAGS) rcs $@ $(objs) $(libs)
+
+.PHONY: %/objs.a
+%/objs.a: %/
+	make -C $< objs.a
+
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
 $(foreach lib, $(out-libnames), $(eval $(call BUILD_LIB,$(lib))))
 
@@ -47,6 +55,7 @@ clean:
 	-rm -f $(foreach lib,$(out-libnames),$($(lib)-objs))
 	-rm -f $(out-bins)
 	-rm -f $(out-libnames)
+	-rm -f objs.a $(objs)
 
 .PHONY: all
 all: $(out-libnames) $(out-bins)
