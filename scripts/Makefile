@@ -53,9 +53,9 @@ objs.a: $(objs) $(hdrs) $(libs)
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
 $(foreach lib, $(out-libnames), $(eval $(call BUILD_LIB,$(lib))))
 
-.PHONY: clean
+.PHONY: clean custom-clean
 clean: $(addsuffix .clean,$(filter %/objs.a,\
-	$(foreach bin,$(out-bins),$($(bin)-libs))))
+	$(foreach bin,$(out-bins),$($(bin)-libs)))) custom-clean
 	-rm -f $(foreach bin,$(out-bins),$($(bin)-objs))
 	-rm -f $(foreach lib,$(out-libnames),$($(lib)-objs))
 	-rm -f $(out-bins)

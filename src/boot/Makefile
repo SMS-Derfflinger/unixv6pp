@@ -10,11 +10,7 @@ sector2.o: sector2.asm
 
 objs := sector2.o
 
-include $(abs_srctree)/scripts/Makefile
-
-.PHONY: clean
-clean:
+custom-clean:
 	-rm sector2.o boot.o
 
-.PHONY: all
-all: boot.o sector2.o
+include $(abs_srctree)/scripts/Makefile
