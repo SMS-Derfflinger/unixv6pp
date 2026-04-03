@@ -1,7 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include
 
-objs := ATADriver.o BlockDevice.o BufferManager.o CharDevice.o \
-	DeviceManager.o DMA.o
+objs := File.o FileManager.o FileSystem.o INode.o OpenFileManager.o
 
 include $(abs_srctree)/scripts/Makefile
 
