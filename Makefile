@@ -5,7 +5,8 @@ QEMU = qemu-system-i386
 QEMU_FLAGS := -m 64M \
 	      -rtc base=localtime \
 	      -d cpu_reset -D target/qemu.log \
-	      -machine pc -cpu Icelake-Server
+	      -machine pc -cpu Icelake-Server \
+	      -enable-kvm
 
 QEMU_GDB_FLAGS := -chardev socket,path=target/qemu-gdb.sock,server=on,wait=off,id=gdb0 \
 		  -gdb chardev:gdb0 -S
