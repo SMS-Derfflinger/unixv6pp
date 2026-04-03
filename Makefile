@@ -4,16 +4,6 @@
 # by 2051565 GTY
 
 .DEFAULT_GOAL := all
-FILE_SYS_TOOLS_BIN_DIR:=tools/unix-v6pp-filesystem-editor/bin
-TOOLS:=$(sort $(wildcard $(FILE_SYS_TOOLS_BIN_DIR)/*))
-
-ifeq ($(word 1, $(TOOLS)),)
-$(error "filescanner not found. please run 'bash init.sh' first")
-endif
-ifeq ($(word 2, $(TOOLS)),)
-$(error "fsedit not found. please run 'bash init.sh' first")
-endif
-
 
 .PHONY: help
 help:
@@ -72,10 +62,13 @@ build-kernel: prepare
 .PHONY: build-full
 build-full: prepare build-lib build-programs build-shell build-kernel
 
+tools := tools/filescanner tools/FsEditor/fseditor
 
+tools/FsEditor/fseditor:
+	make -C tools/FsEditor
 
 .PHONY: deploy-full
-deploy-full: build-full
+deploy-full: build-full $(tools)
 	mkdir -p target/img-workspace
 	mkdir -p target/img-workspace/programs/bin
 	mkdir -p target/img-workspace/programs/etc
@@ -83,9 +76,10 @@ deploy-full: build-full
 	cp target/objs/boot/boot.bin target/img-workspace/
 	cp target/objs/apps/* target/img-workspace/programs/bin/
 	cp target/objs/Shell.exe target/img-workspace/programs/
-	cp tools/unix-v6pp-filesystem-editor/bin/* target/img-workspace/
+	cp tools/filescanner target/img-workspace/
+	cp tools/FsEditor/fseditor target/img-workspace/
 	cp tools/unixv6pp_splash/v6pp_splash.bmp target/img-workspace/programs/etc/
-	cd target/img-workspace && ./filescanner | ./fsedit c.img c
+	cd target/img-workspace && ./filescanner | ./fseditor c.img c
 	cp target/img-workspace/c.img target/
 
 

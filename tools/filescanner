@@ -1,0 +1,35 @@
+#!/bin/bash
+
+root=programs
+
+upload_file() {
+	echo "p |$(realpath "$1")| |$(basename "$1")|"
+}
+
+upload_files() {
+	local entry
+	local item
+	entry="$1"
+
+	for item in "$entry/"*; do
+		if [ -d "$item" ]; then
+			upload_files "$item"
+			return
+		fi
+
+		upload_file "$item"
+	done
+}
+
+echo f
+echo "k |kernel.bin|"
+echo "b |boot.bin|"
+
+if ! [ -e "$root" ]; then
+	echo x
+	exit 1
+fi
+
+upload_files "$root"
+
+echo x
