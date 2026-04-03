@@ -23,6 +23,7 @@ SECTIONS
            ²Î¿¼£ºhttps://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/text/ld.txt */
         __CTOR_LIST__ = .;
         *(.init_array)
+        *(.ctors)
         __CTOR_END__ = .;
 
         . = ALIGN(4096);
