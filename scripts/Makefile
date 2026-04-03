@@ -24,6 +24,12 @@ $1: $$($1-objs) $$($1-hdrs) $$($1-libs)
 	$$(LD) $$(LDFLAGS) $$($1-LDFLAGS) -o $$@ $$($1-objs) $$($1-libs)
 endef
 
+define BUILD_LIB
+$1-hdrs += $$(foreach d, $$(include-path), $$(wildcard $$(d)/*.h) $$(wildcard $$(d)/*.hpp))
+$1: $$($1-objs) $$($1-hdrs) $$($1-libs)
+	$$(AR) $$(ARFLAGS) $$($1-ARFLAGS) rcs $1 $$($1-objs) $$($1-libs)
+endef
+
 out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 
 %.o: %.c
@@ -33,11 +39,14 @@ out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
+$(foreach lib, $(out-libnames), $(eval $(call BUILD_LIB,$(lib))))
 
 .PHONY: clean
 clean:
-	-rm -f $(foreach bin, $(out-bins), $($(bin)-objs))
-	-rm -f $(out-bins) $(out-libnames)
+	-rm -f $(foreach bin,$(out-bins),$($(bin)-objs))
+	-rm -f $(foreach lib,$(out-libnames),$($(lib)-objs))
+	-rm -f $(out-bins)
+	-rm -f $(out-libnames)
 
 .PHONY: all
 all: $(out-libnames) $(out-bins)
