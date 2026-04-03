@@ -6,8 +6,24 @@ kernel.exe-objs :=
 kernel.exe-libs := boot/objs.a dev/objs.a elf/objs.a fs/objs.a \
 		   interrupt/objs.a kernel/objs.a machine/objs.a mm/objs.a \
 		   pe/objs.a proc/objs.a tty/objs.a vesa/objs.a \
-		   libyrosstd/objs.a
+		   libyrosstd/objs.a libkernelrust.a
 kernel.exe-LDFLAGS := --whole-archive -m elf_i386 -T kernel.link.ld -static
+
+.PHONY: rustlib
+rustlib:
+	cd $(abs_srctree) && CARGO_TARGET_DIR=target cargo \
+		+nightly rustc \
+		--manifest-path Cargo.toml \
+		--target i686-none.json \
+		-Z build-std=core,compiler_builtins \
+		-Z build-std-features=compiler-builtins-mem \
+		--release
+
+custom-clean:
+	-rm libkernelrust.a
+
+libkernelrust.a: rustlib
+	ln -s $(abs_srctree)/target/i686-none/release/libkernelrust.a $(CURDIR)/
 
 kernel.bin: kernel.exe
 	$(CROSS_COMPILE)objcopy -O binary $< $@
