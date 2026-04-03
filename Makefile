@@ -38,6 +38,7 @@ install-buildrequires:
 
 .PHONY: clean
 clean: $(clean-dirs)
+	-rm -rf target/
 
 workdir := target/img-workspace
 
@@ -66,6 +67,3 @@ qemug: target/disk.img
 
 .PHONY: all
 all: $(build-dirs) target/disk.img
-
-custom-clean:
-	-rm -rf target/
