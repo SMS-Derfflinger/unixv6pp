@@ -1,10 +1,12 @@
 .DEFAULT_GOAL := all
 
+NASMFLAGS := -g
+
 boot.o: boot.asm
-	nasm -o $@ -f bin -d USE_VESA $<
+	nasm $(NASMFLAGS) -o $@ -f bin -d USE_VESA $<
 
 sector2.o: sector2.asm
-	nasm -o $@ -f elf32 $<
+	nasm $(NASMFLAGS) -o $@ -f elf32 $<
 
 .PHONY: clean
 clean:
