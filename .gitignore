@@ -6,3 +6,6 @@ build
 
 /tools/FsEditor/fseditor
 *.o
+*.a
+*.exe
+*.swp

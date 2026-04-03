@@ -4,13 +4,24 @@ this-makefile := $(lastword $(MAKEFILE_LIST))
 export abs_srctree := $(realpath $(dir $(this-makefile)))
 export abs_objtree := $(CURDIR)
 
-.PHONY: build-lib
-build-lib:
-	make -C lib
+target-dirs := lib shell
+build-dirs := $(addprefix build-,$(target-dirs))
+clean-dirs := $(addprefix clean-,$(target-dirs))
 
-.PHONY: build-shell
-build-shell:
-	make -C shell
+define BUILD_DIR
+.PHONY: $(addprefix build-, $1)
+$(addprefix build-,$1):
+	make -C $1
+
+.PHONY: $(addprefix clean-, $1)
+$(addprefix clean-, $1):
+	make -C $1 clean
+endef
+
+$(foreach d, $(target-dirs), $(eval $(call BUILD_DIR, $(d))))
+
+.PHONY: clean
+clean: $(clean-dirs)
 
 .PHONY: all
-all: build-lib build-shell
+all: $(build-dirs)
