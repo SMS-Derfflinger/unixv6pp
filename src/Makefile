@@ -6,7 +6,7 @@ kernel.exe-objs :=
 kernel.exe-libs := boot/objs.a dev/objs.a elf/objs.a fs/objs.a \
 		   interrupt/objs.a kernel/objs.a machine/objs.a mm/objs.a \
 		   pe/objs.a proc/objs.a tty/objs.a vesa/objs.a \
-		   libyrosstd/objs.a libkernelrust.a
+		   libyrosstd/objs.a librust_kernel.a
 kernel.exe-LDFLAGS := --whole-archive -m elf_i386 -T kernel.link.ld -static
 
 .PHONY: rustlib
@@ -22,8 +22,8 @@ rustlib:
 custom-clean:
 	-rm libkernelrust.a
 
-libkernelrust.a: rustlib
-	ln -s $(abs_srctree)/target/i686-none/release/libkernelrust.a $(CURDIR)/
+librust_kernel.a: rustlib
+	ln -sf $(abs_srctree)/target/i686-none/release/librust_kernel.a $(CURDIR)/
 
 kernel.bin: kernel.exe
 	$(CROSS_COMPILE)objcopy -O binary $< $@

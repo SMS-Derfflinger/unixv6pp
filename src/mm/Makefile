@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include
 
-objs := Allocator.o KernelAllocator.o New.o PageManager.o SwapperManager.o
+objs := New.o
 
 include $(abs_srctree)/scripts/Makefile
 
