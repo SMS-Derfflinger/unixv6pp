@@ -20,6 +20,10 @@ endef
 
 $(foreach d, $(target-dirs), $(eval $(call BUILD_DIR, $(d))))
 
+.PHONY: install-buildrequires
+install-buildrequires:
+	brew install gmake x86_64-elf-gcc nasm
+
 .PHONY: clean
 clean: $(clean-dirs)
 
