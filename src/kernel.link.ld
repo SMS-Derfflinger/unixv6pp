@@ -7,7 +7,7 @@ SECTIONS
     
     .text 0xc0100000:
     {
-        boot/sector2.o(.text)
+        *(.sector2)
         *(.text)
         *(.rodata*)
         . = ALIGN(4096);
