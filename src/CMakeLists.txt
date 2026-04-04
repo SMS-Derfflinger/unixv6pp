@@ -95,40 +95,39 @@ set_target_properties(
     v6pp_pack PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32"
 )
 
-# Rust mm allocator (route 1: freestanding target + build-std)
-set(MM_RUST_DIR "${CMAKE_SOURCE_DIR}/../")
-set(MM_RUST_TARGET_JSON "${MM_RUST_DIR}/i686-none.json")
-set(MM_RUST_TARGET_NAME "i686-none")
-set(MM_RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/mm_rust_target")
-set(MM_RUST_LIB "${MM_RUST_TARGET_DIR}/${MM_RUST_TARGET_NAME}/release/libmm_rust.a")
+set(RUST_DIR "${CMAKE_SOURCE_DIR}/../")
+set(RUST_TARGET_JSON "${RUST_DIR}/i686-none.json")
+set(RUST_TARGET_NAME "i686-none")
+set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust_target")
+set(RUST_LIB "${RUST_TARGET_DIR}/${RUST_TARGET_NAME}/release/librust_kernel.a")
 
-file(GLOB_RECURSE MM_RUST_SOURCE_FILES "${MM_RUST_DIR}/src/*.rs")
+file(GLOB_RECURSE RUST_SOURCE_FILES "${RUST_DIR}/src/*.rs")
 
 add_custom_command(
-    OUTPUT ${MM_RUST_LIB}
+    OUTPUT ${RUST_LIB}
     COMMAND
         ${CMAKE_COMMAND} -E env
-            CARGO_TARGET_DIR=${MM_RUST_TARGET_DIR}
+            CARGO_TARGET_DIR=${RUST_TARGET_DIR}
             cargo +nightly rustc
-                --manifest-path ${MM_RUST_DIR}/Cargo.toml
-                --target ${MM_RUST_TARGET_JSON}
+                --manifest-path ${RUST_DIR}/Cargo.toml
+                --target ${RUST_TARGET_JSON}
                 -Z build-std=core,compiler_builtins
                 -Z build-std-features=compiler-builtins-mem
                 --release
     DEPENDS
-        ${MM_RUST_DIR}/Cargo.toml
-        ${MM_RUST_TARGET_JSON}
-        ${MM_RUST_SOURCE_FILES}
-    WORKING_DIRECTORY ${MM_RUST_DIR}
-    COMMENT "Building Rust mm allocator"
+        ${RUST_DIR}/Cargo.toml
+        ${RUST_TARGET_JSON}
+        ${RUST_SOURCE_FILES}
+    WORKING_DIRECTORY ${RUST_DIR}
+    COMMENT "Building Rust"
     VERBATIM
 )
 
-add_custom_target(mm_rust_build DEPENDS ${MM_RUST_LIB})
+add_custom_target(rust_build DEPENDS ${RUST_LIB})
 
-add_library(mm_rust STATIC IMPORTED GLOBAL)
-set_target_properties(mm_rust PROPERTIES IMPORTED_LOCATION ${MM_RUST_LIB})
-add_dependencies(mm_rust mm_rust_build)
+add_library(rust STATIC IMPORTED GLOBAL)
+set_target_properties(rust PROPERTIES IMPORTED_LOCATION ${RUST_LIB})
+add_dependencies(rust rust_build)
 
 
 
@@ -148,7 +147,7 @@ target_link_libraries(
 
     sector2
     v6pp_pack
-    mm_rust
+    rust
 )
 
 set_target_properties(kernel PROPERTIES SUFFIX ".exe")

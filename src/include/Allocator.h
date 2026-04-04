@@ -3,24 +3,35 @@
 
 #include "MapNode.h"
 
-/* @comment 该类为内存分配算法类，针对使用MapNode
- * 数组标记的情况，可以用在PageManager和SwapDiskManager中
- * 其中函数在Unixv6中对应关系如下：
- * Alloc()	: malloc(mp, size)		@line 2538
- * Free()	: mfree(mp, size, aa)	@line 2556 
- */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+unsigned long mm_allocator_alloc(MapNode map[], unsigned long size);
+unsigned long mm_allocator_free(MapNode map[], unsigned long size, unsigned long addr_idx);
+
+#ifdef __cplusplus
+}
+#endif
+
 class Allocator
 {
-/* Functions */
 public:
-	unsigned long Alloc(MapNode map[], unsigned long size);
-	unsigned long Free(MapNode map[], unsigned long size, unsigned long addrIdx);
+    unsigned long Alloc(MapNode map[], unsigned long size)
+    {
+        return mm_allocator_alloc(map, size);
+    }
 
-public:
-	static Allocator& GetInstance();
-private:
-	static Allocator m_Instance;
+    unsigned long Free(MapNode map[], unsigned long size, unsigned long addrIdx)
+    {
+        return mm_allocator_free(map, size, addrIdx);
+    }
+
+    static Allocator& GetInstance()
+    {
+        static Allocator instance;
+        return instance;
+    }
 };
 
 #endif
-
