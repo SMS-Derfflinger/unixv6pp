@@ -1,7 +1,7 @@
 #[repr(C)]
 pub struct MapNode {
-    m_size: usize,
-    m_address_idx: usize,
+    pub(crate) m_size: usize,
+    pub(crate) m_address_idx: usize,
 }
 
 #[no_mangle]

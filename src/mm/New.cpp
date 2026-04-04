@@ -1,54 +1,41 @@
 #include "New.h"
-/*
- * 这个文件有问题
- * 1、返回的是空间的物理地址
- * 2、new后面的参数是需要的空间大小，没法申请可变长数组，参见PEParser.cpp中  line 157.
- */
 
 KernelAllocator* g_pAllocator;
 
 void set_kernel_allocator(KernelAllocator* pAllocator)
 {
-	g_pAllocator = pAllocator;
+    g_pAllocator = pAllocator;
 }
 
-void* operator new (unsigned int size)
+void* operator new(unsigned int size)
 {
+    if (g_pAllocator == nullptr) {
+        return nullptr;
+    }
 
-	unsigned long address = g_pAllocator->AllocMemory(size + sizeof(int));
-	if ( address )
-	{
-		int* pSize = (int*)address;
-		*pSize = size;
-		return (void*)(address + sizeof(int));
-	}
-	else
-	{
-		return nullptr;
-	}
+    unsigned long address = mm_new_alloc(g_pAllocator->map, size);
+    if (address == 0) {
+        return nullptr;
+    }
+
+    return reinterpret_cast<void*>(address);
 }
 
-void operator delete (void* p)
+void operator delete(void* p)
 {
-	unsigned long address = (unsigned long)p;
-	if ( address )
-	{
-		int* pSize = (int*)(address - sizeof(int));
-		g_pAllocator->FreeMemeory(*pSize + sizeof(int), (unsigned long)pSize);
-	}
-	return;
+    if (g_pAllocator == nullptr) {
+        return;
+    }
+
+    mm_new_free(g_pAllocator->map, reinterpret_cast<unsigned long>(p));
 }
 
-
-void operator delete (void* p, unsigned int n)  // todo: n 好像没用上？
+void operator delete(void* p, unsigned int n)
 {
-	unsigned long address = (unsigned long)p;
-	if (!address) {
-		return;
-	}
-	
+    (void)n;
+    if (g_pAllocator == nullptr) {
+        return;
+    }
 
-	int* pSize = (int*)(address - sizeof(int));
-	g_pAllocator->FreeMemeory(*pSize + sizeof(int), (unsigned long)pSize);
+    mm_new_free(g_pAllocator->map, reinterpret_cast<unsigned long>(p));
 }
-

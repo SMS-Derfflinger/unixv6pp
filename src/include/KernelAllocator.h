@@ -4,29 +4,64 @@
 #include "MapNode.h"
 #include "Allocator.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+unsigned long mm_kernel_allocator_initialize(
+    MapNode map[],
+    unsigned long map_len,
+    unsigned long start_idx,
+    unsigned long size
+);
+unsigned long mm_kernel_allocator_alloc(MapNode map[], unsigned long size);
+unsigned long mm_kernel_allocator_free(
+    MapNode map[],
+    unsigned long size,
+    unsigned long memory_start_address
+);
+
+#ifdef __cplusplus
+}
+#endif
+
 class KernelAllocator
 {
-	/* static const member */
 public:
-	static const unsigned int MEMORY_MAP_ARRAY_SIZE =	0x200;		/* 最多可分配512个对象 */
-	static const unsigned int KERNEL_HEAP_START_ADDR =	0x180000 + 0xC0000000;	/* 1.5M处开始为内核堆区，但是整个内核从0xC0000000才开始 */
-	static const unsigned int KERNEL_HEAP_SIZE =		0x80000;	/* 512K内核堆大小 */
+    static const unsigned int MEMORY_MAP_ARRAY_SIZE = 0x200;
+    static const unsigned int KERNEL_HEAP_START_ADDR = 0x180000 + 0xC0000000;
+    static const unsigned int KERNEL_HEAP_SIZE = 0x80000;
 
-	/* Functions */
 public:
-	KernelAllocator(Allocator* allocator);
-	~KernelAllocator();
-	int Initialize();
+    KernelAllocator(Allocator* allocator)
+    {
+        (void)allocator;
+    }
 
-	unsigned long AllocMemory(unsigned long size);
-	unsigned long FreeMemeory(unsigned long size, unsigned long memoryStartAddress);
+    ~KernelAllocator() = default;
 
-	/* Members */
+    int Initialize()
+    {
+        return static_cast<int>(mm_kernel_allocator_initialize(
+            this->map,
+            MEMORY_MAP_ARRAY_SIZE,
+            KERNEL_HEAP_START_ADDR,
+            KERNEL_HEAP_SIZE
+        ));
+    }
+
+    unsigned long AllocMemory(unsigned long size)
+    {
+        return mm_kernel_allocator_alloc(this->map, size);
+    }
+
+    unsigned long FreeMemeory(unsigned long size, unsigned long memoryStartAddress)
+    {
+        return mm_kernel_allocator_free(this->map, size, memoryStartAddress);
+    }
+
 public:
-	MapNode map[KernelAllocator::MEMORY_MAP_ARRAY_SIZE];
-
-private:
-	Allocator* m_pAllocator;
+    MapNode map[KernelAllocator::MEMORY_MAP_ARRAY_SIZE];
 };
 
 #endif
