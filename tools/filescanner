@@ -14,7 +14,7 @@ upload_files() {
 	for item in "$entry/"*; do
 		if [ -d "$item" ]; then
 			upload_files "$item"
-			return
+			continue
 		fi
 
 		upload_file "$item"
