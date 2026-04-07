@@ -2,13 +2,13 @@ binary := fseditor
 
 .DEFAULT_TARGET = $(binary)
 
-CXX := clang++
+CXX := g++
 
-CXXFLAGS := -O -I$(PWD) -std=c++20
+CXXFLAGS := -O -I$(CURDIR) -std=c++20
 LDFLAGS :=
 
 objs := FileSystemAdapter.o structures/SuperBlock.o structures/Inode.o structures/InodeDirectory.o main.o
-hdrs := $(wildcard $(PWD)/*.h)
+hdrs := $(wildcard $(CURDIR)/*.h)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<

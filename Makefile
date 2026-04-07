@@ -5,8 +5,7 @@ QEMU = qemu-system-i386
 QEMU_FLAGS := -m 64M \
 	      -rtc base=localtime \
 	      -d cpu_reset -D target/qemu.log \
-	      -machine pc -cpu Icelake-Server \
-	      -enable-kvm
+	      -machine pc -cpu Icelake-Server
 
 QEMU_GDB_FLAGS := -chardev socket,path=target/qemu-gdb.sock,server=on,wait=off,id=gdb0 \
 		  -gdb chardev:gdb0 -S
@@ -66,5 +65,9 @@ qemu: target/disk.img
 qemug: target/disk.img
 	$(QEMU) $(QEMU_FLAGS) $(QEMU_DISK) $(QEMU_GDB_FLAGS)
 
+.PHONY: build-tools
+build-tools:
+	make -C tools/FsEditor
+
 .PHONY: all
-all: $(build-dirs) target/disk.img
+all: build-tools $(build-dirs) target/disk.img
