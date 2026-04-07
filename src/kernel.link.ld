@@ -9,6 +9,7 @@ SECTIONS
     {
         *(.sector2)
         *(.text)
+        *(.text.*)
         *(.rodata*)
         . = ALIGN(4096);
     }
@@ -17,6 +18,7 @@ SECTIONS
     {
         
         *(.data)
+        *(.data.*)
         . = ALIGN(4096);
 
         /* 构造函数列表。
@@ -42,6 +44,7 @@ SECTIONS
         __BSS_START__ = .;
      
         *(.bss)
+        *(.bss.*)
         . = ALIGN(4096);
 
         __BSS_END__ = .;
