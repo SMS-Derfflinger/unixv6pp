@@ -18,6 +18,7 @@ rustlib:
 		--target i686-none.json \
 		-Z build-std=core,compiler_builtins \
 		-Z build-std-features=compiler-builtins-mem \
+		-Zjson-target-spec \
 		--release
 
 custom-clean:
