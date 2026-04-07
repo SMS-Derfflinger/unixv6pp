@@ -9,7 +9,7 @@ LD = $(CROSS_COMPILE)ld
 AR = $(CROSS_COMPILE)ar
 
 CFLAGS = -Wall -g -m32 -nostartfiles -fno-builtin -fno-pic -fno-pie -nostdinc \
-	 -nostdlib -fno-stack-protector -fomit-frame-pointer -fno-unwind-tables \
+	 -nostdlib -fno-stack-protector -fno-unwind-tables \
 	 -fno-asynchronous-unwind-tables -fno-exceptions -mno-red-zone \
 	 -mno-mmx -mno-sse -mno-sse2 -O0 -Wno-unused-variable \
 	 $(foreach d, $(include-path), -I$(d))
