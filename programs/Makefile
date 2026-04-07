@@ -13,3 +13,8 @@ $(foreach name, $(names), $(eval $(name).exe-hdrs :=))
 $(foreach name, $(names), $(eval $(name).exe-libs := $(abs_srctree)/lib/libv6pptongji.a))
 
 include $(abs_srctree)/scripts/Makefile
+
+.PHONY: install
+install: all
+	[ -d $(INSTALL_PATH) ]
+	true $(foreach name, $(names), && cp $(name).exe $(INSTALL_PATH)/$(name))
