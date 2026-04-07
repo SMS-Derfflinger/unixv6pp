@@ -52,7 +52,7 @@ target/disk.img: $(build-dirs)
 	rm src/kernel.bin
 	make -C src/boot boot.o
 	cp src/boot/boot.o $(workdir)/boot.bin
-	make -C programs/ install INSTALL_PATH=$(realpath ./$(workdir))/programs/bin
+	make -C programs/ install INSTALL_PATH=$(realpath $(CURDIR))/$(workdir)/programs/bin
 	cp shell/Shell.exe $(workdir)/programs/
 	cp tools/unixv6pp_splash/v6pp_splash.bmp $(workdir)/programs/etc/
 	cd $(workdir)/ && $(abs_srctree)/tools/filescanner \

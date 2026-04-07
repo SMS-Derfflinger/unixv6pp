@@ -82,6 +82,6 @@ all: $(out-libnames) $(out-bins)
 collect-commands.cmd: $(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(libs))) \
 	$(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))))
 	sh -c "cat .*.cmd > $@ || true"
-	cat $^ >> $@
+	- [ "$^" ] && cat $^ >> $@
 
 .DEFAULT_GOAL = all
