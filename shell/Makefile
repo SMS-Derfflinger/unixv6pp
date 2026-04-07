@@ -8,3 +8,5 @@ Shell.exe-LDFLAGS := --whole-archive -Ttext-segment=0x400000 -e main1 \
 		     -static -m i386pe
 
 include $(abs_srctree)/scripts/Makefile
+
+CFLAGS += -fomit-frame-pointer
