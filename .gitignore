@@ -9,3 +9,6 @@ build
 *.a
 *.exe
 *.swp
+*.cmd
+
+/compile_commands.json

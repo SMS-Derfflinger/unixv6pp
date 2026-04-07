@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := all
 
+MAKEFLAGS += -r
+
 QEMU = qemu-system-i386
 
 QEMU_FLAGS := -m 64M \
@@ -71,3 +73,9 @@ build-tools:
 
 .PHONY: all
 all: build-tools $(build-dirs) target/disk.img
+
+compile_commands.json: all
+	make -C src collect-commands.cmd
+	printf "[" > $@
+	paste "-d," -s src/collect-commands.cmd >> $@
+	printf "]" >> $@

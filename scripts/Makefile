@@ -32,10 +32,18 @@ endef
 
 out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 
-%.o: %.c
+.PRECIOUS: .%.c.cmd .%.cpp.cmd
+
+.%.c.cmd: %.c
+	echo "{\"command\": \"$(CC) $(CFLAGS) -c $<\", \"directory\": \"$(realpath $(abs_srctree))\", \"file\": \"$(realpath $<)\"}" > $@
+
+.%.cpp.cmd: %.cpp
+	echo "{\"command\": \"$(CXX) $(CXXFLAGS) -c $<\", \"directory\": \"$(realpath $(abs_srctree))\", \"file\": \"$(realpath $<)\"}" > $@
+
+%.o: %.c .%.c.cmd
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-%.o: %.cpp
+%.o: %.cpp .%.cpp.cmd
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 hdrs += $(foreach d,$(include-path),$(wildcard $(d)/*.h) $(wildcard $(d)/*.hpp))
@@ -61,8 +69,19 @@ clean: $(addsuffix .clean,$(filter %/objs.a,\
 	-rm -f $(out-bins)
 	-rm -f $(out-libnames)
 	-rm -f objs.a $(objs)
+	-rm -f .*.cmd
+	-rm -f collect-commands.cmd
 
 .PHONY: all
 all: $(out-libnames) $(out-bins)
+
+.PHONY: %/collect-commands.cmd
+%/collect-commands.cmd: %/
+	make -C $< collect-commands.cmd
+
+collect-commands.cmd: $(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(libs))) \
+	$(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))))
+	sh -c "cat .*.cmd > $@ || true"
+	cat $^ >> $@
 
 .DEFAULT_GOAL = all
