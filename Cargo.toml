@@ -15,3 +15,11 @@ panic = "abort"
 lto = true
 codegen-units = 1
 opt-level = 2
+
+[dependencies]
+buddy_allocator = { git = "https://github.com/project-eonix/buddy-allocator.git", version = "0.1.0" }
+slab_allocator = { git = "https://github.com/project-eonix/slab-allocator.git", version = "0.1.0" }
+eonix_spin = { git = "https://github.com/project-eonix/eonix-sync.git", version = "0.1.0" }
+eonix_sync_base = { git = "https://github.com/project-eonix/eonix-sync.git", version = "0.1.0" }
+eonix_mm = { git = "https://github.com/project-eonix/eonix-mm.git", version = "0.1.0" }
+intrusive-collections = { version = "0.9.7", default-features = false, features = [ "nightly" ] }

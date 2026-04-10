@@ -3,5 +3,81 @@
 version = 4
 
 [[package]]
+name = "autocfg"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
+name = "bitflags"
+version = "2.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+
+[[package]]
+name = "buddy_allocator"
+version = "0.1.0"
+source = "git+https://github.com/project-eonix/buddy-allocator.git#05807feb6eb8e7c5b714018e5e1a2df33f2416a3"
+dependencies = [
+ "eonix_mm",
+]
+
+[[package]]
+name = "eonix_mm"
+version = "0.1.0"
+source = "git+https://github.com/project-eonix/eonix-mm.git#69fbf22bc0e0f7ea458565e3128fc8ce75ea1a32"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
+name = "eonix_spin"
+version = "0.1.0"
+source = "git+https://github.com/project-eonix/eonix-sync.git#c184ead96a0bae0c1a66e23c9366d32f186b7db9"
+dependencies = [
+ "eonix_sync_base",
+]
+
+[[package]]
+name = "eonix_sync_base"
+version = "0.1.0"
+source = "git+https://github.com/project-eonix/eonix-sync.git#c184ead96a0bae0c1a66e23c9366d32f186b7db9"
+
+[[package]]
+name = "intrusive-collections"
+version = "0.9.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "189d0897e4cbe8c75efedf3502c18c887b05046e59d28404d4d8e46cbc4d1e86"
+dependencies = [
+ "memoffset",
+]
+
+[[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "rust_kernel"
 version = "0.1.0"
+dependencies = [
+ "buddy_allocator",
+ "eonix_mm",
+ "eonix_spin",
+ "eonix_sync_base",
+ "intrusive-collections",
+ "slab_allocator",
+]
+
+[[package]]
+name = "slab_allocator"
+version = "0.1.0"
+source = "git+https://github.com/project-eonix/slab-allocator.git#c21e8a7cc4a987d13bc7cc59a2ef617e33849b95"
+dependencies = [
+ "eonix_mm",
+ "eonix_spin",
+]

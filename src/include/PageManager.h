@@ -39,11 +39,7 @@ public:
     static const unsigned int KERNEL_SIZE = 0x80000;
 
 public:
-    PageManager(Allocator* allocator)
-    {
-        (void)allocator;
-    }
-
+    PageManager(unsigned long startPhys, unsigned long lengthBytes) { }
     virtual ~PageManager() = default;
 
     int Initialize()
@@ -61,8 +57,10 @@ public:
         return mm_page_manager_free(this->map, size, memoryStartAddress, PAGE_SIZE);
     }
 
-public:
-    MapNode map[PageManager::MEMORY_MAP_ARRAY_SIZE];
+private:
+    struct PageManagerImpl;
+
+    PageManagerImpl* handle;
 };
 
 class KernelPageManager : public PageManager
