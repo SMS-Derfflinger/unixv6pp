@@ -1,18 +1,17 @@
-use crate::constants::{PosixError, SIGMAX};
+use crate::{
+    constants::{PosixError, SIGMAX},
+    fs::{IOParameter, Inode, OpenFiles},
+};
 
 pub struct Pointer(usize);
 
 pub struct Process {
+    uid: u16,
 }
 
-pub struct MemoryDescriptor {
-}
+pub struct MemoryDescriptor {}
 
-pub struct Inode {
-}
-
-pub struct OpenFiles;
-pub struct IOParameter;
+pub struct Dentry;
 
 pub struct Userspace {
     /// Save esp and ebp
@@ -20,7 +19,7 @@ pub struct Userspace {
     /// Save esp and ebp AGAIN
     ssav: [Pointer; 2],
 
-    proc: &'static Process,
+    proc: &'static mut Process,
     mem: MemoryDescriptor,
 
     /// Used by syscall handlers
@@ -87,7 +86,7 @@ impl Userspace {
             self.euid = uid;
             self.proc.uid = uid;
         } else {
-            self.errror = Some(PosixError::EPERM);
+            self.error = Some(PosixError::EPERM);
         }
     }
 
@@ -100,7 +99,7 @@ impl Userspace {
             self.gid = gid;
             self.egid = gid;
         } else {
-            self.errror = Some(PosixError::EPERM);
+            self.error = Some(PosixError::EPERM);
         }
     }
 
@@ -108,7 +107,7 @@ impl Userspace {
         ((self.gid as u32) << 16) | ((self.egid as u32) & 0xff)
     }
 
-    fn getpwd(&self) -> [u8; 128] {
+    fn getpwd(&self) -> [u8; 28] {
         self.cwd_full.clone()
     }
 }
