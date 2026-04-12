@@ -1,6 +1,7 @@
 #include "User.h"
 #include "Kernel.h"
 #include "Utility.h"
+#include "Video.h"
 #include "libyrosstd/string.h"
 
 void User::Setuid()
@@ -15,6 +16,7 @@ void User::Setuid()
 	}
 	else
 	{
+                Diagnose::Write("WTF?\n");
 		this->u_error = User::EPERM;
 	}
 }
@@ -39,6 +41,7 @@ void User::Setgid()
 	}
 	else
 	{
+                Diagnose::Write("WTF?\n");
 		this->u_error = User::EPERM;
 	}
 }
@@ -65,6 +68,7 @@ bool User::SUser()
 	}
 	else
 	{
+                Diagnose::Write("WTF?\n");
 		this->u_error = User::EPERM;
 		return false;
 	}

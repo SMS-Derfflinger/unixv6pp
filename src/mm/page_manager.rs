@@ -1,4 +1,4 @@
-use core::ptr::NonNull;
+use core::{mem::MaybeUninit, ptr::NonNull};
 
 use buddy_allocator::{BuddyAllocator, BuddyFolio};
 use eonix_mm::{
@@ -6,8 +6,9 @@ use eonix_mm::{
     paging::{FolioList, FolioListSized, Zone, PFN},
 };
 use eonix_spin::{NoContext, Spin, SpinGuard};
-use eonix_sync_base::Relax;
+use eonix_sync_base::{LazyLock, Relax};
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
+use slab_allocator::{SlabAlloc, SlabPage, SlabPageAlloc, SlabSlot};
 
 use super::allocator::{mm_allocator_alloc, mm_allocator_free, MapNode};
 
@@ -29,7 +30,13 @@ struct MemoryZone;
 intrusive_adapter!(PagesAdapter = UnsafeRef<PhysPage>: PhysPage { link: LinkedListAtomicLink });
 struct PageList(LinkedList<PagesAdapter>);
 
-static PAGES: [PhysPage; PAGE_COUNT] = [const { PhysPage::new() }; PAGE_COUNT];
+static mut PAGES: MaybeUninit<[PhysPage; PAGE_COUNT]> = MaybeUninit::zeroed();
+
+fn page_array() -> &'static [PhysPage; PAGE_COUNT] {
+    unsafe {
+        PAGES.assume_init_mut()
+    }
+}
 
 impl PhysPage {
     pub const fn new() -> Self {
@@ -42,13 +49,19 @@ impl PhysPage {
     }
 }
 
+impl PhysPage {
+    pub fn phys(&self) -> PAddr {
+        PAddr::from(self.pfn())
+    }
+}
+
 impl BuddyFolio for PhysPage {
     fn pfn(&self) -> PFN {
         let ptr = self as *const Self;
 
-        let offset = unsafe { ptr.offset_from(PAGES.as_ptr()) };
+        let offset = unsafe { ptr.offset_from(page_array().as_ptr()) };
 
-        match unsafe { ptr.offset_from(PAGES.as_ptr()) } {
+        match unsafe { ptr.offset_from(page_array().as_ptr()) } {
             ..0 | PAGE_COUNTI.. => panic!("Overflow"),
             offset => PFN::from_val(offset as usize),
         }
@@ -67,7 +80,7 @@ impl BuddyFolio for PhysPage {
     }
 
     fn set_buddy(&mut self, value: bool) {
-        self.is_buddy = true;
+        self.is_buddy = value;
     }
 }
 
@@ -117,11 +130,11 @@ impl Zone for MemoryZone {
     }
 
     fn get_page(&self, pfn: PFN) -> Option<NonNull<Self::Page>> {
-        if PAddr::from(pfn).addr() >= MEM_SIZE {
+        if usize::from(pfn) >= PAGE_COUNT {
             return None;
         }
 
-        Some(NonNull::from_ref(&PAGES[usize::from(pfn)]))
+        Some(NonNull::from_ref(&page_array()[usize::from(pfn)]))
     }
 }
 
@@ -130,6 +143,53 @@ static KERNEL_PAGE_MANAGER: Spin<BuddyAllocator<MemoryZone, PageList>> =
 
 static USER_PAGE_MANAGER: Spin<BuddyAllocator<MemoryZone, PageList>> =
     Spin::new(BuddyAllocator::new(&MemoryZone));
+
+static SLAB_ALLOCATOR: LazyLock<SlabAlloc<SlabPageAllocImpl, 10>> =
+    LazyLock::new(|| SlabAlloc::new_in(SlabPageAllocImpl));
+
+struct SlabPageAllocImpl;
+
+unsafe impl SlabPageAlloc for SlabPageAllocImpl {
+    type Page = PhysPage;
+    type PageList = PageList;
+
+    fn alloc_slab_page(&self) -> &'static mut Self::Page {
+        KERNEL_PAGE_MANAGER
+            .lock()
+            .alloc_order(0)
+            .expect("Out of memory")
+    }
+}
+
+impl SlabPage for PhysPage {
+    fn get_data_ptr(&self) -> NonNull<[u8]> {
+        todo!()
+    }
+
+    fn get_free_slot(&self) -> Option<NonNull<SlabSlot>> {
+        todo!()
+    }
+
+    fn set_free_slot(&mut self, next: Option<NonNull<SlabSlot>>) {
+        todo!()
+    }
+
+    fn get_alloc_count(&self) -> usize {
+        todo!()
+    }
+
+    fn inc_alloc_count(&mut self) -> usize {
+        todo!()
+    }
+
+    fn dec_alloc_count(&mut self) -> usize {
+        todo!()
+    }
+
+    unsafe fn from_allocated(ptr: NonNull<u8>) -> &'static mut Self {
+        todo!()
+    }
+}
 
 pub trait SpinExt<T, R> {
     fn lock(&self) -> SpinGuard<'_, T, NoContext, R>;
@@ -144,9 +204,16 @@ where
     }
 }
 
+#[no_mangle]
 pub extern "C" fn init_page_managers() {
     let krange = PRange::new(PAddr::from_val(0x204000), PAddr::from_val(0x400000));
     let urange = PRange::new(PAddr::from_val(0x400000), PAddr::from_val(MEM_SIZE));
+
+    unsafe {
+        for page in PAGES.assume_init_mut().iter_mut() {
+            *page = PhysPage::new();
+        }
+    }
 
     {
         let mut kpm = KERNEL_PAGE_MANAGER.lock();
@@ -159,41 +226,48 @@ pub extern "C" fn init_page_managers() {
     }
 }
 
+/// Allocate a page and return its physical address
 #[no_mangle]
-pub extern "C" fn mm_page_manager_initialize(map: *mut MapNode, map_len: usize) -> usize {
-    if map.is_null() || map_len == 0 {
-        return 1;
-    }
+pub extern "C" fn alloc_page(size: usize, user: bool) -> usize {
+    let mut allocator = if user {
+        USER_PAGE_MANAGER.lock()
+    } else {
+        KERNEL_PAGE_MANAGER.lock()
+    };
 
-    unsafe {
-        for i in 0..map_len {
-            let node = map.add(i);
-            (*node).m_address_idx = 0;
-            (*node).m_size = 0;
-        }
-    }
+    let aligned_size = size.next_power_of_two();
+    let order = aligned_size.trailing_zeros() - 12;
 
-    0
+    let page = allocator.alloc_order(order).expect("Out of memory");
+
+    page.phys().addr()
 }
 
 #[no_mangle]
-pub extern "C" fn mm_page_manager_init_pool(
-    map: *mut MapNode,
-    map_len: usize,
-    page_size: usize,
-    pool_start_addr: usize,
-    pool_size: usize,
-) -> usize {
-    if mm_page_manager_initialize(map, map_len) != 0 || page_size == 0 {
-        return 1;
+pub extern "C" fn free_page(addr: usize, size: usize, user: bool) {
+    if size == 0 {
+        return;
     }
+
+    let paddr = PAddr::from_val(addr);
+
+    let mut allocator = if user {
+        USER_PAGE_MANAGER.lock()
+    } else {
+        KERNEL_PAGE_MANAGER.lock()
+    };
+
+    let mut page_ptr = MemoryZone.get_page(PFN::from(paddr)).expect("Bad address");
+    let page = unsafe {
+        // SAFETY: We've got the page pointer from MemoryZone.
+        page_ptr.as_mut()
+    };
+
+    // assert!(size <= (1 << (page.order as usize + 12)) ,"Wrong size");
 
     unsafe {
-        (*map).m_address_idx = pool_start_addr / page_size;
-        (*map).m_size = pool_size / page_size;
+        allocator.dealloc(page);
     }
-
-    0
 }
 
 #[no_mangle]

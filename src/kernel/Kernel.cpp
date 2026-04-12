@@ -8,8 +8,8 @@ Kernel Kernel::instance;
 /* 
  * 内存管理相关的全局manager
  */
-UserPageManager g_UserPageManager(&(Allocator::GetInstance()));
-KernelPageManager g_KernelPageManager(&(Allocator::GetInstance()));
+UserPageManager g_UserPageManager;
+KernelPageManager g_KernelPageManager;
 KernelAllocator g_KernelAllocator(&(Allocator::GetInstance()));
 
 /*
@@ -47,14 +47,15 @@ Kernel& Kernel::Instance()
 	return Kernel::instance;
 }
 
+extern "C" void init_page_managers(void);
+
 void Kernel::InitMemory()
 {
 	this->m_KernelPageManager = &g_KernelPageManager;
 	this->m_UserPageManager = &g_UserPageManager;
-	
+
 	Diagnose::Write("Initilize Memory...");
-	this->GetKernelPageManager().Initialize();
-	this->GetUserPageManager().Initialize();
+        init_page_managers();
 	Diagnose::Write("Ok.\n");
 
 	this->m_KernelAllocator = &g_KernelAllocator;

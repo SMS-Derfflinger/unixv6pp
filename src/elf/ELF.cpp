@@ -57,7 +57,6 @@ Parser::~Parser() {
 
 }
 
-
 int Parser::load(Inode* inode) {
 
 // todo
@@ -106,9 +105,7 @@ int Parser::load(Inode* inode) {
 
     {
         size_t size = elfHeader32.phentsize * elfHeader32.phnum;
-        size += PageManager::PAGE_SIZE - 1;
-        size = size / PageManager::PAGE_SIZE * PageManager::PAGE_SIZE;
-        uintptr_t alloc = kpm.AllocMemory(size);
+        uintptr_t alloc = kpm.AllocMemory(align_down_page(size));
         if (alloc) {
             alloc += 0xC0000000;
         } else {
@@ -129,9 +126,7 @@ int Parser::load(Inode* inode) {
 
     {
         size_t size = elfHeader32.shentsize * elfHeader32.shnum;
-        size += PageManager::PAGE_SIZE - 1;
-        size = size / PageManager::PAGE_SIZE * PageManager::PAGE_SIZE;
-        uintptr_t alloc = kpm.AllocMemory(size);
+        uintptr_t alloc = kpm.AllocMemory(align_down_page(size));
         if (alloc) {
             alloc += 0xC0000000;
         } else {
@@ -152,10 +147,7 @@ int Parser::load(Inode* inode) {
         auto& sec = sectionHeaders[elfHeader32.shstrndx];
         uintptr_t off = sec.offset;
         size_t sizeReal = sec.size;
-        size_t sizeAlloc = sizeReal + PageManager::PAGE_SIZE - 1;
-        sizeAlloc /= PageManager::PAGE_SIZE;
-        sizeAlloc *= PageManager::PAGE_SIZE;
-        auto buf = (char*) kpm.AllocMemory(sizeAlloc);
+        auto buf = (char*) kpm.AllocMemory(align_down_page(sizeReal));
         
         if (buf) {
             buf += 0xC0000000;

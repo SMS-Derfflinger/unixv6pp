@@ -1,5 +1,6 @@
 /* 内核的初始化 */
 
+#include "Utility.h"
 #include "Video.h"
 #include "Simple.h"
 #include "IOPort.h"
@@ -247,8 +248,8 @@ extern "C" void next()
 
 	/* 加上1MB以下物理内存区域，计算总内存容量，以字节为单位的内存大小 */
 	memSize += 1024; /* KB */
-	PageManager::PHY_MEM_SIZE = memSize * 1024;
-	UserPageManager::USER_PAGE_POOL_SIZE = PageManager::PHY_MEM_SIZE - UserPageManager::USER_PAGE_POOL_START_ADDR;
+	// PageManager::PHY_MEM_SIZE = memSize * 1024;
+	// UserPageManager::USER_PAGE_POOL_SIZE = PageManager::PHY_MEM_SIZE - UserPageManager::USER_PAGE_POOL_START_ADDR;
 
 	/* 真正操作系统内核初始化逻辑	 */
 	Kernel::Instance().Initialize();	
@@ -283,7 +284,7 @@ extern "C" void next()
 	fd_tty = lib_open("/dev/tty1", File::FWRITE);
 	if ( fd_tty != 1 )
 	{
-		Utility::Panic("STDOUT Error!");
+                Utility::Panic("STDOUT Error!");
 	}
 	Diagnose::TraceOn();
 

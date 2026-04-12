@@ -1,114 +1,60 @@
 #ifndef PAGE_MANAGER_H
 #define PAGE_MANAGER_H
 
-#include "MapNode.h"
 #include "Allocator.h"
+#include "MapNode.h"
+#include "Video.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+unsigned long alloc_page(unsigned long size, bool is_user);
+void free_page(unsigned long addr, unsigned long size, bool is_user);
+
 unsigned long mm_page_manager_initialize(MapNode map[], unsigned long map_len);
-unsigned long mm_page_manager_init_pool(
-    MapNode map[],
-    unsigned long map_len,
-    unsigned long page_size,
-    unsigned long pool_start_addr,
-    unsigned long pool_size
-);
-unsigned long mm_page_manager_alloc(MapNode map[], unsigned long size, unsigned long page_size);
-unsigned long mm_page_manager_free(
-    MapNode map[],
-    unsigned long size,
-    unsigned long start_address,
-    unsigned long page_size
-);
+unsigned long mm_page_manager_init_pool(MapNode map[], unsigned long map_len,
+                                        unsigned long page_size,
+                                        unsigned long pool_start_addr,
+                                        unsigned long pool_size);
+unsigned long mm_page_manager_alloc(MapNode map[], unsigned long size,
+                                    unsigned long page_size);
+unsigned long mm_page_manager_free(MapNode map[], unsigned long size,
+                                   unsigned long start_address,
+                                   unsigned long page_size);
 
 #ifdef __cplusplus
 }
 #endif
 
-class PageManager
-{
+class KernelPageManager {
 public:
-    inline static unsigned int PHY_MEM_SIZE = 0;
+  KernelPageManager() {}
 
-    static const unsigned int PAGE_SIZE = 0x1000;
-    static const unsigned int MEMORY_MAP_ARRAY_SIZE = 0x200;
-    static const unsigned int KERNEL_MEM_START_ADDR = 0x100000;
-    static const unsigned int KERNEL_SIZE = 0x80000;
+  unsigned long AllocMemory(unsigned long size) {
+          return alloc_page(size, false);
+  }
 
-public:
-    PageManager(unsigned long startPhys, unsigned long lengthBytes) { }
-    virtual ~PageManager() = default;
-
-    int Initialize()
-    {
-        return static_cast<int>(mm_page_manager_initialize(this->map, MEMORY_MAP_ARRAY_SIZE));
-    }
-
-    unsigned long AllocMemory(unsigned long size)
-    {
-        return mm_page_manager_alloc(this->map, size, PAGE_SIZE);
-    }
-
-    unsigned long FreeMemory(unsigned long size, unsigned long memoryStartAddress)
-    {
-        return mm_page_manager_free(this->map, size, memoryStartAddress, PAGE_SIZE);
-    }
-
-private:
-    struct PageManagerImpl;
-
-    PageManagerImpl* handle;
+  void FreeMemory(unsigned long size, unsigned long memoryStartAddress) {
+          free_page(memoryStartAddress, size, false);
+  }
 };
 
-class KernelPageManager : public PageManager
-{
+class UserPageManager {
 public:
-    static const unsigned int KERNEL_PAGE_POOL_START_ADDR = 0x200000 + 0x2000 + 0x2000;
-    static const unsigned int KERNEL_PAGE_POOL_SIZE = 0x200000 - 0x4000;
-
-public:
-    KernelPageManager(Allocator* allocator)
-        : PageManager(allocator)
-    {
-    }
-
-    int Initialize()
-    {
-        return static_cast<int>(mm_page_manager_init_pool(
-            this->map,
-            MEMORY_MAP_ARRAY_SIZE,
-            PAGE_SIZE,
-            KERNEL_PAGE_POOL_START_ADDR,
-            KERNEL_PAGE_POOL_SIZE
-        ));
-    }
-};
-
-class UserPageManager : public PageManager
-{
-public:
-    static const unsigned int USER_PAGE_POOL_START_ADDR = 0x400000;
-    inline static unsigned int USER_PAGE_POOL_SIZE = 0;
+  static const unsigned int USER_PAGE_POOL_START_ADDR = 0x400000;
+  inline static unsigned int USER_PAGE_POOL_SIZE = 0;
 
 public:
-    UserPageManager(Allocator* allocator)
-        : PageManager(allocator)
-    {
-    }
+  UserPageManager() {}
 
-    int Initialize()
-    {
-        return static_cast<int>(mm_page_manager_init_pool(
-            this->map,
-            MEMORY_MAP_ARRAY_SIZE,
-            PAGE_SIZE,
-            USER_PAGE_POOL_START_ADDR,
-            USER_PAGE_POOL_SIZE
-        ));
-    }
+  unsigned long AllocMemory(unsigned long size) {
+          return alloc_page(size, true);
+  }
+
+  void FreeMemory(unsigned long size, unsigned long memoryStartAddress) {
+          free_page(memoryStartAddress, size, true);
+  }
 };
 
 #endif

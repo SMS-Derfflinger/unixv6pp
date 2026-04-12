@@ -13,6 +13,7 @@
 
 #include "Machine.h"
 #include "PageManager.h"
+#include "Kernel.h"
 
 namespace video {
 namespace svga {
@@ -29,7 +30,7 @@ void init(VbeModeInfo* modeInfo) {
     svga::screen = (int8_t*) (VESA_SCREEN_VADDR);
     bytesPerPixel = modeInfo->bpp / 8;
     videoMemSize = bytesPerPixel * modeInfo->width * modeInfo->height;
-    vMemPages = (videoMemSize + PageManager::PAGE_SIZE - 1) / PageManager::PAGE_SIZE;
+    vMemPages = (videoMemSize + PAGE_SIZE - 1) / PAGE_SIZE;
 }
 
 

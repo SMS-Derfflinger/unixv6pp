@@ -31,7 +31,7 @@
  */
 #define SwtchUStruct(p) \
 	Machine::Instance().GetKernelPageTable().m_Entrys[Kernel::USER_PAGE_INDEX].m_PageBaseAddress \
-		= (p)->p_addr / PageManager::PAGE_SIZE; \
+		= (p)->p_addr / PAGE_SIZE; \
 	FlushPageDirectory();
 
 /* 

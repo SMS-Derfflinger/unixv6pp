@@ -11,6 +11,12 @@
 #include "FileSystem.h"
 #include "SwapperManager.h"
 
+const unsigned long PAGE_SIZE = 0x1000;
+
+constexpr unsigned long align_down_page(unsigned long val) {
+        return (val + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+}
+
 /*
  * Kernel类用于封装所有内核相关的全局类实例对象，
  * 例如PageManager, ProcessManager等。

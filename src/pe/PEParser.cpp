@@ -69,7 +69,7 @@ unsigned int PEParser::Relocate(Inode* p_inode, bool sharedText)
 
 		ImageSectionHeader* sectionHeader = &secHeader;
 		int beginVM = sectionHeader->VirtualAddress + ntHeader.OptionalHeader.ImageBase;
-		int size = ((sectionHeader->Misc.VirtualSize + PageManager::PAGE_SIZE - 1)>>12)<<12;
+		int size = align_down_page(sectionHeader->Misc.VirtualSize);
 		int j;
 
 //		if(sharedText == 0 || i != 0)
@@ -123,7 +123,7 @@ unsigned int PEParser::Relocate(Inode* p_inode, bool sharedText)
 	}
 
 	KernelPageManager& kpm = Kernel::Instance().GetKernelPageManager();
-	kpm.FreeMemory(PageManager::PAGE_SIZE * 2, (unsigned long)this->sectionHeaders - 0xC0000000 );
+	kpm.FreeMemory(PAGE_SIZE * 2, (unsigned long)this->sectionHeaders - 0xC0000000 );
 //	kpm.FreeMemory(section_size * ntHeader.FileHeader.NumberOfSections, (unsigned long)this->sectionHeaders - 0xC0000000 );
 //	delete this->sectionHeaders;
 	return 	cnt;
@@ -161,7 +161,7 @@ bool PEParser::HeaderLoad(Inode* p_inode)
      * sectionHeaders = new ImageSectionHeader;
      * */
     //sectionHeaders = (ImageSectionHeader*)(kpm.AllocMemory(section_size * ntHeader.FileHeader.NumberOfSections)+0xC0000000);
-    sectionHeaders = (ImageSectionHeader*)(kpm.AllocMemory(PageManager::PAGE_SIZE * 2) + 0xC0000000);
+    sectionHeaders = (ImageSectionHeader*)(kpm.AllocMemory(PAGE_SIZE * 2) + 0xC0000000);
     u.u_IOParam.m_Base = (unsigned char*)sectionHeaders;
     u.u_IOParam.m_Offset = dos_header.e_lfanew + ntHeader_size;
     u.u_IOParam.m_Count = section_size * ntHeader.FileHeader.NumberOfSections;

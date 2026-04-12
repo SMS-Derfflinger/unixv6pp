@@ -30,7 +30,7 @@ unsigned int MemoryDescriptor::MapEntry(unsigned long virtualAddress, unsigned i
 	
 	//计算从pagetable的哪一个地址开始映射
 	unsigned long startIdx = address >> 12;
-	unsigned long cnt = ( size + (PageManager::PAGE_SIZE - 1) )/ PageManager::PAGE_SIZE;
+	unsigned long cnt = ( size + (PAGE_SIZE - 1) ) / PAGE_SIZE;
 
 	PageTableEntry* entrys = (PageTableEntry*)this->m_UserPageTableArray;
 	for ( unsigned int i = startIdx; i < startIdx + cnt; i++, phyPageIdx++ )
@@ -87,7 +87,7 @@ bool MemoryDescriptor::EstablishUserPageTable( unsigned long textVirtualAddress,
 	User& u = Kernel::Instance().GetUser();
 
 	/* 如果超出允许的用户程序最大8M的地址空间限制 */
-	if ( textSize + dataSize + stackSize  + PageManager::PAGE_SIZE > USER_SPACE_SIZE - textVirtualAddress)
+	if ( textSize + dataSize + stackSize  + PAGE_SIZE > USER_SPACE_SIZE - textVirtualAddress)
 	{
 		u.u_error = User::ENOMEM;
 		Diagnose::Write("u.u_error = %d\n",u.u_error);

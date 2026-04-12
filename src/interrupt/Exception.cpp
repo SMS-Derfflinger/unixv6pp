@@ -263,7 +263,7 @@ void Exception::PageFault(struct pt_regs* regs, struct pte_context* context)
 	if( (context->xcs & USER_MODE) == USER_MODE)
 	{
 		if( cr2 < MemoryDescriptor::USER_SPACE_SIZE - md.m_StackSize && cr2 >= context->esp - 8
-				&& md.m_DataSize + md.m_StackSize + PageManager::PAGE_SIZE < MemoryDescriptor::USER_SPACE_SIZE - md.m_DataStartAddress )
+				&& md.m_DataSize + md.m_StackSize + PAGE_SIZE < MemoryDescriptor::USER_SPACE_SIZE - md.m_DataStartAddress )
 			current->SStack();
 		else
 		{
@@ -273,7 +273,7 @@ void Exception::PageFault(struct pt_regs* regs, struct pte_context* context)
 				current->PSig( (pt_context *)&context->eip );
 		}
 	}
-	else
+        else
 		Utility::Panic("Page Fault in Kernel Mode.");
 }
 

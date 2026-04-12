@@ -1,4 +1,5 @@
 #include "New.h"
+#include "Video.h"
 
 KernelAllocator* g_pAllocator;
 
@@ -17,6 +18,8 @@ void* operator new(unsigned int size)
     if (address == 0) {
         return nullptr;
     }
+
+    Diagnose::Write("Alloc called");
 
     return reinterpret_cast<void*>(address);
 }

@@ -59,12 +59,12 @@ void Utility::CopySeg2(unsigned long src, unsigned long des)
 	unsigned long oriEntry1 = userPageTable[0].m_PageBaseAddress;
 	unsigned long oriEntry2 = userPageTable[1].m_PageBaseAddress;	
 
-	userPageTable[0].m_PageBaseAddress = src / PageManager::PAGE_SIZE;
-	userPageTable[1].m_PageBaseAddress = des / PageManager::PAGE_SIZE;
+	userPageTable[0].m_PageBaseAddress = src / PAGE_SIZE;
+	userPageTable[1].m_PageBaseAddress = des / PAGE_SIZE;
 
-	unsigned char* addressSrc = (unsigned char*)(src % PageManager::PAGE_SIZE);	
+	unsigned char* addressSrc = (unsigned char*)(src % PAGE_SIZE);	
 	//第二页virtual addess从4096开始
-	unsigned char* addressDes = (unsigned char*)(PageManager::PAGE_SIZE + des % PageManager::PAGE_SIZE);	
+	unsigned char* addressDes = (unsigned char*)(PAGE_SIZE + des % PAGE_SIZE);	
 	//需要刷新页表缓存
 	FlushPageDirectory();
 
@@ -87,12 +87,12 @@ void Utility::CopySeg(unsigned long src, unsigned long des)
 	unsigned long oriEntry1 = PageTable[borrowedPTE].m_PageBaseAddress;
 	unsigned long oriEntry2 = PageTable[borrowedPTE + 1].m_PageBaseAddress;
 
-	PageTable[256].m_PageBaseAddress = src / PageManager::PAGE_SIZE;
-	PageTable[257].m_PageBaseAddress = des / PageManager::PAGE_SIZE;
+	PageTable[256].m_PageBaseAddress = src / PAGE_SIZE;
+	PageTable[257].m_PageBaseAddress = des / PAGE_SIZE;
 
-	unsigned char* addressSrc = (unsigned char*)(0xC0000000 + borrowedPTE*PageManager::PAGE_SIZE + src % PageManager::PAGE_SIZE);
+	unsigned char* addressSrc = (unsigned char*)(0xC0000000 + borrowedPTE * PAGE_SIZE + src % PAGE_SIZE);
 
-	unsigned char* addressDes = (unsigned char*)(0xC0000000 + (borrowedPTE + 1)*PageManager::PAGE_SIZE + des % PageManager::PAGE_SIZE);
+	unsigned char* addressDes = (unsigned char*)(0xC0000000 + (borrowedPTE + 1) * PAGE_SIZE + des % PAGE_SIZE);
 	//需要刷新页表缓存
 	FlushPageDirectory();
 

@@ -531,7 +531,7 @@ void ProcessManager::Exec()
 	auto stackSize = isPE ? peParser.StackSize : elfParser.stackSize;
 	u.u_MemoryDescriptor.m_StackSize = stackSize;
 	
-	if ( textSize + dataSize + stackSize  + PageManager::PAGE_SIZE > MemoryDescriptor::USER_SPACE_SIZE - textAddr)
+	if ( textSize + dataSize + stackSize  + PAGE_SIZE > MemoryDescriptor::USER_SPACE_SIZE - textAddr)
 	{
 		fileMgr.m_InodeTable->IPut(pInode);
 		u.u_error = User::ENOMEM;
@@ -544,7 +544,7 @@ void ProcessManager::Exec()
 	 * 分配好新进程图像之后，再将fakeStack中的备份参数拷贝到新进程的用户栈中。
 	 */
 	//unsigned long fakeStack = kernelPgMgr.AllocMemory(parser.StackSize);
-	int allocLength = (stackSize + PageManager::PAGE_SIZE * 2 - 1) >> 13 << 13;
+	int allocLength = (stackSize + PAGE_SIZE * 2 - 1) >> 13 << 13;
 	unsigned long fakeStack = kernelPgMgr.AllocMemory(allocLength);
 
 	int argc = u.u_arg[1];
