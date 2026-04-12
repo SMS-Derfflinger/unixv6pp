@@ -16,11 +16,20 @@ bitflags! {
 pub struct File {
     pub f_flag: FileFlags,
     pub f_count: i32,
-    pub f_inode: Option<*mut Inode>,
+    pub f_inode: Option<usize>, // InodeTable 中的下标
     pub f_offset: i32,
 }
 
 impl File {
+    pub const fn new_const() -> Self {
+        Self {
+            f_flag: FileFlags::empty(),
+            f_count: 0,
+            f_inode: None,
+            f_offset: 0,
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             f_flag: FileFlags::empty(),
