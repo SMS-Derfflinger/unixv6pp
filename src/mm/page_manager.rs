@@ -10,6 +10,8 @@ use eonix_sync_base::{LazyLock, Relax};
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
 use slab_allocator::{SlabAlloc, SlabPage, SlabPageAlloc, SlabSlot};
 
+use crate::println_trace;
+
 use super::allocator::{mm_allocator_alloc, mm_allocator_free, MapNode};
 
 const PAGE_SIZE: usize = 0x1000;
@@ -33,9 +35,7 @@ struct PageList(LinkedList<PagesAdapter>);
 static mut PAGES: MaybeUninit<[PhysPage; PAGE_COUNT]> = MaybeUninit::zeroed();
 
 fn page_array() -> &'static [PhysPage; PAGE_COUNT] {
-    unsafe {
-        PAGES.assume_init_mut()
-    }
+    unsafe { PAGES.assume_init_mut() }
 }
 
 impl PhysPage {
@@ -240,6 +240,8 @@ pub extern "C" fn alloc_page(size: usize, user: bool) -> usize {
 
     let page = allocator.alloc_order(order).expect("Out of memory");
 
+    println_trace!("Allocated {:?} size={:#x}", page.pfn(), size);
+
     page.phys().addr()
 }
 
@@ -264,6 +266,7 @@ pub extern "C" fn free_page(addr: usize, size: usize, user: bool) {
     };
 
     // assert!(size <= (1 << (page.order as usize + 12)) ,"Wrong size");
+    println_trace!("Deallocate {:?} size={:#x}", page.pfn(), size);
 
     unsafe {
         allocator.dealloc(page);
