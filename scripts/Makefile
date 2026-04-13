@@ -3,6 +3,8 @@
 # out-bins
 # out-libs
 
+MAKE = make
+
 HOSTCC = gcc
 HOSTCXX = g++
 HOSTLD = g++
@@ -81,21 +83,33 @@ objs.a: $(objs) $(hdrs) $(libs)
 host-objs.a: $(host-objs) $(hdrs)
 	$(HOSTAR) $(HOSTARFLAGS) rcs $@ $(host-objs) $(host-libs)
 
+Q = @
+
+quiet = $(if $(Q),quiet_,)
+
+quiet_log_print = $(if $(quiet_cmd_$(1)), echo "	$(quiet_cmd_$(1))";)
+log_print = echo "$(cmd_$(1))"
+
+cmd = @$(if $(cmd_$(1)),set -e; $($(quiet)log_print) $(cmd_$(1)),:)
+
+cmd_submake = $(MAKE) --no-print-directory -C $< $(2)
+quiet_cmd_submake = "MAKE	$<"
+
 .PHONY: %/objs.a
 %/objs.a: %/
-	make -C $< objs.a
+	$(call cmd,submake,objs.a)
 
 .PHONY: %/host-objs.a
 %/host-objs.a: %/
-	make -C $< host-objs.a
+	$(call cmd,submake,host-objs.a)
 
 .PHONY: %/objs.a.clean
 %/objs.a.clean: %/
-	make -C $< clean
+	$(call cmd,submake,clean)
 
 .PHONY: %/host-objs.a.clean
 %/host-objs.a.clean: %/
-	make -C $< clean
+	$(call cmd,submake,clean)
 
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
 $(foreach bin, $(out-host-bins), $(eval $(call BUILD_HOST_BIN,$(bin))))

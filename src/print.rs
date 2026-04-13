@@ -1,9 +1,11 @@
 use core::fmt::{self, Write};
 
-use crate::serial::serial_write;
+use eonix_spin::Spin;
+
+use crate::{serial::serial_write, sync::SpinExt as _};
 
 struct Console;
-const CONSOLE: Console = Console;
+static CONSOLE: Spin<Console> = Spin::new(Console);
 
 impl Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -14,7 +16,7 @@ impl Write for Console {
 
 #[doc(hidden)]
 pub fn do_print(args: fmt::Arguments) {
-    CONSOLE.write_fmt(args).ok();
+    CONSOLE.lock().write_fmt(args).ok();
 }
 
 #[macro_export]

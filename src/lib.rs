@@ -6,6 +6,7 @@ mod constants;
 mod mm;
 mod print;
 mod serial;
+pub mod sync;
 
 use core::panic::PanicInfo;
 
