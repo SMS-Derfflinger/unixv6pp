@@ -240,6 +240,7 @@ pub extern "C" fn alloc_page(size: usize, user: bool) -> usize {
 
     let page = allocator.alloc_order(order).expect("Out of memory");
 
+    #[cfg(trace_alloc)]
     println_trace!("Allocated {:?} size={:#x}", page.pfn(), size);
 
     page.phys().addr()
@@ -265,7 +266,9 @@ pub extern "C" fn free_page(addr: usize, size: usize, user: bool) {
         page_ptr.as_mut()
     };
 
-    // assert!(size <= (1 << (page.order as usize + 12)) ,"Wrong size");
+    assert!(size <= (1 << (page.order as usize + 12)) ,"Wrong size");
+
+    #[cfg(trace_alloc)]
     println_trace!("Deallocate {:?} size={:#x}", page.pfn(), size);
 
     unsafe {
