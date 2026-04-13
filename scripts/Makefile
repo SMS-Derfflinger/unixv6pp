@@ -70,6 +70,8 @@ out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 %.o: %.cpp .%.cpp.cmd
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+host-obj-cmds = $(subst .o,.cpp.cmd,$(host-objs))
+
 $(host-obj-cmds): %.cpp.cmd: %.cpp
 	echo "{\"command\": \"$(HOSTCXX) $(HOSTCXXFLAGS) -c $<\", \"directory\": \"$(realpath $(abs_srctree))\", \"file\": \"$(realpath $<)\"}" > $@
 
