@@ -1,6 +1,7 @@
 #include "Video.h"
 
 #include "vesa/console.h"
+#include "Kernel.h"
 
 #include <libyrosstd/stdio.h>
 
@@ -31,8 +32,6 @@ void Diagnose::TraceOff()
 {
 	Diagnose::trace_on = 0;
 }
-
-extern "C" void serial_write_cstr(const char* str);
 
 /*
 	能够输出格式化后的字符串，目前只能识别一些%d %x  %s 和%n;

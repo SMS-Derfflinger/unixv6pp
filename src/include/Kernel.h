@@ -17,6 +17,8 @@ constexpr unsigned long align_down_page(unsigned long val) {
         return (val + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
 }
 
+extern "C" void serial_write_cstr(const char* str);
+
 /*
  * Kernel类用于封装所有内核相关的全局类实例对象，
  * 例如PageManager, ProcessManager等。

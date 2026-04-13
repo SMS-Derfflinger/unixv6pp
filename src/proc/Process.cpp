@@ -404,6 +404,8 @@ void Process::SBreak()
 
 void Process::PSignal( int signal )
 {
+	Diagnose::Write("Signal %d triggered\n", signal);
+
 	if ( signal >= User::NSIG )
 	{
 		return;
@@ -480,6 +482,8 @@ void Process::PSig(struct pt_context* pContext)
 		u.u_signal[signal] = 0;
 		return;
 	}
+
+	serial_write_cstr("signal?");
 
 	/* u.u_signal[n]为0，则对信号的处理方式是终止本进程 */
 	u.u_procp->Exit();
