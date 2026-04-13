@@ -105,6 +105,10 @@ pub struct FileSystem {
     updlock: bool,
 }
 
+// SAFETY: migration-stage design. Access to the global filesystem object is serialized by
+// the outer Spin lock in `fs.rs`, even though the inner graph uses `Rc<RefCell<...>>`.
+unsafe impl Send for FileSystem {}
+
 impl FileSystem {
     pub const NMOUNT: usize = 5;
 

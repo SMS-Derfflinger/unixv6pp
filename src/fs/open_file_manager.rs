@@ -7,6 +7,7 @@ use crate::{
     fs::{
         self,
         file::{File, FileFlags, FileRef, InodeRef, OpenFiles},
+        file_system::FileSystem,
         inode::{DevId, INodeFlag, INodeMode, Inode},
     },
 };
@@ -96,6 +97,9 @@ impl InodeTable {
     }
 
     pub fn i_get(&mut self, dev: DevId, inumber: i32) -> Result<InodeRef, PosixError> {
+        let mut dev = dev;
+        let mut inumber = inumber;
+
         loop {
             if let Some(inode) = self.is_loaded(dev, inumber) {
                 let mut inode_ref = inode.borrow_mut();
@@ -108,13 +112,18 @@ impl InodeTable {
                 }
 
                 if inode_ref.i_flag.contains(INodeFlag::IMOUNT) {
-                    // TODO: fs
-                    //let mount = kernel::get_filesystem()
-                    //    .get_mount(idx)
-                    //    .ok_or(Error::PANIC)?;
-                    //dev     = mount.m_dev;
-                    //inumber = FileSystem::ROOTINO;
-                    continue;
+                    let mount_dev = fs::global_file_system()
+                        .get_mount(&inode_ref)
+                        .map(|mount| mount.m_dev);
+                    drop(inode_ref);
+
+                    if let Some(mount_dev) = mount_dev {
+                        dev = mount_dev;
+                        inumber = FileSystem::ROOTINO;
+                        continue;
+                    }
+
+                    return Err(PosixError::ENOENT);
                 }
 
                 inode_ref.i_count += 1;
@@ -133,9 +142,8 @@ impl InodeTable {
                 inode.i_lastr = -1;
             }
 
-            // TODO: fs
-            //let sector = FileSystem::INODE_ZONE_START_SECTOR
-            //    + inumber as usize / FileSystem::INODE_NUMBER_PER_SECTOR;
+            let _sector = FileSystem::INODE_ZONE_START_SECTOR
+                + inumber as usize / FileSystem::INODE_NUMBER_PER_SECTOR;
 
             // TODO: buffer
             //let buf = kernel::buf_bread(dev, PhysicalBlock(sector as u32));
@@ -161,8 +169,7 @@ impl InodeTable {
             if inode.i_nlink <= 0 {
                 inode.i_trunc();
                 inode.i_mode = INodeMode::empty();
-                // TODO: fs
-                //kernel::get_filesystem().i_free(inode.i_dev, inode.i_number);
+                let _ = fs::global_file_system().i_free(inode.i_dev, inode.i_number);
             }
 
             // TODO: time

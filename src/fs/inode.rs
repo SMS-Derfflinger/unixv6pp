@@ -1,3 +1,4 @@
+use crate::fs::{self, file_system::FileSystem};
 use bitflags::bitflags;
 use core::{fmt::Error, mem, slice};
 
@@ -122,6 +123,10 @@ impl IndexKind {
             })
         }
     }
+}
+
+fn map_fs_alloc_error<T>(_err: T) -> BmapError {
+    BmapError::AllocFailed
 }
 
 #[allow(unused)]
@@ -351,13 +356,10 @@ impl Inode {
                 let phy2 = first.read_table()[mid];
                 // TODO: buffer manager
                 let mut second: BufHandle = if phy2 == 0 {
-                    // TODO: fs
-                    //let new_buf =
-                    //    kernel::fs_alloc(self.i_dev).ok_or_else(|| BmapError::AllocFailed)?;
-                    let new_buf = BufHandle(core::ptr::null_mut());
-                    first.write_table()[mid] = new_buf.blkno().0 as i32;
+                    let new_blk = Self::alloc_block_from_fs(self.i_dev)?;
+                    first.write_table()[mid] = new_blk.0 as i32;
                     first.into_bdwrite();
-                    new_buf
+                    return Err(BmapError::AllocFailed);
                 } else {
                     drop(first); // brelse
                                  // TODO: buffer manager
@@ -381,11 +383,7 @@ impl Inode {
         if phy.0 != 0 {
             return Ok(PhysicalBlock(phy.0));
         }
-        // TODO: fs
-        //let buf = kernel::fs_alloc(self.i_dev).ok_or(BmapError::AllocFailed)?;
-        let buf = BufHandle(core::ptr::null_mut());
-        let blkno = buf.blkno();
-        buf.into_bdwrite();
+        let blkno = Self::alloc_block_from_fs(self.i_dev)?;
         self.i_addr[slot] = blkno;
         self.i_flag |= INodeFlag::IUPD;
         Ok(blkno)
@@ -395,12 +393,12 @@ impl Inode {
     fn get_or_alloc_indirect_buf(&mut self, slot: usize) -> Result<BufHandle, BmapError> {
         let blkno = self.i_addr[slot];
         if blkno.0 == 0 {
-            // TODO: fs
-            //let buf = kernel::fs_alloc(self.i_dev).ok_or(BmapError::AllocFailed)?;
-            let buf = BufHandle(core::ptr::null_mut());
-            self.i_addr[slot] = buf.blkno();
+            let blkno = Self::alloc_block_from_fs(self.i_dev)?;
+            self.i_addr[slot] = blkno;
             self.i_flag |= INodeFlag::IUPD;
-            Ok(buf)
+            // TODO: buffer manager
+            // Once buffer allocation is wired, return the new indirect-block buffer handle here.
+            Err(BmapError::AllocFailed)
         } else {
             // TODO: buffer manager
             //Ok(kernel::buf_bread(self.i_dev, blkno))
@@ -428,16 +426,19 @@ impl Inode {
 
         let phy = indirect.read_table()[inner];
         if phy == 0 {
-            // TODO: fs
-            //let data_buf = kernel::fs_alloc(dev).ok_or(BmapError::AllocFailed)?;
-            let data_buf = BufHandle(core::ptr::null_mut());
-            let blkno = data_buf.blkno();
+            let blkno = Self::alloc_block_from_fs(dev)?;
             indirect.write_table()[inner] = blkno.0 as i32;
-            data_buf.into_bdwrite();
             Ok((blkno, rablock))
         } else {
             Ok((PhysicalBlock(phy as u32), rablock))
         }
+    }
+
+    fn alloc_block_from_fs(dev: DevId) -> Result<PhysicalBlock, BmapError> {
+        let buf = fs::global_file_system()
+            .alloc(dev)
+            .map_err(map_fs_alloc_error)?;
+        Ok(buf.b_blkno)
     }
 
     pub fn open_i(&self, mode: u32) -> Result<(), OpenError> {
@@ -493,18 +494,19 @@ impl Inode {
             return;
         }
 
-        // TODO: fs
-        //let fs = kernel::get_filesystem();
-        //if fs.get_fs(self.i_dev).s_ronly != 0 {
-        //    return;
-        //}
+        if fs::global_file_system()
+            .get_fs(self.i_dev)
+            .is_ok_and(|spb| spb.borrow().is_readonly())
+        {
+            return;
+        }
 
-        //let sector = FileSystem::INODE_ZONE_START_SECTOR
-        //    + self.i_number as usize / FileSystem::INODE_NUMBER_PER_SECTOR;
+        let _sector = FileSystem::INODE_ZONE_START_SECTOR
+            + self.i_number as usize / FileSystem::INODE_NUMBER_PER_SECTOR;
 
         //let mut buf = kernel::buf_bread(self.i_dev, PhysicalBlock(sector as u32));
 
-        let mut d_inode = DiskInode {
+        let _d_inode = DiskInode {
             d_mode: self.i_mode,
             d_nlink: self.i_nlink,
             d_uid: self.i_uid,
@@ -523,8 +525,8 @@ impl Inode {
             },
         };
 
-        //let offset = (self.i_number as usize % FileSystem::INODE_NUMBER_PER_SECTOR)
-        //    * size_of::<DiskInode>();
+        let _offset =
+            (self.i_number as usize % FileSystem::INODE_NUMBER_PER_SECTOR) * size_of::<DiskInode>();
         //let dst = &mut buf.as_slice_mut()[offset..offset + size_of::<DiskInode>()];
         //let src = unsafe {
         //    slice::from_raw_parts(
@@ -542,9 +544,6 @@ impl Inode {
         if self.i_mode.intersects(INodeMode::IFCHR | INodeMode::IFBLK) {
             return;
         }
-
-        // TODO: fs
-        //let fs = kernel::get_filesystem();
 
         for i in (0..10).rev() {
             let blk = self.i_addr[i];
@@ -567,18 +566,15 @@ impl Inode {
                 //        for k in (0..128).rev() {
                 //            let b = second_buf.read_table()[k];
                 //            if b != 0 {
-                //                // TODO: fs
-                //                //fs.free(self.i_dev, PhysicalBlock(b as u32));
+                //                let _ = fs::global_file_system().free(self.i_dev, b);
                 //            }
                 //        }
                 //    }
-                //    // TODO: fs
-                //    //fs.free(self.i_dev, PhysicalBlock(first_table[j] as u32));
+                //    let _ = fs::global_file_system().free(self.i_dev, first_table[j]);
                 //}
             }
 
-            // TODO: fs
-            //fs.free(self.i_dev, blk);
+            let _ = fs::global_file_system().free(self.i_dev, blk.0 as i32);
             self.i_addr[i] = PhysicalBlock(0);
         }
 
@@ -634,9 +630,7 @@ impl Inode {
     }
 
     pub fn i_copy(&mut self, buf: &Buf, inumber: usize) {
-        // TODO: fs
-        //let offset = (inumber % FileSystem::INODE_NUMBER_PER_SECTOR) * size_of::<DiskInode>();
-        let offset = 0;
+        let offset = (inumber % FileSystem::INODE_NUMBER_PER_SECTOR) * size_of::<DiskInode>();
 
         let src = &buf.as_slice()[offset..offset + size_of::<DiskInode>()];
 
