@@ -22,7 +22,7 @@ rustlib:
 		--release
 
 custom-clean:
-	-rm libkernelrust.a
+	@-rm -f libkernelrust.a
 
 librust_kernel.a: rustlib
 	ln -sf $(abs_srctree)/target/i686-none/release/librust_kernel.a $(CURDIR)/

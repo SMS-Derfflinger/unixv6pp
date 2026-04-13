@@ -41,7 +41,7 @@ install-buildrequires:
 
 .PHONY: clean
 clean: $(clean-dirs)
-	-rm -rf target/
+	@-rm -rf target/
 
 workdir := target/img-workspace
 

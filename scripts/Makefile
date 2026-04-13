@@ -92,8 +92,16 @@ log_print = echo "$(cmd_$(1))"
 
 cmd = @$(if $(cmd_$(1)),set -e; $($(quiet)log_print) $(cmd_$(1)),:)
 
-cmd_submake = $(MAKE) --no-print-directory -C $< $(2)
+submake = $(MAKE) --no-print-directory -C $<
+
+cmd_submake = $(submake) $(2)
 quiet_cmd_submake = "MAKE	$<"
+
+cmd_submake_clean = $(submake) clean
+quiet_cmd_submake_clean = "CLEAN	$<"
+
+cmd_rm = rm -f $(2)
+quiet_cmd_rm = "REMOVE	$(2)"
 
 .PHONY: %/objs.a
 %/objs.a: %/
@@ -105,11 +113,11 @@ quiet_cmd_submake = "MAKE	$<"
 
 .PHONY: %/objs.a.clean
 %/objs.a.clean: %/
-	$(call cmd,submake,clean)
+	$(call cmd,submake_clean)
 
 .PHONY: %/host-objs.a.clean
 %/host-objs.a.clean: %/
-	$(call cmd,submake,clean)
+	$(call cmd,submake_clean)
 
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
 $(foreach bin, $(out-host-bins), $(eval $(call BUILD_HOST_BIN,$(bin))))
@@ -120,16 +128,16 @@ clean: $(addsuffix .clean,\
 		$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))) \
 		$(filter %/host-objs.a, $(foreach bin,$(out-host-bins),$($(bin)-libs))) \
 	) custom-clean
-	-rm -f $(foreach bin,$(out-bins),$($(bin)-objs))
-	-rm -f $(foreach bin,$(out-host-bins),$($(bin)-objs))
-	-rm -f $(foreach lib,$(out-libnames),$($(lib)-objs))
-	-rm -f $(out-bins)
-	-rm -f $(out-host-bins)
-	-rm -f $(out-libnames)
-	-rm -f objs.a $(objs)
-	-rm -f host-objs.a $(host-objs)
-	-rm -f .*.cmd
-	-rm -f collect-commands.cmd
+	@-rm -f $(foreach bin,$(out-bins),$($(bin)-objs))
+	@-rm -f $(foreach bin,$(out-host-bins),$($(bin)-objs))
+	@-rm -f $(foreach lib,$(out-libnames),$($(lib)-objs))
+	@-rm -f $(out-bins)
+	@-rm -f $(out-host-bins)
+	@-rm -f $(out-libnames)
+	@-rm -f objs.a $(objs)
+	@-rm -f host-objs.a $(host-objs)
+	@-rm -f .*.cmd
+	@-rm -f collect-commands.cmd
 
 .PHONY: all
 all: $(out-libnames) $(out-bins) $(out-host-bins)
