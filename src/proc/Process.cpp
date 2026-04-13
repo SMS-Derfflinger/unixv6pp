@@ -141,11 +141,11 @@ void Process::Expand(unsigned int newSize)
 	unsigned long newAddress;
 
 	/* 如果进程图像缩小，则释放多余的内存 */
-	if ( oldSize >= newSize )
-	{
-		userPgMgr.FreeMemory(oldSize - newSize, oldAddress + newSize);
-		return;
-	}
+	// if ( oldSize >= newSize )
+	// {
+	// 	userPgMgr.FreeMemory(oldSize - newSize, oldAddress + newSize);
+	// 	return;
+	// }
 
 	/* 进程图像扩大，需要寻找一块大小newSize的连续内存区 */
 	SaveU(u.u_rsav);
