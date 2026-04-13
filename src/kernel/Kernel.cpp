@@ -111,8 +111,11 @@ void Kernel::InitFileSystem()
 	Diagnose::Write("OK.\n");
 }
 
+extern "C" int init_serial();
+
 void Kernel::Initialize()
 {
+	init_serial();
 	InitMemory();
 	InitProcess();
 	InitBuffer();

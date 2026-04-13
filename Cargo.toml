@@ -23,3 +23,4 @@ eonix_spin = { git = "https://github.com/project-eonix/eonix-sync.git", version 
 eonix_sync_base = { git = "https://github.com/project-eonix/eonix-sync.git", version = "0.1.0" }
 eonix_mm = { git = "https://github.com/project-eonix/eonix-mm.git", version = "0.1.0" }
 intrusive-collections = { version = "0.9.7", default-features = false, features = [ "nightly" ] }
+bitflags = "2.11.0"

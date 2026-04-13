@@ -65,6 +65,7 @@ dependencies = [
 name = "rust_kernel"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "buddy_allocator",
  "eonix_mm",
  "eonix_spin",
