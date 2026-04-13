@@ -135,17 +135,17 @@ impl Inode {
 
     pub const fn new_const() -> Self {
         Self {
-            i_flag:   INodeFlag::empty(),
-            i_mode:   INodeMode::empty(),
-            i_count:  0,
-            i_nlink:  0,
-            i_dev:    DevId(-1),
+            i_flag: INodeFlag::empty(),
+            i_mode: INodeMode::empty(),
+            i_count: 0,
+            i_nlink: 0,
+            i_dev: DevId(-1),
             i_number: -1,
-            i_uid:    -1,
-            i_gid:    -1,
-            i_size:   0,
-            i_addr:   [PhysicalBlock(0); I_ADDR_SIZE],
-            i_lastr:  -1,
+            i_uid: -1,
+            i_gid: -1,
+            i_size: 0,
+            i_addr: [PhysicalBlock(0); I_ADDR_SIZE],
+            i_lastr: -1,
         }
     }
 

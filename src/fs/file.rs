@@ -1,8 +1,13 @@
+use alloc::rc::Rc;
 use bitflags::bitflags;
+use core::{array, cell::RefCell};
 
 use crate::constants::PosixError;
 
 use super::inode::Inode;
+
+pub(crate) type FileRef = Rc<RefCell<File>>;
+pub(crate) type InodeRef = Rc<RefCell<Inode>>;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +21,7 @@ bitflags! {
 pub struct File {
     pub f_flag: FileFlags,
     pub f_count: i32,
-    pub f_inode: Option<usize>, // InodeTable 中的下标
+    pub f_inode: Option<InodeRef>,
     pub f_offset: i32,
 }
 
@@ -41,7 +46,7 @@ impl File {
 }
 
 pub struct OpenFiles {
-    table: [Option<*mut File>; OpenFiles::NOFILES],
+    table: [Option<FileRef>; OpenFiles::NOFILES],
 }
 
 impl OpenFiles {
@@ -49,7 +54,7 @@ impl OpenFiles {
 
     pub fn new() -> Self {
         Self {
-            table: [None; OpenFiles::NOFILES],
+            table: array::from_fn(|_| None),
         }
     }
 
@@ -62,19 +67,22 @@ impl OpenFiles {
         Err(PosixError::EMFILE)
     }
 
-    pub fn clone_fd(&self, fd: usize) -> Result<usize, PosixError> {
-        // TODO
-        Ok(0)
+    pub fn clone_fd(&mut self, fd: usize) -> Result<usize, PosixError> {
+        let file = self.get_f(fd)?;
+        let new_fd = self.alloc_free_slot()?;
+        file.borrow_mut().f_count += 1;
+        self.table[new_fd] = Some(file);
+        Ok(new_fd)
     }
 
-    pub fn get_f(&self, fd: usize) -> Result<*mut File, PosixError> {
+    pub fn get_f(&self, fd: usize) -> Result<FileRef, PosixError> {
         if fd >= Self::NOFILES {
             return Err(PosixError::EBADF);
         }
-        self.table[fd].ok_or(PosixError::EBADF)
+        self.table[fd].as_ref().cloned().ok_or(PosixError::EBADF)
     }
 
-    pub fn set_f(&mut self, fd: usize, file: *mut File) {
+    pub fn set_f(&mut self, fd: usize, file: FileRef) {
         if fd < Self::NOFILES {
             self.table[fd] = Some(file);
         }
