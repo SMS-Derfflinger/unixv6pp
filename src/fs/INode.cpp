@@ -2,6 +2,7 @@
 #include "Utility.h"
 #include "DeviceManager.h"
 #include "Kernel.h"
+#include "fs_defines.h"
 
 /*==============================class Inode===================================*/
 /*	预读块的块号，对普通文件这是预读块所在的物理块号。对硬盘而言，这是当前物理块（扇区）的下一个物理块（扇区）*/
@@ -501,7 +502,7 @@ void Inode::IUpdate(int time)
 		/* 邓蓉的注释：在缓存池中找到包含本i节点（this->i_number）的缓存块
 		 * 这是一个上锁的缓存块，本段代码中的Bwrite()在将缓存块写回磁盘后会释放该缓存块。
 		 * 将该存放该DiskInode的字符块读入缓冲区 */
-		pBuf = bufMgr.Bread(this->i_dev, FileSystem::INODE_ZONE_START_SECTOR + this->i_number / FileSystem::INODE_NUMBER_PER_SECTOR);
+		pBuf = bufMgr.Bread(this->i_dev, fs::INODE_SECTOR_OFF + this->i_number / FileSystem::INODE_NUMBER_PER_SECTOR);
 
 		/* 将内存Inode副本中的信息复制到dInode中，然后将dInode覆盖缓存中旧的外存Inode */
 		dInode.d_mode = this->i_mode;

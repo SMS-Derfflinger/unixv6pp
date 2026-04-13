@@ -11,16 +11,18 @@
 #include "../MacroDefines.h"
 #include "../MachineProps.h"
 
+#include <fs_defines.h>
+
 /**
  * SuperBlock 结构。
  */
 class SuperBlock {
 public:
     /** 外存 Inode 区占用的盘块数。 */
-    uint32_t s_isize = MachineProps::INODE_ZONE_BLOCKS;
+    uint32_t s_isize = fs::INODE_SECTORS;
 
     /** 盘块总数。 */
-    uint32_t s_fsize = MachineProps::diskBlocks();
+    uint32_t s_fsize = fs::TOTAL_DISK_SECTORS;
 
     /** 直接管理的空闲盘块数量。 */
     uint32_t s_nfree;
@@ -57,31 +59,28 @@ public:
     uint32_t padding_changed = 1;
 
     /** 磁盘总扇区数。 */
-    uint32_t disk_sector_count = MachineProps::CYLINDERS
-        * MachineProps::HEADS * MachineProps::SECTORS_PER_TRACK;
+    uint32_t disk_sector_count = fs::TOTAL_DISK_SECTORS;
 
     /** Inode 区起始位置（单位：扇区）。 */
-    uint32_t inode_zone_begin = MachineProps::SUPER_BLOCK_ZONE_BLOCKS 
-        + MachineProps::KERNEL_AND_BOOT_BLOCKS;
+    uint32_t inode_zone_begin = fs::INODE_SECTOR_OFF;
 
     // 备注：此处包括后续部分，扇区和盘块单位有些混乱。然而，Unix V6++内，
     //      盘块与扇区的大小一致，所以可以先忽略这个问题（摆烂）。
 
     /** Inode 区域大小（单位：盘块）。 */
-    uint32_t inode_zone_blocks = MachineProps::INODE_ZONE_BLOCKS;
+    uint32_t inode_zone_blocks = fs::INODE_SECTORS;
 
     /** data 区起始位置（单位：盘块）。 */
-    uint32_t data_zone_begin = inode_zone_begin + inode_zone_blocks;
+    uint32_t data_zone_begin = fs::DATA_SECTOR_OFF;
 
     /** data 区大小（单位：盘块）。 */
-    uint32_t data_zone_blocks = disk_sector_count 
-        - data_zone_begin - MachineProps::SWAP_ZONE_BLOCKS;
+    uint32_t data_zone_blocks = fs::DATA_SECTORS;
 
     /** 交换区起始位置。 */
-    uint32_t swap_zone_begin = data_zone_begin + data_zone_blocks;
+    uint32_t swap_zone_begin = fs::SWAP_SECTOR_OFF;
 
     /** 交换区大小。 */
-    uint32_t swap_zone_blocks = MachineProps::SWAP_ZONE_BLOCKS;
+    uint32_t swap_zone_blocks = fs::SWAP_SECTORS;
 
     /** 空白填充。 */
     uint32_t blank_paddings[39] = {0};

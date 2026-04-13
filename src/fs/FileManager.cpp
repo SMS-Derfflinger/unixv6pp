@@ -3,6 +3,7 @@
 #include "Utility.h"
 #include "TimeInterrupt.h"
 
+#include "fs_defines.h"
 #include "libyrosstd/string.h"
 
 /*==========================class FileManager===============================*/
@@ -294,7 +295,7 @@ void FileManager::Stat1(Inode* pInode, unsigned long statBuf)
 	BufferManager& bufMgr = Kernel::Instance().GetBufferManager();
 
 	pInode->IUpdate(Time::time);
-	pBuf = bufMgr.Bread(pInode->i_dev, FileSystem::INODE_ZONE_START_SECTOR + pInode->i_number / FileSystem::INODE_NUMBER_PER_SECTOR );
+	pBuf = bufMgr.Bread(pInode->i_dev, fs::INODE_SECTOR_OFF + pInode->i_number / FileSystem::INODE_NUMBER_PER_SECTOR );
 
 	/* 将p指向缓存区中编号为inumber外存Inode的偏移位置 */
 	unsigned char* p = pBuf->b_addr + (pInode->i_number % FileSystem::INODE_NUMBER_PER_SECTOR) * sizeof(DiskInode);

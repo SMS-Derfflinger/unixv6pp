@@ -1,4 +1,4 @@
-include-path := $(abs_srctree)/src $(abs_srctree)/src/include
+include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
 
 objs := Kernel.o Lib.o main.o splash.o Utility.o Video.o
 

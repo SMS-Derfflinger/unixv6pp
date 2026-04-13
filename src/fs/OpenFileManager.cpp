@@ -2,6 +2,7 @@
 #include "Kernel.h"
 #include "TimeInterrupt.h"
 #include "Video.h"
+#include "fs_defines.h"
 
 /*==============================class OpenFileTable===================================*/
 /* 系统全局打开文件表对象实例的定义 */
@@ -171,7 +172,7 @@ Inode* InodeTable::IGet(short dev, int inumber)
 
 				BufferManager& bm = Kernel::Instance().GetBufferManager();
 				/* 将该外存Inode读入缓冲区 */
-				Buf* pBuf = bm.Bread(dev, FileSystem::INODE_ZONE_START_SECTOR + inumber / FileSystem::INODE_NUMBER_PER_SECTOR );
+				Buf* pBuf = bm.Bread(dev, fs::INODE_SECTOR_OFF + inumber / FileSystem::INODE_NUMBER_PER_SECTOR );
 
 				/* 如果发生I/O错误 */
 				if(pBuf->b_flags & Buf::B_ERROR)

@@ -68,7 +68,7 @@ bool FileSystemAdapter::readBlock(Block& block, const int blockIdx) {
 
 
 bool FileSystemAdapter::readBlocks(char* buffer, const int blockIdx, const int blockCount) {
-    if (blockIdx + blockCount > MachineProps::diskBlocks()) {
+    if (blockIdx + blockCount > fs::TOTAL_DISK_SECTORS) {
         cout << "[critical 1] FileSystemAdapter::readBlocks c*ii" << endl;
         cout << "             pBuf: " << (int*) buffer << ", blockIdx: " 
             << blockIdx << ", count: " << blockCount << endl;
@@ -87,7 +87,7 @@ bool FileSystemAdapter::writeBlock(const Block& block, const int blockIdx) {
 
 
 bool FileSystemAdapter::writeBlocks(const char* buffer, const int blockIdx, const int blockCount) {
-    if (blockIdx + blockCount > MachineProps::diskBlocks()) {
+    if (blockIdx + blockCount > fs::TOTAL_DISK_SECTORS) {
         cout << "[critical 1] FileSystemAdapter::writeBlocks c*ii" << endl;
         cout << "             pBuf: " << (int*) buffer << ", blockIdx: " 
             << blockIdx << ", count: " << blockCount << endl;
@@ -569,7 +569,7 @@ int FileSystemAdapter::getFreeBlock() {
         ret = result;
     }
 
-    if (ret >= MachineProps::diskBlocks()) {
+    if (ret >= fs::TOTAL_DISK_SECTORS) {
         cout << "[critical 2] FSA::getFreeBlock" << endl;
         cout << "             ret: " << ret << endl;
         cout << "s_nfree: " << superBlock.s_nfree << endl;
@@ -585,7 +585,7 @@ int FileSystemAdapter::getFreeBlock() {
 
 void FileSystemAdapter::freeBlock(int idx) {
 
-    if (idx >= MachineProps::diskBlocks()) {
+    if (idx >= fs::TOTAL_DISK_SECTORS) {
         cout << "[critical 3] FSA::freeBlock" << endl;
         cout << "             idx: " << idx << endl;
         cout << "s_nfree: " << superBlock.s_nfree << endl;

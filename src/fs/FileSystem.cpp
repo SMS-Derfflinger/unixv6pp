@@ -5,6 +5,7 @@
 #include "OpenFileManager.h"
 #include "TimeInterrupt.h"
 #include "Video.h"
+#include "fs_defines.h"
 
 /*==============================class SuperBlock===================================*/
 /* 系统全局超级块SuperBlock对象 */
@@ -66,7 +67,7 @@ void FileSystem::LoadSuperBlock()
 	{
 		int* p = (int *)&g_spb + i * 128;
 
-		Buf* pBuf = bufMgr.Bread(DeviceManager::ROOTDEV, FileSystem::SUPER_BLOCK_SECTOR_NUMBER + i);
+		Buf* pBuf = bufMgr.Bread(DeviceManager::ROOTDEV, fs::SUPERBLOCK_SECTOR_OFF + i);
 
 		Utility::DWordCopy((int *)pBuf->b_addr, p, 128);
 
@@ -153,7 +154,7 @@ void FileSystem::Update()
 				int* p = (int *)sb + j * 128;
 
 				/* 将要写入到设备dev上的SUPER_BLOCK_SECTOR_NUMBER + j扇区中去 */
-				pBuf = this->m_BufferManager->GetBlk(this->m_Mount[i].m_dev, FileSystem::SUPER_BLOCK_SECTOR_NUMBER + j);
+				pBuf = this->m_BufferManager->GetBlk(this->m_Mount[i].m_dev, fs::SUPERBLOCK_SECTOR_OFF + j);
 
 				/* 将SuperBlock中第0 - 511字节写入缓存区 */
 				Utility::DWordCopy(p, (int *)pBuf->b_addr, 128);
@@ -208,7 +209,7 @@ Inode* FileSystem::IAlloc(short dev)
 		/* 依次读入磁盘Inode区中的磁盘块，搜索其中空闲外存Inode，记入空闲Inode索引表 */
 		for(int i = 0; i < sb->s_isize; i++)
 		{
-			pBuf = this->m_BufferManager->Bread(dev, FileSystem::INODE_ZONE_START_SECTOR + i);
+			pBuf = this->m_BufferManager->Bread(dev, fs::INODE_SECTOR_OFF + i);
 
 			/* 获取缓冲区首址 */
 			int* p = (int *)pBuf->b_addr;

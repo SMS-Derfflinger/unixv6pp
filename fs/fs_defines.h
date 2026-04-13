@@ -16,9 +16,9 @@ const unsigned long DISK_SIZE_MB = 16;
 const unsigned long TOTAL_DISK_SECTORS = DISK_SIZE_MB * MB / SECTOR_SIZE;
 
 const unsigned long MBR_SECTORS = 1;
-const unsigned long KERNEL_SECTORS = 509;
+const unsigned long KERNEL_SECTORS = 511;
 const unsigned long SUPERBLOCK_SECTORS = 2;
-const unsigned long INODE_SECTORS = 512;
+const unsigned long INODE_SECTORS = 510;
 const unsigned long SWAP_SECTORS = 2048;
 const unsigned long DATA_SECTORS = TOTAL_DISK_SECTORS - MBR_SECTORS - KERNEL_SECTORS \
 				   - SUPERBLOCK_SECTORS - INODE_SECTORS - SWAP_SECTORS;

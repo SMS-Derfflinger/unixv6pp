@@ -1,4 +1,4 @@
-include-path := $(abs_srctree)/src $(abs_srctree)/src/include
+include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
 
 objs := CRT.o Keyboard.o TTy.o
 

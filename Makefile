@@ -71,8 +71,13 @@ qemug: target/disk.img
 .PHONY: all
 all: $(build-dirs) target/disk.img
 
+cmd_compile_commands = make -C $(1) collect-commands.cmd \
+	&& printf "[" > $@ \
+	&& paste "-d," -s $(1)/collect-commands.cmd >> $@ \
+	&& printf "]" >> $@
+
+tools/compile_commands.json: build-tools
+	$(call cmd_compile_commands,tools)
+
 compile_commands.json: all
-	make -C src collect-commands.cmd
-	printf "[" > $@
-	paste "-d," -s src/collect-commands.cmd >> $@
-	printf "]" >> $@
+	$(call cmd_compile_commands,src)

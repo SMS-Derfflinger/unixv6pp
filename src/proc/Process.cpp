@@ -161,7 +161,12 @@ void Process::Expand(unsigned int newSize)
 	}
 	/* 分配内存成功，将进程图像拷贝到新内存区，然后跳转到新内存区继续运行 */
 	pProcess->p_addr = newAddress;
-	for ( unsigned int i = 0; i < oldSize; i++ )
+
+	unsigned long copySize = oldSize;
+	if (newSize < copySize)
+		copySize = newSize;
+
+	for ( unsigned int i = 0; i < copySize; i++ )
 	{
 		Utility::CopySeg(oldAddress + i, newAddress + i);
 	}

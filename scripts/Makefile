@@ -68,7 +68,10 @@ out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 %.o: %.cpp .%.cpp.cmd
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-$(host-objs): %.o: %.cpp
+$(host-obj-cmds): %.cpp.cmd: %.cpp
+	echo "{\"command\": \"$(HOSTCXX) $(HOSTCXXFLAGS) -c $<\", \"directory\": \"$(realpath $(abs_srctree))\", \"file\": \"$(realpath $<)\"}" > $@
+
+$(host-objs): %.o: %.cpp %.cpp.cmd
 	$(HOSTCXX) $(HOSTCXXFLAGS) -c -o $@ $<
 
 hdrs += $(foreach d,$(include-path),$(wildcard $(d)/*.h) $(wildcard $(d)/*.hpp))
@@ -122,8 +125,9 @@ all: $(out-libnames) $(out-bins) $(out-host-bins)
 	make -C $< collect-commands.cmd
 
 collect-commands.cmd: $(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(libs))) \
-	$(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))))
-	sh -c "cat .*.cmd > $@ || true"
+	$(subst objs.a,collect-commands.cmd,$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs)))) \
+	$(subst host-objs.a,collect-commands.cmd,$(filter %/host-objs.a, $(foreach bin,$(out-host-bins),$($(bin)-libs))))
+	sh -c "cat .*.cmd **/*.cmd > $@ || true"
 	- [ "$^" ] && cat $^ >> $@
 
 .DEFAULT_GOAL = all
