@@ -17,5 +17,9 @@ fn panic(info: &PanicInfo<'_>) -> ! {
         println_fatal!("KERNEL PANIC: Unknown");
     }
 
+    if let Some(loc) = info.location() {
+        println_fatal!("Panicked at {}:{}", loc.file(), loc.line());
+    }
+
     loop {}
 }
