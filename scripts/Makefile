@@ -3,6 +3,11 @@
 # out-bins
 # out-libs
 
+HOSTCC = gcc
+HOSTCXX = g++
+HOSTLD = g++
+HOSTAR = ar
+
 CC = $(CROSS_COMPILE)gcc
 CXX = $(CROSS_COMPILE)g++
 LD = $(CROSS_COMPILE)ld
@@ -18,10 +23,27 @@ CXXFLAGS = $(CFLAGS) -std=c++20
 LDFLAGS =
 ARFLAGS = --target=elf32-i386
 
+HOSTCFLAGS = -Wall $(foreach d, $(include-path), -I$(d))
+HOSTCXXFLAGS = $(HOSTCFLAGS)
+HOSTLDFLAGS =
+HOSTARFLAGS =
+
 define BUILD_BIN
 $1-hdrs += $$(foreach d, $$(include-path), $$(wildcard $$(d)/*.h) $$(wildcard $$(d)/*.hpp))
 $1: $$($1-objs) $$($1-hdrs) $$($1-libs)
 	$$(LD) $$(LDFLAGS) $$($1-LDFLAGS) -o $$@ $$($1-objs) $$($1-libs)
+endef
+
+define BUILD_HOST_BIN
+$$($1-objs): .%.cpp.cmd: %.cpp
+	echo "{\"command\": \"$(HOSTCXX) $(HOSTCXXFLAGS) -c $<\", \"directory\": \"$(realpath $(abs_srctree))\", \"file\": \"$(realpath $<)\"}" > $@
+
+$$($1-objs): %.o: %.cpp .%.cpp.cmd
+	$$(HOSTCXX) $$(HOSTCXXFLAGS) -c -o $@ $<
+
+$1-hdrs += $$(foreach d, $$(include-path), $$(wildcard $$(d)/*.h) $$(wildcard $$(d)/*.hpp))
+$1: $$($1-objs) $$($1-hdrs) $$($1-libs)
+	$$(HOSTLD) $$(HOSTLDFLAGS) $$($1-HOSTLDFLAGS) -o $$@ $$($1-objs) $$($1-libs)
 endef
 
 define BUILD_LIB
@@ -46,34 +68,54 @@ out-libnames := $(addprefix lib, $(addsuffix .a, $(out-libs)))
 %.o: %.cpp .%.cpp.cmd
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+$(host-objs): %.o: %.cpp
+	$(HOSTCXX) $(HOSTCXXFLAGS) -c -o $@ $<
+
 hdrs += $(foreach d,$(include-path),$(wildcard $(d)/*.h) $(wildcard $(d)/*.hpp))
 objs.a: $(objs) $(hdrs) $(libs)
 	$(AR) $(ARFLAGS) rcs $@ $(objs) $(libs)
+
+host-objs.a: $(host-objs) $(hdrs)
+	$(HOSTAR) $(HOSTARFLAGS) rcs $@ $(host-objs) $(host-libs)
 
 .PHONY: %/objs.a
 %/objs.a: %/
 	make -C $< objs.a
 
+.PHONY: %/host-objs.a
+%/host-objs.a: %/
+	make -C $< host-objs.a
+
 .PHONY: %/objs.a.clean
 %/objs.a.clean: %/
 	make -C $< clean
 
+.PHONY: %/host-objs.a.clean
+%/host-objs.a.clean: %/
+	make -C $< clean
+
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
+$(foreach bin, $(out-host-bins), $(eval $(call BUILD_HOST_BIN,$(bin))))
 $(foreach lib, $(out-libnames), $(eval $(call BUILD_LIB,$(lib))))
 
 .PHONY: clean custom-clean
-clean: $(addsuffix .clean,$(filter %/objs.a,\
-	$(foreach bin,$(out-bins),$($(bin)-libs)))) custom-clean
+clean: $(addsuffix .clean,\
+		$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))) \
+		$(filter %/host-objs.a, $(foreach bin,$(out-host-bins),$($(bin)-libs))) \
+	) custom-clean
 	-rm -f $(foreach bin,$(out-bins),$($(bin)-objs))
+	-rm -f $(foreach bin,$(out-host-bins),$($(bin)-objs))
 	-rm -f $(foreach lib,$(out-libnames),$($(lib)-objs))
 	-rm -f $(out-bins)
+	-rm -f $(out-host-bins)
 	-rm -f $(out-libnames)
 	-rm -f objs.a $(objs)
+	-rm -f host-objs.a $(host-objs)
 	-rm -f .*.cmd
 	-rm -f collect-commands.cmd
 
 .PHONY: all
-all: $(out-libnames) $(out-bins)
+all: $(out-libnames) $(out-bins) $(out-host-bins)
 
 .PHONY: %/collect-commands.cmd
 %/collect-commands.cmd: %/

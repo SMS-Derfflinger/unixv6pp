@@ -19,7 +19,7 @@ this-makefile := $(lastword $(MAKEFILE_LIST))
 export abs_srctree := $(realpath $(dir $(this-makefile)))
 export abs_objtree := $(CURDIR)
 
-target-dirs := lib shell programs src
+target-dirs := tools lib shell programs src
 build-dirs := $(addprefix build-,$(target-dirs))
 clean-dirs := $(addprefix clean-,$(target-dirs))
 
@@ -57,7 +57,7 @@ target/disk.img: $(build-dirs)
 	cp shell/Shell.exe $(workdir)/programs/
 	cp tools/unixv6pp_splash/v6pp_splash.bmp $(workdir)/programs/etc/
 	cd $(workdir)/ && $(abs_srctree)/tools/filescanner \
-		| $(abs_srctree)/tools/FsEditor/fseditor \
+		| $(abs_srctree)/tools/fs-editor \
 		$(abs_srctree)/target/disk.img c
 
 .PHONY: qemu
@@ -68,12 +68,8 @@ qemu: target/disk.img
 qemug: target/disk.img
 	$(QEMU) $(QEMU_FLAGS) $(QEMU_DISK) $(QEMU_GDB_FLAGS)
 
-.PHONY: build-tools
-build-tools:
-	make -C tools/FsEditor
-
 .PHONY: all
-all: build-tools $(build-dirs) target/disk.img
+all: $(build-dirs) target/disk.img
 
 compile_commands.json: all
 	make -C src collect-commands.cmd

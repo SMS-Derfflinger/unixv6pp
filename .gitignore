@@ -4,7 +4,7 @@ build
 .codex
 .vscode
 
-/tools/FsEditor/fseditor
+/tools/fs-editor
 *.o
 *.a
 *.exe
