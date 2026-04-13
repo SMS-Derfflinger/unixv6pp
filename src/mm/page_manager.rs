@@ -275,28 +275,3 @@ pub extern "C" fn free_page(addr: usize, size: usize, user: bool) {
         allocator.dealloc(page);
     }
 }
-
-#[no_mangle]
-pub extern "C" fn mm_page_manager_alloc(map: *mut MapNode, size: usize, page_size: usize) -> usize {
-    if page_size == 0 {
-        return 0;
-    }
-
-    let pages = (size + (page_size - 1)) / page_size;
-    mm_allocator_alloc(map, pages) * page_size
-}
-
-#[no_mangle]
-pub extern "C" fn mm_page_manager_free(
-    map: *mut MapNode,
-    size: usize,
-    start_address: usize,
-    page_size: usize,
-) -> usize {
-    if page_size == 0 {
-        return 0;
-    }
-
-    let pages = (size + (page_size - 1)) / page_size;
-    mm_allocator_free(map, pages, start_address / page_size)
-}

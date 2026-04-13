@@ -3,7 +3,6 @@
 
 #include "PageManager.h"
 #include "ProcessManager.h"
-#include "KernelAllocator.h"
 #include "User.h"
 #include "BufferManager.h"
 #include "DeviceManager.h"
@@ -41,7 +40,6 @@ public:
 	KernelPageManager& GetKernelPageManager();
 	UserPageManager& GetUserPageManager();
 	ProcessManager& GetProcessManager();
-	KernelAllocator& GetKernelAllocator();
 	SwapperManager& GetSwapperManager();
 	BufferManager& GetBufferManager();
 	DeviceManager& GetDeviceManager();
@@ -61,7 +59,6 @@ private:
 	KernelPageManager* m_KernelPageManager;
 	UserPageManager* m_UserPageManager;
 	ProcessManager* m_ProcessManager;
-	KernelAllocator* m_KernelAllocator;
 	SwapperManager* m_SwapperManager;
 	BufferManager* m_BufferManager;
 	DeviceManager* m_DeviceManager;

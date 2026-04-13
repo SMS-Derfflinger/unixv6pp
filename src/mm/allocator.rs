@@ -1,3 +1,46 @@
+use core::alloc::GlobalAlloc;
+
+use crate::println_info;
+
+struct Allocator;
+
+unsafe impl GlobalAlloc for Allocator {
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        todo!();
+        // let size = layout.size().next_power_of_two();
+
+        // if size <= 2048 {
+        //     SLAB_ALLOCATOR.alloc(size).as_ptr()
+        // } else {
+        //     let folio = Folio::alloc_at_least(size >> PAGE_SIZE_BITS);
+        //     let ptr = folio.get_ptr();
+        //     folio.into_raw();
+
+        //     ptr.as_ptr()
+        // }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
+        // let size = layout.size().next_power_of_two();
+        // let ptr = unsafe {
+        //     // SAFETY: The memory we've allocated MUST be non-null.
+        //     NonNull::new_unchecked(ptr)
+        // };
+
+        // if size <= 2048 {
+        //     SLAB_ALLOCATOR.dealloc(ptr, size)
+        // } else {
+        //     let paddr = ArchPhysAccess::from_ptr(ptr);
+        //     let pfn = PFN::from(paddr);
+
+        //     Folio::from_raw(pfn);
+        // };
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator;
+
 #[repr(C)]
 pub struct MapNode {
     pub(crate) m_size: usize,
@@ -6,6 +49,8 @@ pub struct MapNode {
 
 #[no_mangle]
 pub extern "C" fn mm_allocator_alloc(map: *mut MapNode, size: usize) -> usize {
+    println_info!("alloc");
+
     if map.is_null() {
         return 0;
     }

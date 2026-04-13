@@ -10,7 +10,6 @@ Kernel Kernel::instance;
  */
 UserPageManager g_UserPageManager;
 KernelPageManager g_KernelPageManager;
-KernelAllocator g_KernelAllocator(&(Allocator::GetInstance()));
 
 /*
  * 交换区相关全局manager
@@ -57,15 +56,6 @@ void Kernel::InitMemory()
 	Diagnose::Write("Initilize Memory...");
         init_page_managers();
 	Diagnose::Write("Ok.\n");
-
-	this->m_KernelAllocator = &g_KernelAllocator;
-
-	Diagnose::Write("Initilize KernelAllocator...");
-	this->GetKernelAllocator().Initialize();
-	Diagnose::Write("Ok.\n");
-
-	/* 设置new/delete operator需要使用的Allocator */
-	set_kernel_allocator(this->m_KernelAllocator);
 
 	this->m_SwapperManager = &g_SwapperManager;
 	Diagnose::Write("Initialize Swapper...");
@@ -135,11 +125,6 @@ UserPageManager& Kernel::GetUserPageManager()
 ProcessManager& Kernel::GetProcessManager()
 {
 	return *(this->m_ProcessManager);
-}
-
-KernelAllocator& Kernel::GetKernelAllocator()
-{
-	return *(this->m_KernelAllocator);
 }
 
 SwapperManager& Kernel::GetSwapperManager()

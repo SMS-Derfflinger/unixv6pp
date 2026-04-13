@@ -1,27 +1,12 @@
 #ifndef PAGE_MANAGER_H
 #define PAGE_MANAGER_H
 
-#include "Allocator.h"
-#include "MapNode.h"
-#include "Video.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 unsigned long alloc_page(unsigned long size, bool is_user);
 void free_page(unsigned long addr, unsigned long size, bool is_user);
-
-unsigned long mm_page_manager_initialize(MapNode map[], unsigned long map_len);
-unsigned long mm_page_manager_init_pool(MapNode map[], unsigned long map_len,
-                                        unsigned long page_size,
-                                        unsigned long pool_start_addr,
-                                        unsigned long pool_size);
-unsigned long mm_page_manager_alloc(MapNode map[], unsigned long size,
-                                    unsigned long page_size);
-unsigned long mm_page_manager_free(MapNode map[], unsigned long size,
-                                   unsigned long start_address,
-                                   unsigned long page_size);
 
 #ifdef __cplusplus
 }
