@@ -134,11 +134,6 @@ void Exception::Exception_Handler(struct pt_regs* regs, struct pt_context* conte
 	if ( (context->xcs & USER_MODE) == USER_MODE )	\
 	{												\
 		current->PSignal(Signal_Value);				\
-		Diagnose::Write("Signal %d triggered at %x\n", Signal_Value, context->eip);		\
-		const unsigned char* ip = (const unsigned char*)context->eip; \
-		Diagnose::Write("Codes: %x %x %x %x %x %x %x %x\n", \
-				*(ip++), *(ip++), *(ip++), *(ip++), *(ip++), *(ip++), *(ip++), *(ip++) \
-				);		\
 		if ( current->IsSig() )						\
 			current->PSig(context);					\
 	}												\

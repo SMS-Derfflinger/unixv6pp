@@ -1,12 +1,13 @@
 .DEFAULT_GOAL := all
 
-NASMFLAGS := -g
+NASMFLAGS += -g -f bin -d USE_VESA
+ASFLAGS += --32
 
 boot.o: boot.asm
-	nasm $(NASMFLAGS) -o $@ -f bin -d USE_VESA $<
+	$(call cmd,asm_to_o)
 
 sector2.o: sector2.S
-	$(CROSS_COMPILE)as --32 -c -o $@ $<
+	$(call cmd,s_to_o)
 
 objs := sector2.o
 

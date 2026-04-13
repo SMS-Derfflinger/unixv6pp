@@ -14,7 +14,19 @@ $(foreach name, $(names), $(eval $(name).exe-libs := $(abs_srctree)/lib/libv6ppt
 
 include $(abs_srctree)/scripts/Makefile
 
+cmd_install = cp $(2).exe $(INSTALL_PATH)/$(2)
+quiet_cmd_install = "INSTALL	$(2)"
+
+cmd_check = [ -d $(2) ]
+quiet_cmd_check = "CHECK	$(2)"
+
+.PHONY: %.install
+%.install: %.exe
+	$(call cmd,install,$(patsubst %.exe,%,$<))
+
+.PHONY: check-path
+check-path:
+	$(call cmd,check,$(INSTALL_PATH))
+
 .PHONY: install
-install: all
-	[ -d $(INSTALL_PATH) ]
-	true $(foreach name, $(names), && cp $(name).exe $(INSTALL_PATH)/$(name))
+install: all check-path $(addsuffix .install,$(names))
