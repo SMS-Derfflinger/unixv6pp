@@ -32,6 +32,8 @@ void Diagnose::TraceOff()
 	Diagnose::trace_on = 0;
 }
 
+extern "C" void serial_write_cstr(const char* str);
+
 /*
 	能够输出格式化后的字符串，目前只能识别一些%d %x  %s 和%n;
 	没有检查错误功能，% 和 值匹配要自己注意。
@@ -50,7 +52,8 @@ void Diagnose::Write(const char* fmt, ...)
     va_start(args, fmt);
     int res = vsprintf(buf, fmt, args);
     va_end(args);
-	video::console::writeDiagnose(buf);
+	// video::console::writeDiagnose(buf);
+	serial_write_cstr(buf);
 
 #else
 
@@ -60,7 +63,7 @@ void Diagnose::Write(const char* fmt, ...)
 	//参考UNIX v6中的函数prf.c/printf(fmt, x1,x2,x3,x4,x5,x6,x7,x8,x9,xa,xb,xc)
 	unsigned int * va_arg = (unsigned int *)&fmt + 1;
 	const char * ch = fmt;
-	
+
 	while(1)
 	{
 		while(*ch != '%' && *ch != '\n')
@@ -74,7 +77,7 @@ void Diagnose::Write(const char* fmt, ...)
 			会死的狠惨的！*/
 			WriteChar(*ch++);
 		}
-		
+
 		ch++;	//skip the '%' or '\n'   
 
 		if(*ch == 'd' || *ch == 'x')
@@ -86,7 +89,7 @@ void Diagnose::Write(const char* fmt, ...)
 			PrintInt(value, *ch == 'd' ? 10 : 16);
 			ch++;	//skip the 'd' or 'x'
 		}
-		
+
 		else if(*ch == 's')
 		{//%s 格式来输出
 			ch++;	//skip the 's'

@@ -224,7 +224,23 @@ exported! {
         0
     }
 
-    pub fn serial_write_cstr(c_string: &[u8]) {
-        serial_write_bytes(c_string.iter().take_while(|&&c| c != 0).cloned())
+    pub fn serial_write_cstr(cstr: *const u8) {
+        let mut cstr = cstr;
+
+        if cstr.is_null() {
+            panic!("Null pointer");
+        }
+
+        let iter = core::iter::from_fn(move || unsafe {
+            let ch = *cstr;
+            if ch == 0 {
+                return None;
+            }
+
+            cstr = cstr.add(1);
+            Some(ch)
+        });
+
+        serial_write_bytes(iter)
     }
 }
