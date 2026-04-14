@@ -48,6 +48,7 @@ bitflags! {
 
 const I_ADDR_SIZE: usize = 10;
 
+#[repr(C)]
 pub struct Inode {
     pub i_flag: INodeFlag, // 状态标志位
     pub i_mode: INodeMode, // 文件工作方式信息
@@ -61,7 +62,7 @@ pub struct Inode {
     pub i_uid: i16, // 文件所有者的用户标识数
     pub i_gid: i16, // 文件所有者的组标识数
 
-    pub i_size: u64,                          // 文件大小（字节）
+    pub i_size: u32,                          // 文件大小（字节）
     pub i_addr: [PhysicalBlock; I_ADDR_SIZE], // 文件逻辑块号和物理块号转换的基本索引表
 
     pub i_lastr: i32, // 最近一次读取文件的逻辑块号（用于判断是否预读）
@@ -190,7 +191,7 @@ impl Inode {
             let mut nbytes = (Self::BLOCK_SIZE - offset).min(m_count);
 
             let (dev, bn, rablock) = if !is_blk {
-                let remain = self.i_size.saturating_sub(m_offset as u64);
+                let remain = self.i_size.saturating_sub(m_offset as _);
                 if remain == 0 {
                     return Ok(());
                 }
@@ -284,8 +285,8 @@ impl Inode {
             // else if m_offset % BLOCK_SIZE == 0 { buf.into_bawrite(); }
             // else                       { buffer_manager.bdwrite(buf); }
 
-            if !is_blk && self.i_size < m_offset as u64 {
-                self.i_size = m_offset as u64;
+            if !is_blk && self.i_size < m_offset as _ {
+                self.i_size = m_offset as _;
             }
 
             self.i_flag |= INodeFlag::IUPD;
@@ -566,7 +567,7 @@ pub struct DiskInode {
     pub d_nlink: i32,
     pub d_uid: i16,
     pub d_gid: i16,
-    pub d_size: u64,
+    pub d_size: u32,
     pub d_addr: [PhysicalBlock; 10],
     pub d_atime: i32,
     pub d_mtime: i32,

@@ -367,8 +367,8 @@ impl FileManager {
         let start = file_ref.f_offset as usize;
         let advanced = inode_ref
             .i_size
-            .saturating_sub(start as u64)
-            .min(count as u64) as usize;
+            .saturating_sub(start as _)
+            .min(count as _) as usize;
         inode_ref
             .read_i(count, start)
             .map_err(|_| PosixError::EIO)?;
@@ -618,8 +618,8 @@ impl FileManager {
 
         inode
             .i_size
-            .saturating_sub(start_offset.max(0) as u64)
-            .min(requested as u64) as usize
+            .saturating_sub(start_offset.max(0) as u32)
+            .min(requested as u32) as usize
     }
 }
 
@@ -636,7 +636,7 @@ pub struct FileStat {
     pub nlink: i32,
     pub uid: i16,
     pub gid: i16,
-    pub size: u64,
+    pub size: u32,
     pub addr: [PhysicalBlock; 10],
 }
 
