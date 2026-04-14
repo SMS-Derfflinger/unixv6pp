@@ -20,7 +20,6 @@ sector2.o: sector2.S
 
 objs := sector2.o
 
-custom-clean:
-	$(call cmd,rm,boot.S.i)
+custom-clean: boot.S.i.clean
 
 include $(abs_srctree)/scripts/Makefile

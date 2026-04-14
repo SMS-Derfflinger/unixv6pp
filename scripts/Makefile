@@ -109,6 +109,10 @@ host-objs.a: $(host-objs) $(host-libs) dep-hdrs
 %/host-objs.a.clean: %/
 	$(call cmd,submake_clean)
 
+.PHONY: %.clean
+%.clean:
+	$(call cmd,rm,$(patsubst %.clean,%,$@))
+
 $(foreach bin, $(out-bins), $(eval $(call BUILD_BIN,$(bin))))
 $(foreach bin, $(out-host-bins), $(eval $(call BUILD_HOST_BIN,$(bin))))
 $(foreach lib, $(out-libnames), $(eval $(call BUILD_LIB,$(lib))))
@@ -119,17 +123,13 @@ clean_files = $(foreach item,$(1),$(call cmd,rm,$(item)))
 clean: $(addsuffix .clean,\
 		$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))) \
 		$(filter %/host-objs.a, $(foreach bin,$(out-host-bins),$($(bin)-libs))) \
+		$(foreach bin,$(out-bins),$($(bin)-objs)) \
+		$(foreach bin,$(out-host-bins),$($(bin)-objs)) \
+		$(foreach lib,$(out-libnames),$($(lib)-objs)) \
+		$(out-bins) $(out-host-bins) $(out-libnames) \
+		objs.a $(objs) host-objs.a $(host-objs) \
+		$(wildcard *.cmd .*.cmd) collect-commands.cmd \
 	) custom-clean
-	$(call clean_files,$(foreach bin,$(out-bins),$($(bin)-objs)))
-	$(call clean_files,$(foreach bin,$(out-host-bins),$($(bin)-objs)))
-	$(call clean_files,$(foreach lib,$(out-libnames),$($(lib)-objs)))
-	$(call clean_files,$(out-bins))
-	$(call clean_files,$(out-host-bins))
-	$(call clean_files,$(out-libnames))
-	$(call clean_files,objs.a $(objs))
-	$(call clean_files,host-objs.a $(host-objs))
-	$(call clean_files,$(wildcard *.cmd .*.cmd))
-	$(call clean_files,collect-commands.cmd)
 
 .PHONY: all
 all: $(out-libnames) $(out-bins) $(out-host-bins)
