@@ -4,6 +4,56 @@ use crate::{
     }, sync::SpinExt
 };
 
+#[macro_export]
+macro_rules! define_class_compat {
+    {
+        impl $class:ident {
+            $(
+                pub fn $func:ident(&self, $($arg_name:ident:$arg_type:ty),*) $(-> $ret_type:ty)?
+                { $($body:tt)* }
+            )*
+
+            $(
+            --
+
+            $(
+                pub fn $func1:ident($($arg_name1:ident:$arg_type1:ty),*) $(-> $ret_type1:ty)?
+                { $($body1:tt)* }
+            )*
+
+            )?
+        }
+    } => {
+        $(
+            #[no_mangle]
+            pub extern "C" fn $func(self: &$class, $($arg_name: $arg_type),*) $(-> $ret_type)? {
+                $($body)*
+            }
+        )*
+
+        $(
+
+        $(
+            #[no_mangle]
+            pub extern "C" fn $func1(self: &$class, $($arg_name1: $arg_type1),*) $(-> $ret_type1)? {
+                $($body1)*
+            }
+        )*
+
+        )?
+    };
+}
+
+define_class_compat! {
+    impl OpenFileTable {
+        pub fn f_alloc(open_files: &mut OpenFiles) -> () {
+            let a = self.count();
+            let a = 10;
+            let b = alloc::boxed::Box::new(10);
+        }
+    }
+}
+
 pub(crate) struct OpenFileTable {
     m_file: [FileRef; Self::NFILE],
 }

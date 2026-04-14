@@ -1,5 +1,4 @@
 #include "File.h"
-#include "Utility.h"	//for NULL
 #include "Kernel.h"
 
 /*==============================class File===================================*/
@@ -16,52 +15,36 @@ File::~File()
 	//nothing to do here
 }
 
+extern "C" struct open_files* new_open_files(void);
+extern "C" void free_open_files(struct open_files*);
+
 /*==============================class OpenFiles===================================*/
 OpenFiles::OpenFiles()
+	: impl(new_open_files())
 {
 }
 
 OpenFiles::~OpenFiles()
 {
+	free_open_files(this->impl);
 }
+
+extern "C" int ofiles_alloc_free_slot(struct open_files* impl, User::ErrorCode* perr);
 
 int OpenFiles::AllocFreeSlot()
 {
-	int i;
 	User& u = Kernel::Instance().GetUser();
-	
-	for(i = 0; i < OpenFiles::NOFILES; i++)
-	{
-		/* 进程打开文件描述符表中找到空闲项，则返回之 */
-		if(this->ProcessOpenFileTable[i] == NULL)
-		{
-			/* 设置核心栈现场保护区中的EAX寄存器的值，即系统调用返回值 */
-			u.u_ar0[User::EAX] = i;
-			return i;
-		}
-	}
 
-	u.u_ar0[User::EAX] = -1;   /* Open1，需要一个标志。当打开文件结构创建失败时，可以回收系统资源*/
-	u.u_error = User::EMFILE;
-	return -1;
+	return u.u_ar0[User::EAX] = ofiles_alloc_free_slot(this->impl, &u.u_error);
 }
 
-int OpenFiles::Clone(int fd)
-{
-	return 0;
-}
+extern "C" File* ofiles_get_file(struct open_files* impl, int fd, User::ErrorCode* perr);
 
 File* OpenFiles::GetF(int fd)
 {
-	File* pFile;
 	User& u = Kernel::Instance().GetUser();
-	
-	/* 如果打开文件描述符的值超出了范围 */
-	if(fd < 0 || fd >= OpenFiles::NOFILES)
-	{
-		u.u_error = User::EBADF;
-		return NULL;
-	}
+
+	return ofiles_get_file(this->impl, fd, &u.u_error);
 
 	pFile = this->ProcessOpenFileTable[fd];
 	if(pFile == NULL)

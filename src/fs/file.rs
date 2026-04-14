@@ -1,10 +1,11 @@
-use alloc::{rc::Rc, sync::Arc};
+use alloc::{boxed::Box, rc::Rc, sync::Arc};
 use bitflags::bitflags;
 use core::{array, cell::RefCell};
 use eonix_spin::Spin;
 
 use crate::{
     constants::PosixError,
+    define_class_compat,
     fs::{FileRef, InodeRef},
     sync::SpinExt,
 };
@@ -76,7 +77,8 @@ impl OpenFiles {
         if fd >= Self::NOFILES {
             return Err(PosixError::EBADF);
         }
-        self.table[fd].as_ref().cloned().ok_or(PosixError::EBADF)
+
+        self.table[fd].clone().ok_or(PosixError::EBADF)
     }
 
     pub fn set_f(&mut self, fd: usize, file: FileRef) {
@@ -88,6 +90,59 @@ impl OpenFiles {
     pub fn clear_f(&mut self, fd: usize) {
         if fd < Self::NOFILES {
             self.table[fd] = None;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn new_open_files() -> *mut OpenFiles {
+    let ofiles = Box::new(OpenFiles::new());
+
+    Box::into_raw(ofiles)
+}
+
+#[no_mangle]
+pub extern "C" fn free_open_files(ofiles: *mut OpenFiles) {
+    unsafe {
+        Box::from_raw(ofiles);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn ofiles_alloc_free_slot(
+    ofiles: &mut OpenFiles,
+    err: &mut Option<PosixError>,
+) -> i32 {
+    match ofiles.alloc_free_slot() {
+        Ok(fd) => {
+            *err = None;
+            fd as i32
+        }
+        Err(e) => {
+            *err = Some(e);
+            -1
+        }
+    }
+}
+
+define_class_compat! {
+    impl OpenFiles {
+        pub fn ofiles_get_file(fd: i32, err: &mut Option<PosixError>) -> *const Spin<File> {
+            if fd < 0 {
+                *err = Some(PosixError::EBADF);
+                return core::ptr::null();
+            }
+
+            match ofiles.get_f(fd as usize) {
+                Ok(file) => {
+                    *err = None;
+                    Arc::into_raw(file)
+                }
+                Err(e) => {
+                    *err = Some(e);
+                    core::ptr::null()
+                }
+            }
         }
     }
 }

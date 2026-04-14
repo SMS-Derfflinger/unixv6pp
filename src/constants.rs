@@ -1,5 +1,6 @@
 use core::fmt;
 
+#[repr(u32)]
 #[derive(Clone, Copy, Debug)]
 pub enum PosixError {
     EPERM = 1,

@@ -18,7 +18,7 @@ public:
 		FWRITE = 0x2,			/* 写请求类型 */
 		FPIPE = 0x4				/* 管道类型 */
 	};
-	
+
 	/* Functions */
 public:
 	/* Constructors */
@@ -26,7 +26,7 @@ public:
 	/* Destructors */
 	~File();
 
-	
+
 	/* Member */
 	unsigned int f_flag;		/* 对打开文件的读、写操作要求 */
 	int		f_count;			/* 当前引用该文件控制块的进程数量 */
@@ -34,6 +34,7 @@ public:
 	int		f_offset;			/* 文件读写位置指针 */
 };
 
+struct open_files;
 
 /*
  * 进程打开文件描述符表(OpenFiles)的定义
@@ -44,39 +45,32 @@ class OpenFiles
 {
 	/* static members */
 public:
-	static const int NOFILES = 15;	/* 进程允许打开的最大文件数 */
-	
+	static constexpr int NOFILES = 15;	/* 进程允许打开的最大文件数 */
+
+public:
+	OpenFiles();
+	~OpenFiles();
+
 	/* Functions */
 public:
-	/* Constructors */
-	OpenFiles();
-	/* Destructors */
-	~OpenFiles();
-	
-	/* 
+	/*
 	 * @comment 进程请求打开文件时，在打开文件描述符表中分配一个空闲表项
 	 */
 	int AllocFreeSlot();
-	
-	/* 
-	 * @comment Dup系统调用时复制打开文件描述符表中的描述符
-	 */
-	int	Clone(int fd);
-	
-	/* 
+
+	/*
 	 * @comment 根据用户系统调用提供的文件描述符参数fd，
 	 * 找到对应的打开文件控制块File结构
 	 */
 	File* GetF(int fd);
-	/* 
+	/*
 	 * @comment 为已分配到的空闲描述符fd和已分配的打开文件表中
 	 * 空闲File对象建立勾连关系
 	 */
 	void SetF(int fd, File* pFile);
-	
-	/* Members */
+
 private:
-	File *ProcessOpenFileTable[NOFILES];		/* File对象的指针数组，指向系统打开文件表中的File对象 */
+	open_files* impl;
 };
 
 /*
@@ -92,7 +86,7 @@ public:
 	IOParameter();
 	/* Destructors */
 	~IOParameter();
-	
+
 	/* Members */
 public:
 	unsigned char* m_Base;	/* 当前读、写用户目标区域的首地址 */
