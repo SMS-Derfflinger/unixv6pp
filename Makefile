@@ -49,8 +49,8 @@ $(workdir)/kernel.bin: src FORCE
 
 $(workdir)/boot.bin: src/boot FORCE
 	$(call cmd,mkdir,$(workdir))
-	$(call cmd,submake,boot.o)
-	$(call cmd,cp,src/boot/boot.o,$@)
+	$(call cmd,submake,boot.bin)
+	$(call cmd,cp,src/boot/boot.bin,$@)
 
 PHONY += install-programs install-shell
 install-programs: programs FORCE

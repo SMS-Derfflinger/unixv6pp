@@ -1,10 +1,19 @@
+include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
+
 .DEFAULT_GOAL := all
 
-NASMFLAGS += -g -f bin -d USE_VESA
 ASFLAGS += --32
+CPPFLAGS += -DUSE_VESA
 
-boot.o: boot.asm
-	$(call cmd,asm_to_o)
+%.i: %
+	$(call cmd,cpp)
+
+boot.o: boot.S.i
+	$(call cmd,s_to_o)
+
+out-bins = boot.bin
+boot.bin-objs = boot.o
+boot.bin-LDFLAGS = -Ttext 0x7c00 -m elf_i386 -static --oformat binary
 
 sector2.o: sector2.S
 	$(call cmd,s_to_o)
@@ -12,7 +21,6 @@ sector2.o: sector2.S
 objs := sector2.o
 
 custom-clean:
-	$(call cmd,rm,sector2.o)
-	$(call cmd,rm,boot.o)
+	$(call cmd,rm,boot.S.i)
 
 include $(abs_srctree)/scripts/Makefile

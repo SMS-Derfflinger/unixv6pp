@@ -12,17 +12,18 @@ HOSTAR = ar
 
 CC = $(CROSS_COMPILE)gcc
 CXX = $(CROSS_COMPILE)g++
+CPP= $(CROSS_COMPILE)cpp
 AS = $(CROSS_COMPILE)as
 LD = $(CROSS_COMPILE)ld
 AR = $(CROSS_COMPILE)ar
 
-NASM = nasm
+CPPFLAGS += $(foreach d,$(include-path),-I$(d))
 
 CFLAGS = -Wall -g -m32 -nostartfiles -fno-builtin -fno-pic -fno-pie -nostdinc \
 	 -nostdlib -fno-stack-protector -fno-unwind-tables \
 	 -fno-asynchronous-unwind-tables -fno-exceptions -mno-red-zone \
 	 -mno-mmx -mno-sse -mno-sse2 -O0 -Wno-unused-variable \
-	 $(foreach d, $(include-path), -I$(d))
+	 $(CPPFLAGS)
 
 CXXFLAGS = $(CFLAGS) -std=c++20
 LDFLAGS =

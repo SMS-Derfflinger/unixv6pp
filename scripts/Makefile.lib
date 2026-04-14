@@ -32,11 +32,11 @@ quiet_cmd_cc_to_o = "CC	$@"
 cmd_cxx_to_o = $(CXX) $(CXXFLAGS) -c -o $@ $<
 quiet_cmd_cxx_to_o = "CXX	$@"
 
+cmd_cpp = $(CPP) $(CPPFLAGS) $< -o $@
+quiet_cmd_cpp = "CPP	$@"
+
 cmd_s_to_o = $(AS) $(ASFLAGS) -c -o $@ $<
 quiet_cmd_s_to_o = "AS	$@"
-
-cmd_asm_to_o = $(NASM) $(NASMFLAGS) -o $@ $<
-quiet_cmd_asm_to_o = "NASM	$@"
 
 cmd_submake = $(submake) $(2)
 quiet_cmd_submake = "MAKE	$<"
