@@ -6,9 +6,15 @@ use alloc::{
 };
 
 use crate::{
-    constants::PosixError, dev::buffer::{DevId, PhysicalBlock}, fs::{
-        self, FileRef, InodeRef, file::{FileFlags, OpenFiles}, inode::{INodeFlag, INodeMode, Inode, OpenError}
-    }, sync::SpinExt
+    constants::PosixError,
+    dev::buffer::{DevId, PhysicalBlock},
+    fs::{
+        self,
+        file::{FileFlags, OpenFiles},
+        inode::{inoderef_leak, INodeFlag, INodeMode, Inode, OpenError},
+        FileRef, InodeRef,
+    },
+    sync::SpinExt,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +135,7 @@ impl FileManager {
         {
             let mut file_ref = file.lock();
             file_ref.f_flag = mode & (FileFlags::FREAD | FileFlags::FWRITE);
-            file_ref.f_inode = Some(inode.clone());
+            file_ref.f_inode = Some(inoderef_leak(inode.clone()));
         }
 
         let write_mode = if mode.contains(FileFlags::FWRITE) {
@@ -205,9 +211,9 @@ impl FileManager {
         let inode = file
             .lock()
             .f_inode
-            .as_ref()
-            .cloned()
+            .map(|inode| inode.own())
             .ok_or(PosixError::EBADF)?;
+
         Ok(self.stat1(inode))
     }
 
@@ -319,13 +325,13 @@ impl FileManager {
         {
             let mut read_file_ref = read_file.lock();
             read_file_ref.f_flag = FileFlags::FREAD | FileFlags::FPIPE;
-            read_file_ref.f_inode = Some(inode.clone());
+            read_file_ref.f_inode = Some(inoderef_leak(inode.clone()));
         }
 
         {
             let mut write_file_ref = write_file.lock();
             write_file_ref.f_flag = FileFlags::FWRITE | FileFlags::FPIPE;
-            write_file_ref.f_inode = Some(inode.clone());
+            write_file_ref.f_inode = Some(inoderef_leak(inode.clone()));
         }
 
         {
@@ -365,10 +371,7 @@ impl FileManager {
         }
 
         let start = file_ref.f_offset as usize;
-        let advanced = inode_ref
-            .i_size
-            .saturating_sub(start as _)
-            .min(count as _) as usize;
+        let advanced = inode_ref.i_size.saturating_sub(start as _).min(count as _) as usize;
         inode_ref
             .read_i(count, start)
             .map_err(|_| PosixError::EIO)?;

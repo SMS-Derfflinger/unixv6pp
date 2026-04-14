@@ -10,9 +10,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "bitflags"
-version = "2.11.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
 name = "buddy_allocator"
@@ -32,8 +32,8 @@ dependencies = [
 
 [[package]]
 name = "eonix_spin"
-version = "0.1.0"
-source = "git+https://github.com/project-eonix/eonix-sync.git#c184ead96a0bae0c1a66e23c9366d32f186b7db9"
+version = "0.2.0"
+source = "git+https://github.com/project-eonix/eonix-sync.git#c55f8f601ab0fe4ff3316fa04583fb035f3ebead"
 dependencies = [
  "eonix_sync_base",
 ]
@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 name = "eonix_sync_base"
 version = "0.1.0"
-source = "git+https://github.com/project-eonix/eonix-sync.git#c184ead96a0bae0c1a66e23c9366d32f186b7db9"
+source = "git+https://github.com/project-eonix/eonix-sync.git#c55f8f601ab0fe4ff3316fa04583fb035f3ebead"
 
 [[package]]
 name = "intrusive-collections"
@@ -50,6 +50,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "189d0897e4cbe8c75efedf3502c18c887b05046e59d28404d4d8e46cbc4d1e86"
 dependencies = [
  "memoffset",
+]
+
+[[package]]
+name = "kernel-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -62,6 +71,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro2"
+version = "1.0.106"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+dependencies = [
+ "unicode-ident",
+]
+
+[[package]]
+name = "quote"
+version = "1.0.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+dependencies = [
+ "proc-macro2",
+]
+
+[[package]]
 name = "rust_kernel"
 version = "0.1.0"
 dependencies = [
@@ -71,6 +98,7 @@ dependencies = [
  "eonix_spin",
  "eonix_sync_base",
  "intrusive-collections",
+ "kernel-macros",
  "slab_allocator",
 ]
 
@@ -82,3 +110,20 @@ dependencies = [
  "eonix_mm",
  "eonix_spin",
 ]
+
+[[package]]
+name = "syn"
+version = "2.0.117"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "unicode-ident"
+version = "1.0.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"

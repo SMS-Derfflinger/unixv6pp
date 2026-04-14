@@ -5,79 +5,35 @@
 #include "fs_defines.h"
 
 /*==============================class OpenFileTable===================================*/
-/* 系统全局打开文件表对象实例的定义 */
-OpenFileTable g_OpenFileTable;
-
-OpenFileTable::OpenFileTable()
-{
-	//nothing to do here
+extern "C" File* OpenFileTable_f_alloc(struct open_file_table*, struct open_files*);
+extern "C" void OpenFileTable_f_close(struct open_file_table*, File*);
+extern "C" void _seterr(User::ErrorCode errno) {
+        Kernel::Instance().GetUser().u_error = errno;
 }
 
-OpenFileTable::~OpenFileTable()
-{
-	//nothing to do here
+User::ErrorCode errno() {
+        return Kernel::Instance().GetUser().u_error;
 }
 
-/*作用：进程打开文件描述符表中找的空闲项  之 下标  写入 u_ar0[EAX]*/
-File* OpenFileTable::FAlloc()
-{
-	int fd;
+File* f_alloc(struct open_file_table* oft, struct open_files* ofiles) {
 	User& u = Kernel::Instance().GetUser();
+        File* retval = OpenFileTable_f_alloc(oft, u.u_ofiles.impl);
 
-	/* 在进程打开文件描述符表中获取一个空闲项 */
-	fd = u.u_ofiles.AllocFreeSlot();
+        if (retval || errno()) {
+                Diagnose::Write("No Free File Struct\n");
+                return NULL;
+        }
 
-	if(fd < 0)	/* 如果寻找空闲项失败 */
-	{
-		return NULL;
-	}
-
-	for(int i = 0; i < OpenFileTable::NFILE; i++)
-	{
-		/* f_count==0表示该项空闲 */
-		if(this->m_File[i].f_count == 0)
-		{
-			/* 建立描述符和File结构的勾连关系 */
-			u.u_ofiles.SetF(fd, &this->m_File[i]);
-			/* 增加对file结构的引用计数 */
-			this->m_File[i].f_count++;
-			/* 清空文件读、写位置 */
-			this->m_File[i].f_offset = 0;
-			return (&this->m_File[i]);
-		}
-	}
-
-	Diagnose::Write("No Free File Struct\n");
-	u.u_error = User::ENFILE;
-	return NULL;
+        return retval;
 }
 
-void OpenFileTable::CloseF(File *pFile)
-{
-	Inode* pNode;
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
+void f_close(struct open_file_table* oft, File* file) {
+        OpenFileTable_f_close(oft, file);
+}
 
-	/* 管道类型 */
-	if(pFile->f_flag & File::FPIPE)
-	{
-		pNode = pFile->f_inode;
-		pNode->i_mode &= ~(Inode::IREAD | Inode::IWRITE);
-		procMgr.WakeUpAll((unsigned long)(pNode + 1));
-		procMgr.WakeUpAll((unsigned long)(pNode + 2));
-	}
-
-	if(pFile->f_count <= 1)
-	{
-		/* 
-		 * 如果当前进程是最后一个引用该文件的进程，
-		 * 对特殊块设备、字符设备文件调用相应的关闭函数
-		 */
-		pFile->f_inode->CloseI(pFile->f_flag & File::FWRITE);
-		g_InodeTable.IPut(pFile->f_inode);
-	}
-
-	/* 引用当前File的进程数减1 */
-	pFile->f_count--;
+void f_close_bottom(File* pFile) {
+        pFile->f_inode->CloseI(pFile->f_flag & File::FWRITE);
+        g_InodeTable.IPut(pFile->f_inode);
 }
 
 /*==============================class InodeTable===================================*/

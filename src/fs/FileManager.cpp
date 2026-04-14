@@ -17,12 +17,14 @@ FileManager::~FileManager()
 	//nothing to do here
 }
 
+extern "C" struct open_file_table* OpenFileTable_alloc();
+
 void FileManager::Initialize()
 {
 	this->m_FileSystem = &Kernel::Instance().GetFileSystem();
 
 	this->m_InodeTable = &g_InodeTable;
-	this->m_OpenFileTable = &g_OpenFileTable;
+	this->m_OpenFileTable = OpenFileTable_alloc();
 
 	this->m_InodeTable->Initialize();
 }
@@ -70,7 +72,7 @@ void FileManager::Creat()
 			return;
 		}
 
-		/* 
+		/*
 		 * 如果所希望的名字不存在，使用参数trf = 2来调用open1()。
 		 * 不需要进行权限检查，因为刚刚建立的文件的权限和传入参数mode
 		 * 所表示的权限内容是一样的。
@@ -89,7 +91,7 @@ void FileManager::Creat()
 	}
 }
 
-/* 
+/*
 * trf == 0由open调用
 * trf == 1由creat调用，creat文件的时候搜索到同文件名的文件
 * trf == 2由creat调用，creat文件的时候未搜索到同文件名的文件，这是文件创建时更一般的情况
@@ -99,7 +101,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 {
 	User& u = Kernel::Instance().GetUser();
 
-	/* 
+	/*
 	 * 对所希望的文件已存在的情况下，即trf == 0或trf == 1进行权限检查
 	 * 如果所希望的名字不存在，即trf == 2，不需要进行权限检查，因为刚建立
 	 * 的文件的权限和传入的参数mode的所表示的权限内容是一样的。
@@ -135,7 +137,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 		pInode->ITrunc();
 	}
 
-	/* 解锁inode! 
+	/* 解锁inode!
 	 * 线性目录搜索涉及大量的磁盘读写操作，期间进程会入睡。
 	 * 因此，进程必须上锁操作涉及的i节点。这就是NameI中执行的IGet上锁操作。
 	 * 行至此，后续不再有可能会引起进程切换的操作，可以解锁i节点。
@@ -143,7 +145,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 	pInode->Prele();
 
 	/* 分配打开文件控制块File结构 */
-	File* pFile = this->m_OpenFileTable->FAlloc();
+	File* pFile = f_alloc(this->m_OpenFileTable, u.u_ofiles.impl);
 	if ( NULL == pFile )
 	{
 		this->m_InodeTable->IPut(pInode);
@@ -189,7 +191,7 @@ void FileManager::Close()
 
 	/* 释放打开文件描述符fd，递减File结构引用计数 */
 	u.u_ofiles.SetF(fd, NULL);
-	this->m_OpenFileTable->CloseF(pFile);
+        f_close(this->m_OpenFileTable, pFile);
 }
 
 void FileManager::Seek()
@@ -396,7 +398,7 @@ void FileManager::Pipe()
 	}
 
 	/* 分配读管道的File结构 */
-	pFileRead = this->m_OpenFileTable->FAlloc();
+	pFileRead = f_alloc(this->m_OpenFileTable, u.u_ofiles.impl);
 	if ( NULL == pFileRead )
 	{
 		this->m_InodeTable->IPut(pInode);
@@ -406,7 +408,7 @@ void FileManager::Pipe()
 	fd[0] = u.u_ar0[User::EAX];
 
 	/* 分配写管道的File结构 */
-	pFileWrite = this->m_OpenFileTable->FAlloc();
+	pFileWrite = f_alloc(this->m_OpenFileTable, u.u_ofiles.impl);
 	if ( NULL == pFileWrite )    /*若分配失败，擦除管道读端相关的所有打开文件结构*/
 	{
 		pFileRead->f_count = 0;
@@ -545,7 +547,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 	User& u = Kernel::Instance().GetUser();
 	BufferManager& bufMgr = Kernel::Instance().GetBufferManager();
 
-	/* 
+	/*
 	 * 如果该路径是'/'开头的，从根目录开始搜索，
 	 * 否则从进程当前工作目录开始搜索。
 	 */
@@ -599,7 +601,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			break;	/* 不具备目录搜索权限，goto out; */
 		}
 
-		/* 
+		/*
 		 * 将Pathname中当前准备进行匹配的路径分量拷贝到u.u_dbuf[]中，
 		 * 便于和目录项进行比较。
 		 */
@@ -672,7 +674,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 					/* 找到可以写入的空闲目录项位置，NameI()函数返回 */
 					return NULL;
 				}
-				
+
 				/* 目录项搜索完毕而没有找到匹配项，释放相关Inode资源，并推出 */
 				u.u_error = User::ENOENT;
 				goto out;
@@ -729,7 +731,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			}
 		}
 
-		/* 
+		/*
 		 * 从内层目录项匹配循环跳至此处，说明pathname中
 		 * 当前路径分量匹配成功了，还需匹配pathname中下一路径
 		 * 分量，直至遇到'\0'结束。
@@ -751,7 +753,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			return pInode;
 		}
 
-		/* 
+		/*
 		 * 匹配目录项成功，则释放当前目录Inode，根据匹配成功的
 		 * 目录项m_ino字段获取相应下一级目录或文件的Inode。
 		 */
@@ -773,7 +775,7 @@ out:
 char FileManager::NextChar()
 {
 	User& u = Kernel::Instance().GetUser();
-	
+
 	/* u.u_dirp指向pathname中的字符 */
 	return *u.u_dirp++;
 }
@@ -832,7 +834,7 @@ void FileManager::WriteDir( Inode* pInode )
 void FileManager::SetCurDir(char* pathname)
 {
 	User& u = Kernel::Instance().GetUser();
-	
+
 	/* 路径不是从根目录'/'开始，则在现有u.u_curdir后面加上当前路径分量 */
 	if ( pathname[0] != '/' )
 	{
@@ -866,7 +868,7 @@ int FileManager::Access( Inode* pInode, unsigned int mode )
 			return 1;
 		}
 	}
-	/* 
+	/*
 	 * 对于超级用户，读写任何文件都是允许的
 	 * 而要执行某文件时，必须在i_mode有可执行标志
 	 */
@@ -1073,7 +1075,7 @@ void FileManager::UnLink()
 	u.u_IOParam.m_Offset -= (DirectoryEntry::DIRSIZ + 4);
 	u.u_IOParam.m_Base = (unsigned char *)&u.u_dent;
 	u.u_IOParam.m_Count = DirectoryEntry::DIRSIZ + 4;
-	
+
 	u.u_dent.m_ino = 0;
 	pDeleteInode->WriteI();
 

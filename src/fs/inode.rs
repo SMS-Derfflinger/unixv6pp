@@ -4,7 +4,12 @@ use crate::{
         buffer::{Buf, DevId, LogicalBlock, PhysicalBlock},
         char_device::char_device_for_dev,
     },
-    fs::{self, file_system::FileSystem, InodeRef},
+    fs::{
+        self,
+        file::{FileRefCompat, InodeRefCompat},
+        file_system::FileSystem,
+        FileRef, InodeRef,
+    },
     sync::SpinExt,
 };
 use alloc::sync::Arc;
@@ -129,6 +134,22 @@ impl IndexKind {
 
 fn map_fs_alloc_error<T>(_err: T) -> BmapError {
     BmapError::AllocFailed
+}
+
+pub fn inoderef_leak(inode_ref: InodeRef) -> InodeRefCompat {
+    unsafe {
+        // SAFETY: Leaking the Inode is always safe.
+        //         Just make sure we don't leak too much...
+        InodeRefCompat::new(&inode_ref)
+    }
+}
+
+pub fn fileref_leak(file_ref: FileRef) -> FileRefCompat {
+    unsafe {
+        // SAFETY: Leaking the Inode is always safe.
+        //         Just make sure we don't leak too much...
+        FileRefCompat::new(&file_ref)
+    }
 }
 
 #[allow(unused)]
@@ -367,7 +388,9 @@ impl Inode {
         match self.i_mode & INodeMode::IFMT {
             INodeMode::IFCHR => {
                 let device = char_device_for_dev(dev).ok_or(OpenError::NoSuchDevice)?;
-                device.open(dev, mode as i32).map_err(|_| OpenError::NoSuchDevice)?;
+                device
+                    .open(dev, mode as i32)
+                    .map_err(|_| OpenError::NoSuchDevice)?;
             }
             INodeMode::IFBLK => {
                 let device = block_device_for_dev(dev).ok_or(OpenError::NoSuchDevice)?;

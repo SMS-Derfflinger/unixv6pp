@@ -1,58 +1,51 @@
+use alloc::boxed::Box;
+use kernel_macros::define_class_compat;
+
 use crate::{
-    constants::PosixError, dev::buffer::DevId, fs::{
-        self, FileRef, InodeRef, file::{File, FileFlags, OpenFiles}, file_system::FileSystem, inode::{INodeFlag, INodeMode, Inode}
-    }, sync::SpinExt
+    constants::PosixError,
+    dev::buffer::DevId,
+    fs::{
+        self,
+        file::{File, FileFlags, FileRefCompat, OpenFiles},
+        file_system::FileSystem,
+        inode::{fileref_leak, INodeFlag, INodeMode, Inode},
+        FileRef, InodeRef,
+    },
+    println_warn,
+    sync::SpinExt,
 };
 
-#[macro_export]
-macro_rules! define_class_compat {
-    {
-        impl $class:ident {
-            $(
-                pub fn $func:ident(&self, $($arg_name:ident:$arg_type:ty),*) $(-> $ret_type:ty)?
-                { $($body:tt)* }
-            )*
-
-            $(
-            --
-
-            $(
-                pub fn $func1:ident($($arg_name1:ident:$arg_type1:ty),*) $(-> $ret_type1:ty)?
-                { $($body1:tt)* }
-            )*
-
-            )?
-        }
-    } => {
-        $(
-            #[no_mangle]
-            pub extern "C" fn $func(self: &$class, $($arg_name: $arg_type),*) $(-> $ret_type)? {
-                $($body)*
-            }
-        )*
-
-        $(
-
-        $(
-            #[no_mangle]
-            pub extern "C" fn $func1(self: &$class, $($arg_name1: $arg_type1),*) $(-> $ret_type1)? {
-                $($body1)*
-            }
-        )*
-
-        )?
-    };
+extern "C" {
+    fn _seterr(errno: PosixError);
 }
 
-define_class_compat! {
-    impl OpenFileTable {
-        pub fn f_alloc(open_files: &mut OpenFiles) -> () {
-            let a = self.count();
-            let a = 10;
-            let b = alloc::boxed::Box::new(10);
-        }
+pub fn seterr(errno: PosixError) {
+    unsafe {
+        _seterr(errno);
     }
 }
+
+define_class_compat! {impl OpenFileTable {
+    pub fn f_alloc(&mut self, open_files: &mut OpenFiles) -> Option<FileRefCompat> {
+        match this.f_alloc(open_files) {
+            Ok((_, fileref)) => Some(fileref_leak(fileref)),
+            Err(e) => {
+                seterr(e);
+                None
+            }
+        }
+    }
+
+    pub fn f_close(&mut self, file: FileRefCompat) {
+        this.close_f(&file.own());
+    }
+
+    pub fn alloc() -> *const OpenFileTable {
+        let me = Box::new(OpenFileTable::new());
+
+        Box::into_raw(me)
+    }
+}}
 
 pub(crate) struct OpenFileTable {
     m_file: [FileRef; Self::NFILE],
@@ -67,27 +60,34 @@ impl OpenFileTable {
         }
     }
 
+    fn find_free(&mut self) -> Option<&mut FileRef> {
+        for file in &mut self.m_file {
+            if file.lock().f_count != 0 {
+                continue;
+            }
+
+            return Some(file);
+        }
+
+        None
+    }
+
     /// 在系统打开文件表中分配一个空闲 File，
     /// 同时在进程打开文件描述符表中分配对应 fd。
     /// 返回 (fd, FileRef) 或 Err。
     pub fn f_alloc(&mut self, open_files: &mut OpenFiles) -> Result<(usize, FileRef), PosixError> {
         let fd = open_files.alloc_free_slot()?;
+        let free_file = self.find_free().ok_or(PosixError::ENFILE)?;
 
-        for file in &self.m_file {
-            if file.lock().f_count == 0 {
-                {
-                    let mut file = file.lock();
-                    file.f_count = 1;
-                    file.f_offset = 0;
-                    file.f_flag = FileFlags::empty();
-                    file.f_inode = None;
-                }
-                open_files.set_f(fd, file.clone());
-                return Ok((fd, file.clone()));
-            }
+        {
+            let mut file = free_file.lock();
+            file.f_count = 1;
+            file.f_offset = 0;
+            file.f_flag = FileFlags::empty();
+            file.f_inode = None;
         }
-
-        Err(PosixError::ENFILE)
+        open_files.set_f(fd, free_file.clone());
+        Ok((fd, free_file.clone()))
     }
 
     pub fn close_f(&mut self, file: &FileRef) {
@@ -100,6 +100,7 @@ impl OpenFileTable {
                 // TODO: wake up
                 // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 1);
                 // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 2);
+                println_warn!("TODO: wakeup pipe other ends");
             }
         }
 
@@ -111,7 +112,7 @@ impl OpenFileTable {
                     0
                 };
                 inode.lock().close_i(write_flag);
-                fs::global_inode_table().i_put(inode);
+                fs::global_inode_table().i_put(inode.own());
             }
         }
 

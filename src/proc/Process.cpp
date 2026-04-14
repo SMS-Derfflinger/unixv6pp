@@ -187,7 +187,6 @@ void Process::Exit()
 	int i;
 	User& u = Kernel::Instance().GetUser();
 	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	OpenFileTable& fileTable = *Kernel::Instance().GetFileManager().m_OpenFileTable;
 	InodeTable& inodeTable = *Kernel::Instance().GetFileManager().m_InodeTable;
 
 	Diagnose::Write("Process %d is exiting\n",u.u_procp->p_pid);
@@ -206,7 +205,7 @@ void Process::Exit()
 		File* pFile = NULL;
 		if ( (pFile = u.u_ofiles.GetF(i)) != NULL )
 		{
-			fileTable.CloseF(pFile);
+                        f_close(Kernel::Instance().GetFileManager().m_OpenFileTable, pFile);
 			u.u_ofiles.SetF(i, NULL);
 		}
 	}

@@ -69,7 +69,6 @@ public:
 	 */
 	void SetF(int fd, File* pFile);
 
-private:
 	open_files* impl;
 };
 

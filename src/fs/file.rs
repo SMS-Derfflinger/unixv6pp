@@ -1,12 +1,12 @@
-use alloc::{boxed::Box, rc::Rc, sync::Arc};
+use alloc::{boxed::Box, sync::Arc};
 use bitflags::bitflags;
-use core::{array, cell::RefCell};
+use core::{array, ops::Deref};
 use eonix_spin::Spin;
+use kernel_macros::define_class_compat;
 
 use crate::{
     constants::PosixError,
-    define_class_compat,
-    fs::{FileRef, InodeRef},
+    fs::{inode::fileref_leak, open_file_manager::seterr, FileRef, InodeRef},
     sync::SpinExt,
 };
 
@@ -21,10 +21,91 @@ bitflags! {
     }
 }
 
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct InodeRefCompat(*const Inode);
+
+unsafe impl Send for InodeRefCompat {}
+unsafe impl Sync for InodeRefCompat {}
+
+impl InodeRefCompat {
+    /// Create a reference to Inode for compatibility use.
+    ///
+    /// # Safety
+    /// The created InodeRefCompat holds **NO REFCOUNTS**. The caller MUST
+    /// manage the lifetime manually.
+    pub unsafe fn new(inode: &Spin<Inode>) -> Self {
+        let inode = inode.lock();
+        let inode_ref = &*inode;
+
+        Self(inode_ref as *const Inode)
+    }
+
+    pub fn own(&self) -> InodeRef {
+        let arc = unsafe { Arc::from_raw((&**self) as *const Spin<Inode>) };
+        let ret = arc.clone();
+        core::mem::forget(arc);
+
+        ret
+    }
+}
+
+impl Deref for InodeRefCompat {
+    type Target = Spin<Inode>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            // SAFETY: InodeRefCompat invariant guarantees this.
+            &*Spin::ref_from_inner(self as *const _ as *mut _)
+        }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct FileRefCompat(*const File);
+
+unsafe impl Send for FileRefCompat {}
+unsafe impl Sync for FileRefCompat {}
+
+impl FileRefCompat {
+    /// Create a reference to File for compatibility use.
+    ///
+    /// # Safety
+    /// The created FileRefCompat holds **NO REFCOUNTS**. The caller MUST
+    /// manage the lifetime manually.
+    pub unsafe fn new(file: &Spin<File>) -> Self {
+        let file = file.lock();
+        let file_ref = &*file;
+
+        Self(file_ref as *const File)
+    }
+
+    pub fn own(&self) -> FileRef {
+        let arc = unsafe { Arc::from_raw((&**self) as *const Spin<File>) };
+        let ret = arc.clone();
+        core::mem::forget(arc);
+
+        ret
+    }
+}
+
+impl Deref for FileRefCompat {
+    type Target = Spin<File>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            // SAFETY: InodeRefCompat invariant guarantees this.
+            &*Spin::ref_from_inner(self as *const _ as *mut _)
+        }
+    }
+}
+
+#[repr(C)]
 pub struct File {
     pub f_flag: FileFlags,
     pub f_count: i32,
-    pub f_inode: Option<InodeRef>,
+    pub f_inode: Option<InodeRefCompat>,
     pub f_offset: i32,
 }
 
@@ -108,41 +189,34 @@ pub extern "C" fn free_open_files(ofiles: *mut OpenFiles) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn ofiles_alloc_free_slot(
-    ofiles: &mut OpenFiles,
-    err: &mut Option<PosixError>,
-) -> i32 {
-    match ofiles.alloc_free_slot() {
-        Ok(fd) => {
-            *err = None;
-            fd as i32
-        }
-        Err(e) => {
-            *err = Some(e);
-            -1
-        }
-    }
-}
-
 define_class_compat! {
     impl OpenFiles {
-        pub fn ofiles_get_file(fd: i32, err: &mut Option<PosixError>) -> *const Spin<File> {
+        pub fn alloc_free_slot(&mut self) -> i32 {
+            match this.alloc_free_slot() {
+                Ok(fd) => fd as i32,
+                Err(err) => {
+                    seterr(err);
+                    -1
+                }
+            }
+        }
+
+        pub fn get_file(&self, fd: i32) -> Option<FileRefCompat> {
             if fd < 0 {
-                *err = Some(PosixError::EBADF);
-                return core::ptr::null();
+                seterr(PosixError::EBADF);
+                return None;
             }
 
-            match ofiles.get_f(fd as usize) {
-                Ok(file) => {
-                    *err = None;
-                    Arc::into_raw(file)
-                }
-                Err(e) => {
-                    *err = Some(e);
-                    core::ptr::null()
-                }
+            this.get_f(fd as usize)
+                .inspect_err(|&err| seterr(err)).ok().map(fileref_leak)
+        }
+
+        pub fn set_file(&mut self, fd: i32, file: FileRefCompat) {
+            if fd < 0 {
+                return;
             }
+
+            this.set_f(fd as _, file.own());
         }
     }
 }
