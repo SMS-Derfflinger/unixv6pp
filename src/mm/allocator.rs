@@ -1,9 +1,12 @@
 use core::{alloc::GlobalAlloc, ptr::NonNull};
 
-use eonix_mm::address::{Addr, PAddr};
+use eonix_mm::{
+    address::{Addr, PAddr},
+    paging::Folio,
+};
 use eonix_spin::NoContext;
 use eonix_sync_base::LazyLock;
-use slab_allocator::{SlabAlloc, SlabPage, SlabPageAlloc, SlabSlot};
+use slab_allocator::{SlabAlloc, SlabPageAlloc, SlabSlot};
 
 use super::{PageList, PhysPage};
 use crate::{
@@ -177,39 +180,15 @@ unsafe impl SlabPageAlloc for SlabPageAllocImpl {
     type PageList = PageList;
 
     fn alloc_slab_page(&self) -> &'static mut Self::Page {
-        KERNEL_PAGE_MANAGER
+        let mut page = KERNEL_PAGE_MANAGER
             .lock()
             .alloc_order(0)
-            .expect("Out of memory")
-    }
-}
+            .expect("Out of memory");
 
-impl SlabPage for PhysPage {
-    fn get_data_ptr(&self) -> NonNull<[u8]> {
-        todo!()
-    }
+        unsafe {
+            page.slab_init();
+        }
 
-    fn get_free_slot(&self) -> Option<NonNull<SlabSlot>> {
-        todo!()
-    }
-
-    fn set_free_slot(&mut self, next: Option<NonNull<SlabSlot>>) {
-        todo!()
-    }
-
-    fn get_alloc_count(&self) -> usize {
-        todo!()
-    }
-
-    fn inc_alloc_count(&mut self) -> usize {
-        todo!()
-    }
-
-    fn dec_alloc_count(&mut self) -> usize {
-        todo!()
-    }
-
-    unsafe fn from_allocated(ptr: NonNull<u8>) -> &'static mut Self {
-        todo!()
+        page
     }
 }
