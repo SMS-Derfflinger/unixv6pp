@@ -1,0 +1,49 @@
+Q = @
+
+quiet = $(if $(Q),quiet_,)
+
+quiet_log_print = $(if $(quiet_cmd_$(1)), echo "	$(quiet_cmd_$(1))";)
+log_print = echo "$(cmd_$(1))";
+
+filter-out-phony = $(filter-out $(PHONY),$(1))
+
+cmd = @$(if $(cmd_$(1)),set -e; $($(quiet)log_print) $(cmd_$(1)),:)
+
+submake = $(MAKE) --no-print-directory -C $<
+
+cmd_ld = $(LD) $(LDFLAGS) $($(2)-LDFLAGS) -o $@ $($(2)-objs) $($(2)-libs)
+quiet_cmd_ld = "LD	$@"
+
+cmd_hostcxx_to_o = $(HOSTCXX) $(HOSTCXXFLAGS) -c -o $@ $<
+quiet_cmd_hostcxx_to_o = "HOSTCXX	$@"
+
+cmd_hostar = $(HOSTAR) $(HOSTARFLAGS) rcs $@ $(call filter-out-phony,$^)
+quiet_cmd_hostar = "HOSTAR	$@"
+
+cmd_hostld = $(HOSTLD) $(HOSTLDFLAGS) $($(2)-HOSTLDFLAGS) -o $@ $($(2)-objs) $($(2)-libs)
+quiet_cmd_hostld = "HOSTLD	$@"
+
+cmd_ar = $(AR) $(ARFLAGS) $(if $(2),$($(2)ARFLAGS)) rcs $@ $($(2)objs) $($(2)libs)
+quiet_cmd_ar = "AR	$@"
+
+cmd_cc_to_o = $(CC) $(CFLAGS) -c -o $@ $<
+quiet_cmd_cc_to_o = "CC	$@"
+
+cmd_cxx_to_o = $(CXX) $(CXXFLAGS) -c -o $@ $<
+quiet_cmd_cxx_to_o = "CXX	$@"
+
+cmd_s_to_o = $(AS) $(ASFLAGS) -c -o $@ $<
+quiet_cmd_s_to_o = "AS	$@"
+
+cmd_asm_to_o = $(NASM) $(NASMFLAGS) -o $@ $<
+quiet_cmd_asm_to_o = "NASM	$@"
+
+cmd_submake = $(submake) $(2)
+quiet_cmd_submake = "MAKE	$<"
+
+cmd_submake_clean = $(submake) clean
+quiet_cmd_submake_clean = "CLEAN	$<"
+
+cmd_rm = $(if $(2),rm -f $(2),:)
+quiet_cmd_rm = $(if $(2),"REMOVE	$(2)")
+
