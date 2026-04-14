@@ -119,7 +119,7 @@ $(foreach lib, $(out-libnames), $(eval $(call BUILD_LIB,$(lib))))
 
 clean_files = $(foreach item,$(1),$(call cmd,rm,$(item)))
 
-.PHONY: clean custom-clean
+PHONY += clean custom-clean
 clean: $(addsuffix .clean,\
 		$(filter %/objs.a, $(foreach bin,$(out-bins),$($(bin)-libs))) \
 		$(filter %/host-objs.a, $(foreach bin,$(out-host-bins),$($(bin)-libs))) \
