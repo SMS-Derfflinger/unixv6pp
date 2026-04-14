@@ -8,6 +8,7 @@ build
 *.o
 *.a
 *.exe
+*.bin
 *.swp
 *.cmd
 

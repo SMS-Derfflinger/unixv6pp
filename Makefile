@@ -23,17 +23,14 @@ target-dirs := tools lib shell programs src
 build-dirs := $(addprefix build-,$(target-dirs))
 clean-dirs := $(addprefix clean-,$(target-dirs))
 
-define BUILD_DIR
-.PHONY: $(addprefix build-, $1)
-$(addprefix build-,$1):
-	make -C $1
+PHONY += $(build-dirs)
+PHONY += $(clean-dirs)
 
-.PHONY: $(addprefix clean-, $1)
-$(addprefix clean-, $1):
-	make -C $1 clean
-endef
+$(build-dirs): build-%: %
+	$(call cmd,submake,)
 
-$(foreach d, $(target-dirs), $(eval $(call BUILD_DIR, $(d))))
+$(clean-dirs): clean-%: %
+	$(call cmd,submake,clean)
 
 .PHONY: install-buildrequires
 install-buildrequires:
@@ -41,22 +38,34 @@ install-buildrequires:
 
 .PHONY: clean
 clean: $(clean-dirs)
-	@-rm -rf target/
+	-$(call cmd,rmdir,$(workdir))
 
-workdir := target/img-workspace
+workdir := $(realpath $(CURDIR))/target/img-workspace
 
-target/disk.img: $(build-dirs)
-	mkdir -p $(workdir)/programs/bin
-	mkdir -p $(workdir)/programs/etc
-	make -C src kernel.bin
-	cp src/kernel.bin $(workdir)/
-	rm src/kernel.bin
-	make -C src/boot boot.o
-	cp src/boot/boot.o $(workdir)/boot.bin
-	make -C programs/ install INSTALL_PATH=$(realpath $(CURDIR))/$(workdir)/programs/bin
-	cp shell/Shell.exe $(workdir)/programs/
-	cp tools/unixv6pp_splash/v6pp_splash.bmp $(workdir)/programs/etc/
-	cd $(workdir)/ && $(abs_srctree)/tools/filescanner \
+$(workdir)/kernel.bin: src FORCE
+	$(call cmd,mkdir,$(workdir))
+	$(call cmd,submake,kernel.bin)
+	$(call cmd,cp,src/kernel.bin,$@)
+
+$(workdir)/boot.bin: src/boot FORCE
+	$(call cmd,mkdir,$(workdir))
+	$(call cmd,submake,boot.o)
+	$(call cmd,cp,src/boot/boot.o,$@)
+
+PHONY += install-programs install-shell
+install-programs: programs FORCE
+	$(call cmd,mkdir,$(workdir)/programs/bin)
+	$(call cmd,submake,install INSTALL_PATH=$(workdir)/programs/bin)
+
+install-shell: build-shell shell/Shell.exe FORCE
+	$(call cmd,mkdir,$(workdir)/programs)
+	$(call cmd,cp,$(call filter-out-phony,$^),$(workdir)/programs/)
+
+target/disk.img: $(build-dirs) $(workdir)/kernel.bin $(workdir)/boot.bin \
+		install-programs install-shell
+	$(call cmd,mkdir,$(workdir)/programs/etc)
+	$(call cmd,cp,tools/unixv6pp_splash/v6pp_splash.bmp,$(workdir)/programs/etc/)
+	$(Q)cd $(workdir)/ && $(abs_srctree)/tools/filescanner \
 		| $(abs_srctree)/tools/fs-editor \
 		$(abs_srctree)/target/disk.img c
 
@@ -81,3 +90,5 @@ tools/compile_commands.json: build-tools
 
 compile_commands.json: all
 	$(call cmd_compile_commands,src)
+
+include $(abs_srctree)/scripts/Makefile.lib

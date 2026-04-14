@@ -89,8 +89,6 @@ PHONY += dep-hdrs
 dep-hdrs: $(hdrs)
 	@:
 
-.PHONY: $(PHONY)
-
 host-objs.a: $(host-objs) $(host-libs) dep-hdrs
 	$(call cmd,hostar)
 

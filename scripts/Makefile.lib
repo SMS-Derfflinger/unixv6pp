@@ -47,3 +47,16 @@ quiet_cmd_submake_clean = "CLEAN	$<"
 cmd_rm = $(if $(2),rm -f $(2),:)
 quiet_cmd_rm = $(if $(2),"REMOVE	$(2)")
 
+cmd_rmdir = $(if $(2),rm -rf $(2),:)
+quiet_cmd_rmdir = $(if $(2),"RMDIR	$(2)")
+
+cmd_mkdir = mkdir -p $(2)
+quiet_cmd_mkdir = "MKDIR	$(2)"
+
+cmd_cp = cp $(2) $(3)
+quiet_cmd_cp = "CP	$(2)	$(3)"
+
+PHONY += FORCE
+FORCE:
+
+.PHONY: $(PHONY)
