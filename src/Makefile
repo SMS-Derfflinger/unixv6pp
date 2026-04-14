@@ -25,7 +25,7 @@ rust-target-dir = $(rust-output-dir)/$(rust-target-triplet)/$(rust-profile)
 $(rust-target-dir)/librust_kernel.a: $(rust-preqs)
 	cd $(abs_srctree) && \
 		CARGO_TARGET_DIR=$(rust-output-dir) cargo \
-		+nightly rustc \
+		+nightly-2026-04-07 rustc \
 		--manifest-path Cargo.toml \
 		--target i686-none.json \
 		-Z build-std=core,compiler_builtins,alloc \
