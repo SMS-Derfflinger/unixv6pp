@@ -1,6 +1,11 @@
-use crate::fs::{self, file_system::FileSystem};
+use crate::{
+    fs::{self, file_system::FileSystem, InodeRef},
+    sync::SpinExt,
+};
+use alloc::sync::Arc;
 use bitflags::bitflags;
 use core::{fmt::Error, mem, slice};
+use eonix_spin::Spin;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +143,7 @@ impl Inode {
     pub const HUGE_FILE_BLOCK: usize = 128 * 128 * 2 + 128 * 2 + 6;
     pub const PIPSIZ: usize = Self::SMALL_FILE_BLOCK * Self::BLOCK_SIZE;
 
-    pub const fn new_const() -> Self {
+    const fn new_const() -> Self {
         Self {
             i_flag: INodeFlag::empty(),
             i_mode: INodeMode::empty(),
@@ -154,20 +159,8 @@ impl Inode {
         }
     }
 
-    pub fn new() -> Self {
-        Self {
-            i_flag: INodeFlag::empty(),
-            i_mode: INodeMode::empty(),
-            i_count: Default::default(),
-            i_nlink: Default::default(),
-            i_dev: DevId(-1),
-            i_number: -1,
-            i_uid: -1,
-            i_gid: -1,
-            i_size: Default::default(),
-            i_addr: [PhysicalBlock(0); I_ADDR_SIZE],
-            i_lastr: -1,
-        }
+    pub fn new() -> InodeRef {
+        Arc::new(Spin::new(Self::new_const()))
     }
 
     pub fn read_i(&mut self, m_count: usize, m_offset: usize) -> Result<(), Error> {
@@ -496,7 +489,7 @@ impl Inode {
 
         if fs::global_file_system()
             .get_fs(self.i_dev)
-            .is_ok_and(|spb| spb.borrow().is_readonly())
+            .is_ok_and(|spb| spb.lock().is_readonly())
         {
             return;
         }

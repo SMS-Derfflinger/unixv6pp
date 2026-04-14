@@ -9,12 +9,12 @@ use crate::{
     constants::PosixError,
     fs::{
         self,
-        file::{FileFlags, FileRef, OpenFiles},
+        file::{FileFlags, OpenFiles},
         inode::{DevId, INodeFlag, INodeMode, Inode, OpenError, PhysicalBlock},
+        FileRef, InodeRef,
     },
+    sync::SpinExt,
 };
-
-use super::file::InodeRef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DirSearchMode {
@@ -84,7 +84,7 @@ impl FileManager {
                     OpenDisposition::TruncateExisting,
                     open_files,
                 )?;
-                inode.borrow_mut().i_mode |=
+                inode.lock().i_mode |=
                     create_mode & (INodeMode::IRWXU | INodeMode::IRWXG | INodeMode::IRWXO);
                 Ok(result)
             }
@@ -108,7 +108,7 @@ impl FileManager {
         open_files: &mut OpenFiles,
     ) -> Result<(usize, FileRef), PosixError> {
         if disposition != OpenDisposition::CreateNew {
-            let inode_ref = inode.borrow();
+            let inode_ref = inode.lock();
 
             if mode.contains(FileFlags::FWRITE)
                 && (inode_ref.i_mode & INodeMode::IFMT) == INodeMode::IFDIR
@@ -118,10 +118,10 @@ impl FileManager {
         }
 
         if disposition == OpenDisposition::TruncateExisting {
-            inode.borrow_mut().i_trunc();
+            inode.lock().i_trunc();
         }
 
-        inode.borrow_mut().prele();
+        inode.lock().prele();
 
         let (fd, file) = match fs::global_open_file_table().f_alloc(open_files) {
             Ok(result) => result,
@@ -132,7 +132,7 @@ impl FileManager {
         };
 
         {
-            let mut file_ref = file.borrow_mut();
+            let mut file_ref = file.lock();
             file_ref.f_flag = mode & (FileFlags::FREAD | FileFlags::FWRITE);
             file_ref.f_inode = Some(inode.clone());
         }
@@ -143,13 +143,13 @@ impl FileManager {
             0
         };
         let open_result = {
-            let inode_ref = inode.borrow();
+            let inode_ref = inode.lock();
             inode_ref.open_i(write_mode)
         };
 
         if let Err(err) = open_result {
             open_files.clear_f(fd);
-            let mut file_ref = file.borrow_mut();
+            let mut file_ref = file.lock();
             file_ref.f_inode = None;
             file_ref.f_count -= 1;
             fs::global_inode_table().i_put(inode);
@@ -174,7 +174,7 @@ impl FileManager {
         open_files: &OpenFiles,
     ) -> Result<i32, PosixError> {
         let file = open_files.get_f(fd)?;
-        let mut file_ref = file.borrow_mut();
+        let mut file_ref = file.lock();
 
         if file_ref.f_flag.contains(FileFlags::FPIPE) {
             return Err(PosixError::ESPIPE);
@@ -194,7 +194,7 @@ impl FileManager {
             SeekWhence::Current | SeekWhence::CurrentBlock => file_ref.f_offset + offset,
             SeekWhence::End | SeekWhence::EndBlock => {
                 let inode = file_ref.f_inode.as_ref().ok_or(PosixError::EBADF)?;
-                inode.borrow().i_size as i32 + offset
+                inode.lock().i_size as i32 + offset
             }
         };
 
@@ -208,7 +208,7 @@ impl FileManager {
     pub fn fstat(&mut self, fd: usize, open_files: &OpenFiles) -> Result<FileStat, PosixError> {
         let file = open_files.get_f(fd)?;
         let inode = file
-            .borrow()
+            .lock()
             .f_inode
             .as_ref()
             .cloned()
@@ -226,7 +226,7 @@ impl FileManager {
     }
 
     pub fn stat1(&mut self, inode: InodeRef) -> FileStat {
-        let inode_ref = inode.borrow();
+        let inode_ref = inode.lock();
         FileStat::from(&*inode_ref)
     }
 
@@ -257,12 +257,12 @@ impl FileManager {
     ) -> Result<usize, PosixError> {
         let file = open_files.get_f(fd)?;
 
-        if file.borrow().f_flag.contains(FileFlags::FPIPE) {
+        if file.lock().f_flag.contains(FileFlags::FPIPE) {
             return Err(PosixError::ENOSYS);
         }
 
         let inode = {
-            let file_ref = file.borrow();
+            let file_ref = file.lock();
 
             if !file_ref.f_flag.contains(mode) {
                 return Err(PosixError::EBADF);
@@ -275,9 +275,9 @@ impl FileManager {
                 .ok_or(PosixError::EBADF)?
         };
 
-        let start_offset = file.borrow().f_offset;
+        let start_offset = file.lock().f_offset;
         let advanced = {
-            let mut inode_ref = inode.borrow_mut();
+            let mut inode_ref = inode.lock();
             inode_ref.nf_lock();
 
             let result = if mode == FileFlags::FREAD {
@@ -294,7 +294,7 @@ impl FileManager {
             result.map_err(|_| PosixError::EIO)?
         };
 
-        file.borrow_mut().f_offset = start_offset + advanced as i32;
+        file.lock().f_offset = start_offset + advanced as i32;
         Ok(advanced)
     }
 
@@ -315,26 +315,26 @@ impl FileManager {
             Ok(v) => v,
             Err(err) => {
                 open_files.clear_f(read_fd);
-                read_file.borrow_mut().f_count = 0;
+                read_file.lock().f_count = 0;
                 fs::global_inode_table().i_put(inode);
                 return Err(err);
             }
         };
 
         {
-            let mut read_file_ref = read_file.borrow_mut();
+            let mut read_file_ref = read_file.lock();
             read_file_ref.f_flag = FileFlags::FREAD | FileFlags::FPIPE;
             read_file_ref.f_inode = Some(inode.clone());
         }
 
         {
-            let mut write_file_ref = write_file.borrow_mut();
+            let mut write_file_ref = write_file.lock();
             write_file_ref.f_flag = FileFlags::FWRITE | FileFlags::FPIPE;
             write_file_ref.f_inode = Some(inode.clone());
         }
 
         {
-            let mut inode_ref = inode.borrow_mut();
+            let mut inode_ref = inode.lock();
             inode_ref.i_count = 2;
             inode_ref.i_flag = INodeFlag::IACC | INodeFlag::IUPD;
             inode_ref.i_mode = INodeMode::IALLOC;
@@ -345,16 +345,16 @@ impl FileManager {
 
     pub fn read_p(&mut self, file: FileRef, count: usize) -> Result<usize, PosixError> {
         let inode = file
-            .borrow()
+            .lock()
             .f_inode
             .as_ref()
             .cloned()
             .ok_or(PosixError::EBADF)?;
 
-        let mut inode_ref = inode.borrow_mut();
+        let mut inode_ref = inode.lock();
         inode_ref.plock();
 
-        let mut file_ref = file.borrow_mut();
+        let mut file_ref = file.lock();
         if file_ref.f_offset == inode_ref.i_size as i32 {
             if file_ref.f_offset != 0 {
                 file_ref.f_offset = 0;
@@ -384,13 +384,13 @@ impl FileManager {
 
     pub fn write_p(&mut self, file: FileRef, count: usize) -> Result<usize, PosixError> {
         let inode = file
-            .borrow()
+            .lock()
             .f_inode
             .as_ref()
             .cloned()
             .ok_or(PosixError::EBADF)?;
 
-        let mut inode_ref = inode.borrow_mut();
+        let mut inode_ref = inode.lock();
         inode_ref.plock();
 
         if inode_ref.i_count < 2 {
@@ -462,13 +462,13 @@ impl FileManager {
             .as_ref()
             .cloned()
             .ok_or(PosixError::ENOENT)?;
-        let dev = parent.borrow().i_dev;
+        let dev = parent.lock().i_dev;
         let inode = fs::global_file_system()
             .i_alloc(dev)
             .map_err(|_| PosixError::ENOSPC)?;
 
         {
-            let mut inode_ref = inode.borrow_mut();
+            let mut inode_ref = inode.lock();
             inode_ref.i_flag |= INodeFlag::IACC | INodeFlag::IUPD;
             inode_ref.i_mode = INodeMode::from_bits_truncate(mode) | INodeMode::IALLOC;
             inode_ref.i_nlink = 1;
@@ -600,7 +600,7 @@ impl FileManager {
             .cloned()
             .ok_or(PosixError::ENOENT)?;
         let (dev, ino) = {
-            let inode_meta = inode.borrow();
+            let inode_meta = inode.lock();
             (inode_meta.i_dev, inode_meta.i_number)
         };
         fs::global_inode_table().i_get(dev, ino)

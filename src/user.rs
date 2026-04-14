@@ -1,6 +1,6 @@
 use crate::{
     constants::{PosixError, SIGMAX},
-    fs::{IOParameter, Inode, OpenFiles},
+    fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
 };
 
 pub struct Pointer(usize);
@@ -10,8 +10,6 @@ pub struct Process {
 }
 
 pub struct MemoryDescriptor {}
-
-pub struct Dentry;
 
 pub struct Userspace {
     /// Save esp and ebp
@@ -44,12 +42,12 @@ pub struct Userspace {
     qsav: [Pointer; 2],
 
     /// Inode of our working directory
-    cwd: &'static Inode,
+    cwd: InodeRef,
     /// Inode of our pwd's parent
-    cwd_parent: &'static Inode,
+    cwd_parent: InodeRef,
 
     /// Dentry of our pwd
-    dentry: &'static Dentry,
+    dentry: &'static DirectoryEntry,
 
     /// Last component of pwd
     cwd_name: [u8; 28],

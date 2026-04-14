@@ -1,15 +1,17 @@
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use core::{array, cell::RefCell};
+use eonix_spin::Spin;
 
 use bitflags::bitflags;
 
-use crate::fs::{
-    self,
-    file::InodeRef,
-    inode::{Buf, DevId, Inode},
+use crate::{
+    fs::{
+        self,
+        inode::{Buf, DevId, Inode},
+        InodeRef, SuperBlockRef,
+    },
+    sync::SpinExt,
 };
-
-pub(crate) type SuperBlockRef = Rc<RefCell<SuperBlock>>;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,8 +51,8 @@ pub struct SuperBlock {
 }
 
 impl SuperBlock {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> SuperBlockRef {
+        Arc::new(Spin::new(Self {
             s_isize: 0,
             s_fsize: 0,
             s_nfree: 0,
@@ -60,7 +62,7 @@ impl SuperBlock {
             s_flag: SuperBlockFlag::empty(),
             s_time: 0,
             padding: [0; 50],
-        }
+        }))
     }
 
     pub fn is_readonly(&self) -> bool {
@@ -105,10 +107,6 @@ pub struct FileSystem {
     updlock: bool,
 }
 
-// SAFETY: migration-stage design. Access to the global filesystem object is serialized by
-// the outer Spin lock in `fs.rs`, even though the inner graph uses `Rc<RefCell<...>>`.
-unsafe impl Send for FileSystem {}
-
 impl FileSystem {
     pub const NMOUNT: usize = 5;
 
@@ -131,7 +129,7 @@ impl FileSystem {
     }
 
     pub fn load_super_block(&mut self) -> Result<(), FileSystemError> {
-        let super_block = Rc::new(RefCell::new(SuperBlock::new()));
+        let super_block = SuperBlock::new();
 
         // TODO: buffer manager
         // for i in 0..2 {
@@ -141,9 +139,10 @@ impl FileSystem {
         // }
 
         {
-            let mut spb = super_block.borrow_mut();
-            spb.s_flag
-                .remove(SuperBlockFlag::S_FLOCK | SuperBlockFlag::S_ILOCK | SuperBlockFlag::S_RONLY);
+            let mut spb = super_block.lock();
+            spb.s_flag.remove(
+                SuperBlockFlag::S_FLOCK | SuperBlockFlag::S_ILOCK | SuperBlockFlag::S_RONLY,
+            );
             spb.s_time = 0;
         }
 
@@ -156,18 +155,21 @@ impl FileSystem {
 
     pub fn get_fs(&self, dev: DevId) -> Result<SuperBlockRef, FileSystemError> {
         for mount in &self.m_mount {
-            if mount.m_dev == dev {
-                if let Some(spb) = mount.m_spb.as_ref() {
-                    {
-                        let mut sb = spb.borrow_mut();
-                        if sb.s_nfree > 100 || sb.s_ninode > 100 {
-                            sb.s_nfree = 0;
-                            sb.s_ninode = 0;
-                        }
-                    }
-                    return Ok(Rc::clone(spb));
-                }
+            if mount.m_dev != dev {
+                continue;
             }
+
+            let Some(spb) = mount.m_spb.as_ref() else {
+                continue;
+            };
+
+            let mut sb = spb.lock();
+            if sb.s_nfree > 100 || sb.s_ninode > 100 {
+                sb.s_nfree = 0;
+                sb.s_ninode = 0;
+            }
+
+            return Ok(spb.clone());
         }
 
         Err(FileSystemError::NoSuchFileSystem)
@@ -186,7 +188,7 @@ impl FileSystem {
             };
 
             let should_sync = {
-                let sb = spb.borrow();
+                let sb = spb.lock();
                 sb.is_modified() && !sb.is_ilock() && !sb.is_flock() && !sb.is_readonly()
             };
 
@@ -195,7 +197,7 @@ impl FileSystem {
             }
 
             {
-                let mut sb = spb.borrow_mut();
+                let mut sb = spb.lock();
                 sb.s_flag.remove(SuperBlockFlag::S_FMOD);
                 sb.s_time = 0;
             }
@@ -203,7 +205,7 @@ impl FileSystem {
             // TODO: buffer manager
             // for j in 0..2 {
             //     let buf = buffer_manager.get_blk(mount.m_dev, Self::SUPER_BLOCK_SECTOR_NUMBER + j);
-            //     copy 
+            //     copy
             //     buffer_manager.bwrite(buf);
             // }
         }
@@ -220,14 +222,17 @@ impl FileSystem {
         let spb = self.get_fs(dev)?;
 
         {
-            let sb = spb.borrow();
+            let sb = spb.lock();
             if sb.is_ilock() {
+                // XXX: **** WE ARE USING SPINLOCKS FOR NOW ****
+                //      ******* DON'T SLEEP WITH SPINLOCKS HELD *******
+                //      ******* OR YOU ** MAY **  GET DEADLOCKS *******
                 // TODO: sleep
             }
         }
 
         {
-            let mut sb = spb.borrow_mut();
+            let mut sb = spb.lock();
             if sb.s_ninode <= 0 {
                 sb.s_flag.insert(SuperBlockFlag::S_ILOCK);
 
@@ -244,7 +249,7 @@ impl FileSystem {
 
         loop {
             let ino = {
-                let mut sb = spb.borrow_mut();
+                let mut sb = spb.lock();
                 if sb.s_ninode <= 0 {
                     return Err(FileSystemError::NoSpace);
                 }
@@ -257,13 +262,13 @@ impl FileSystem {
                 .map_err(|_| FileSystemError::InodeUnavailable)?;
 
             let is_free = {
-                let inode = inode.borrow();
+                let inode = inode.lock();
                 inode.i_mode.is_empty()
             };
 
             if is_free {
-                inode.borrow_mut().clean();
-                spb.borrow_mut().s_flag.insert(SuperBlockFlag::S_FMOD);
+                inode.lock().clean();
+                spb.lock().s_flag.insert(SuperBlockFlag::S_FMOD);
                 return Ok(inode);
             }
 
@@ -273,7 +278,7 @@ impl FileSystem {
 
     pub fn i_free(&mut self, dev: DevId, number: i32) -> Result<(), FileSystemError> {
         let spb = self.get_fs(dev)?;
-        let mut sb = spb.borrow_mut();
+        let mut sb = spb.lock();
 
         if sb.is_ilock() || sb.s_ninode >= 100 {
             return Ok(());
@@ -290,14 +295,17 @@ impl FileSystem {
         let spb = self.get_fs(dev)?;
 
         {
-            let sb = spb.borrow();
+            let sb = spb.lock();
             if sb.is_flock() {
+                // XXX: **** WE ARE USING SPINLOCKS FOR NOW ****
+                //      ******* DON'T SLEEP WITH SPINLOCKS HELD *******
+                //      ******* OR YOU ** MAY **  GET DEADLOCKS *******
                 // TODO: sleep
             }
         }
 
         let blkno = {
-            let mut sb = spb.borrow_mut();
+            let mut sb = spb.lock();
             if sb.s_nfree <= 0 {
                 return Err(FileSystemError::NoSpace);
             }
@@ -307,16 +315,16 @@ impl FileSystem {
         };
 
         if blkno == 0 {
-            spb.borrow_mut().s_nfree = 0;
+            spb.lock().s_nfree = 0;
             return Err(FileSystemError::NoSpace);
         }
 
-        if self.bad_block(&spb.borrow(), dev, blkno) {
+        if self.bad_block(&spb.lock(), dev, blkno) {
             return Err(FileSystemError::BadBlock);
         }
 
         {
-            let mut sb = spb.borrow_mut();
+            let mut sb = spb.lock();
             if sb.s_nfree <= 0 {
                 sb.s_flag.insert(SuperBlockFlag::S_FLOCK);
 
@@ -337,18 +345,18 @@ impl FileSystem {
         let spb = self.get_fs(dev)?;
 
         {
-            let mut sb = spb.borrow_mut();
+            let mut sb = spb.lock();
             sb.s_flag.insert(SuperBlockFlag::S_FMOD);
             if sb.is_flock() {
-                // TODO: sleep and wakeup around s_flock.
+                // TODO: unlock && sleep and wakeup around s_flock.
             }
         }
 
-        if self.bad_block(&spb.borrow(), dev, blkno) {
+        if self.bad_block(&spb.lock(), dev, blkno) {
             return Err(FileSystemError::BadBlock);
         }
 
-        let mut sb = spb.borrow_mut();
+        let mut sb = spb.lock();
 
         if sb.s_nfree <= 0 {
             sb.s_nfree = 1;
@@ -374,7 +382,7 @@ impl FileSystem {
     pub fn get_mount(&self, inode: &Inode) -> Option<&Mount> {
         self.m_mount.iter().find(|mount| {
             mount.m_inode.as_ref().is_some_and(|mount_inode| {
-                let mount_inode = mount_inode.borrow();
+                let mount_inode = mount_inode.lock();
                 mount_inode.i_dev == inode.i_dev && mount_inode.i_number == inode.i_number
             })
         })

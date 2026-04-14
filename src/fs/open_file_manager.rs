@@ -1,50 +1,45 @@
-use alloc::rc::Rc;
-use core::array;
-use core::cell::RefCell;
-
 use crate::{
     constants::PosixError,
     fs::{
         self,
-        file::{File, FileFlags, FileRef, InodeRef, OpenFiles},
+        file::{File, FileFlags, OpenFiles},
         file_system::FileSystem,
         inode::{DevId, INodeFlag, INodeMode, Inode},
+        FileRef, InodeRef,
     },
+    sync::SpinExt,
 };
 
 pub(crate) struct OpenFileTable {
     m_file: [FileRef; Self::NFILE],
 }
 
-// SAFETY: migration-stage design. Table mutations are serialized by the outer global Spin lock.
-unsafe impl Send for OpenFileTable {}
-
 impl OpenFileTable {
     const NFILE: usize = 100;
 
     pub fn new() -> Self {
         Self {
-            m_file: array::from_fn(|_| Rc::new(RefCell::new(File::new()))),
+            m_file: core::array::from_fn(|_| File::new()),
         }
     }
 
     /// 在系统打开文件表中分配一个空闲 File，
     /// 同时在进程打开文件描述符表中分配对应 fd。
-    /// 返回 (fd, Rc<RefCell<File>>) 或 Err。
+    /// 返回 (fd, FileRef) 或 Err。
     pub fn f_alloc(&mut self, open_files: &mut OpenFiles) -> Result<(usize, FileRef), PosixError> {
         let fd = open_files.alloc_free_slot()?;
 
         for file in &self.m_file {
-            if file.borrow().f_count == 0 {
+            if file.lock().f_count == 0 {
                 {
-                    let mut file = file.borrow_mut();
+                    let mut file = file.lock();
                     file.f_count = 1;
                     file.f_offset = 0;
                     file.f_flag = FileFlags::empty();
                     file.f_inode = None;
                 }
-                open_files.set_f(fd, Rc::clone(file));
-                return Ok((fd, Rc::clone(file)));
+                open_files.set_f(fd, file.clone());
+                return Ok((fd, file.clone()));
             }
         }
 
@@ -52,11 +47,11 @@ impl OpenFileTable {
     }
 
     pub fn close_f(&mut self, file: &FileRef) {
-        let mut file = file.borrow_mut();
+        let mut file = file.lock();
 
         if file.f_flag.contains(FileFlags::FPIPE) {
             if let Some(inode) = file.f_inode.as_ref() {
-                let mut inode = inode.borrow_mut();
+                let mut inode = inode.lock();
                 inode.i_mode &= !(INodeMode::IREAD | INodeMode::IWRITE);
                 // TODO: wake up
                 // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 1);
@@ -71,7 +66,7 @@ impl OpenFileTable {
                 } else {
                     0
                 };
-                inode.borrow().close_i(write_flag);
+                inode.lock().close_i(write_flag);
                 fs::global_inode_table().i_put(inode);
             }
         }
@@ -84,15 +79,12 @@ pub(crate) struct InodeTable {
     pub m_inode: [InodeRef; InodeTable::NINODE],
 }
 
-// SAFETY: migration-stage design. Table mutations are serialized by the outer global Spin lock.
-unsafe impl Send for InodeTable {}
-
 impl InodeTable {
     pub const NINODE: usize = 100;
 
     pub fn new() -> Self {
         Self {
-            m_inode: array::from_fn(|_| Rc::new(RefCell::new(Inode::new()))),
+            m_inode: core::array::from_fn(|_| Inode::new()),
         }
     }
 
@@ -102,7 +94,7 @@ impl InodeTable {
 
         loop {
             if let Some(inode) = self.is_loaded(dev, inumber) {
-                let mut inode_ref = inode.borrow_mut();
+                let mut inode_ref = inode.lock();
 
                 if inode_ref.i_flag.contains(INodeFlag::ILOCK) {
                     // TODO: sleep
@@ -134,7 +126,7 @@ impl InodeTable {
 
             let inode = self.get_free_inode().ok_or(PosixError::ENFILE)?;
             {
-                let mut inode = inode.borrow_mut();
+                let mut inode = inode.lock();
                 inode.i_dev = dev;
                 inode.i_number = inumber;
                 inode.i_flag = INodeFlag::ILOCK;
@@ -154,14 +146,14 @@ impl InodeTable {
             //    return Err(Error::EIO);
             //}
 
-            //inode.borrow_mut().i_copy(&buf, inumber as usize);
+            //inode.lock().i_copy(&buf, inumber as usize);
             return Ok(inode);
         }
     }
 
     /// 减少引用计数，计数归零时将 inode 写回磁盘并释放。
     pub fn i_put(&mut self, inode: InodeRef) {
-        let mut inode = inode.borrow_mut();
+        let mut inode = inode.lock();
 
         if inode.i_count == 1 {
             inode.i_flag |= INodeFlag::ILOCK;
@@ -185,7 +177,7 @@ impl InodeTable {
 
     pub fn update_inode_table(&mut self) {
         for inode in &self.m_inode {
-            let mut inode = inode.borrow_mut();
+            let mut inode = inode.lock();
             if !inode.i_flag.contains(INodeFlag::ILOCK) && inode.i_count != 0 {
                 inode.i_flag |= INodeFlag::ILOCK;
                 // TODO: time
@@ -199,7 +191,7 @@ impl InodeTable {
         self.m_inode
             .iter()
             .find(|inode| {
-                let inode = inode.borrow();
+                let inode = inode.lock();
                 inode.i_dev == dev && inode.i_number == inumber && inode.i_count != 0
             })
             .cloned()
@@ -208,7 +200,7 @@ impl InodeTable {
     pub fn get_free_inode(&self) -> Option<InodeRef> {
         self.m_inode
             .iter()
-            .find(|inode| inode.borrow().i_count == 0)
+            .find(|inode| inode.lock().i_count == 0)
             .cloned()
     }
 }

@@ -1,7 +1,8 @@
+use alloc::sync::Arc;
 use eonix_spin::{NoContext, Spin, SpinGuard};
 use eonix_sync_base::LazyLock;
-use open_file_manager::{InodeTable, OpenFileTable};
 use file_system::FileSystem;
+use open_file_manager::{InodeTable, OpenFileTable};
 
 mod file;
 mod file_manager;
@@ -9,7 +10,13 @@ mod file_system;
 mod inode;
 mod open_file_manager;
 
+pub(crate) type FileRef = Arc<Spin<File>>;
+pub(crate) type InodeRef = Arc<Spin<Inode>>;
+pub(crate) type SuperBlockRef = Arc<Spin<SuperBlock>>;
+
 pub use file::{File, IOParameter, OpenFiles};
+pub use file_manager::DirectoryEntry;
+pub use file_system::SuperBlock;
 pub use inode::Inode;
 
 static GLOBAL_OPENFILE_TABLE: LazyLock<Spin<OpenFileTable>> =

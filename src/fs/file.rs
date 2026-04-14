@@ -1,13 +1,15 @@
-use alloc::rc::Rc;
+use alloc::{rc::Rc, sync::Arc};
 use bitflags::bitflags;
 use core::{array, cell::RefCell};
+use eonix_spin::Spin;
 
-use crate::constants::PosixError;
+use crate::{
+    constants::PosixError,
+    fs::{FileRef, InodeRef},
+    sync::SpinExt,
+};
 
 use super::inode::Inode;
-
-pub(crate) type FileRef = Rc<RefCell<File>>;
-pub(crate) type InodeRef = Rc<RefCell<Inode>>;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +28,7 @@ pub struct File {
 }
 
 impl File {
-    pub const fn new_const() -> Self {
+    const fn new_const() -> Self {
         Self {
             f_flag: FileFlags::empty(),
             f_count: 0,
@@ -35,13 +37,8 @@ impl File {
         }
     }
 
-    pub fn new() -> Self {
-        Self {
-            f_flag: FileFlags::empty(),
-            f_count: 0,
-            f_inode: None,
-            f_offset: 0,
-        }
+    pub fn new() -> FileRef {
+        Arc::new(Spin::new(Self::new_const()))
     }
 }
 
@@ -70,7 +67,7 @@ impl OpenFiles {
     pub fn clone_fd(&mut self, fd: usize) -> Result<usize, PosixError> {
         let file = self.get_f(fd)?;
         let new_fd = self.alloc_free_slot()?;
-        file.borrow_mut().f_count += 1;
+        file.lock().f_count += 1;
         self.table[new_fd] = Some(file);
         Ok(new_fd)
     }
