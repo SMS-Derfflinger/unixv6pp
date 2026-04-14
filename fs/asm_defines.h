@@ -1,0 +1,1 @@
+#define ASM_KERNEL_SECTORS (511)

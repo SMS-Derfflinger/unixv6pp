@@ -1,6 +1,8 @@
 #ifndef __FS_FS_DEFINES_H__
 #define __FS_FS_DEFINES_H__
 
+#include <asm_defines.h>
+
 #ifndef __cplusplus
 #error "Don't use plain C..."
 #endif
@@ -16,7 +18,7 @@ const unsigned long DISK_SIZE_MB = 16;
 const unsigned long TOTAL_DISK_SECTORS = DISK_SIZE_MB * MB / SECTOR_SIZE;
 
 const unsigned long MBR_SECTORS = 1;
-const unsigned long KERNEL_SECTORS = 511;
+const unsigned long KERNEL_SECTORS = ASM_KERNEL_SECTORS;
 const unsigned long SUPERBLOCK_SECTORS = 2;
 const unsigned long INODE_SECTORS = 510;
 const unsigned long SWAP_SECTORS = 2048;
