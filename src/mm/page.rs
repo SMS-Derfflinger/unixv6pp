@@ -1,7 +1,7 @@
 use core::{mem::MaybeUninit, ptr::NonNull};
 
 use eonix_mm::{
-    address::{Addr, PAddr, PRange},
+    address::PAddr,
     paging::{Folio, FolioList, FolioListSized, Zone, PFN},
 };
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
@@ -9,7 +9,7 @@ use slab_allocator::{SlabPage, SlabSlot};
 
 use crate::mm::{
     allocator::{phys_to_virt, virt_to_phys},
-    zone::{MemoryZone, ZONE},
+    zone::ZONE,
 };
 
 pub const PAGE_SIZE: usize = 0x1000;
@@ -56,7 +56,7 @@ impl PhysPage {
         PAddr::from(self.pfn())
     }
 
-    pub fn slab_init(&mut self) {
+    pub unsafe fn slab_init(&mut self) {
         self.data = PageData {
             slab: SlabPageData {
                 next_free: None,

@@ -1,12 +1,9 @@
 use core::{alloc::GlobalAlloc, ptr::NonNull};
 
-use eonix_mm::{
-    address::{Addr, PAddr},
-    paging::Folio,
-};
+use eonix_mm::address::{Addr, PAddr};
 use eonix_spin::NoContext;
 use eonix_sync_base::LazyLock;
-use slab_allocator::{SlabAlloc, SlabPageAlloc, SlabSlot};
+use slab_allocator::{SlabAlloc, SlabPageAlloc};
 
 use super::{PageList, PhysPage};
 use crate::{
@@ -180,7 +177,7 @@ unsafe impl SlabPageAlloc for SlabPageAllocImpl {
     type PageList = PageList;
 
     fn alloc_slab_page(&self) -> &'static mut Self::Page {
-        let mut page = KERNEL_PAGE_MANAGER
+        let page = KERNEL_PAGE_MANAGER
             .lock()
             .alloc_order(0)
             .expect("Out of memory");

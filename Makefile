@@ -42,6 +42,10 @@ clean: $(clean-dirs)
 
 workdir := $(realpath $(CURDIR))/target/img-workspace
 
+PHONY += build-rust
+build-rust: src
+	$(call cmd,submake,rust)
+
 $(workdir)/kernel.bin: src FORCE
 	$(call cmd,mkdir,$(workdir))
 	$(call cmd,submake,kernel.bin)

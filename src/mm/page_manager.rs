@@ -1,16 +1,17 @@
-use core::{mem::MaybeUninit, ptr::NonNull};
-
 use buddy_allocator::{BuddyAllocator, BuddyFolio};
 use eonix_mm::{
     address::{Addr, PAddr, PRange},
-    paging::{Folio, FolioList, FolioListSized, PFN, Zone},
+    paging::{Folio, Zone, PFN},
 };
-use eonix_spin::{NoContext, Spin, SpinGuard};
-use eonix_sync_base::Relax;
+use eonix_spin::Spin;
 
-use crate::{mm::{PageList, PhysPage, zone::{MEM_SIZE, MemoryZone, ZONE, init_zone}}, println_trace, sync::SpinExt as _};
-
-use super::allocator::{mm_allocator_alloc, mm_allocator_free, MapNode};
+use crate::{
+    mm::{
+        zone::{init_zone, MemoryZone, MEM_SIZE, ZONE},
+        PageList, PhysPage,
+    },
+    sync::SpinExt as _,
+};
 
 impl BuddyFolio for PhysPage {
     fn pfn(&self) -> PFN {
@@ -107,7 +108,7 @@ pub extern "C" fn free_page(addr: usize, size: usize, user: bool) {
         page_ptr.as_mut()
     };
 
-    assert!(size <= (1 << (page.order as usize + 12)) ,"Wrong size");
+    assert!(size <= (1 << (page.order as usize + 12)), "Wrong size");
 
     #[cfg(trace_alloc)]
     println_trace!("Deallocate {:?} size={:#x}", page.pfn(), size);

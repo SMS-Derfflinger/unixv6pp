@@ -33,6 +33,9 @@ $(rust-target-dir)/librust_kernel.a: $(rust-preqs)
 		-Zjson-target-spec \
 		--release
 
+PHONY += rust
+rust: $(rust-target-dir)/librust_kernel.a
+
 kernel.bin: kernel.exe
 	$(CROSS_COMPILE)objcopy -O binary $< $@
 
