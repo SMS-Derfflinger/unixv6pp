@@ -1,16 +1,13 @@
 use alloc::sync::Arc;
-use core::{array, cell::RefCell};
+use core::array;
 use eonix_spin::Spin;
 
 use bitflags::bitflags;
 
 use crate::{
-    fs::{
-        self,
-        inode::{Buf, DevId, Inode},
-        InodeRef, SuperBlockRef,
-    },
-    sync::SpinExt,
+    dev::buffer::{Buf, DevId}, fs::{
+        self, InodeRef, SuperBlockRef, inode::Inode
+    }, sync::SpinExt
 };
 
 bitflags! {

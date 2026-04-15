@@ -1,13 +1,7 @@
 use crate::{
-    constants::PosixError,
-    fs::{
-        self,
-        file::{File, FileFlags, OpenFiles},
-        file_system::FileSystem,
-        inode::{DevId, INodeFlag, INodeMode, Inode},
-        FileRef, InodeRef,
-    },
-    sync::SpinExt,
+    constants::PosixError, dev::buffer::DevId, fs::{
+        self, FileRef, InodeRef, file::{File, FileFlags, OpenFiles}, file_system::FileSystem, inode::{INodeFlag, INodeMode, Inode}
+    }, sync::SpinExt
 };
 
 pub(crate) struct OpenFileTable {

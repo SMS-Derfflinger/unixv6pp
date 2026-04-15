@@ -6,14 +6,9 @@ use alloc::{
 };
 
 use crate::{
-    constants::PosixError,
-    fs::{
-        self,
-        file::{FileFlags, OpenFiles},
-        inode::{DevId, INodeFlag, INodeMode, Inode, OpenError, PhysicalBlock},
-        FileRef, InodeRef,
-    },
-    sync::SpinExt,
+    constants::PosixError, dev::buffer::{DevId, PhysicalBlock}, fs::{
+        self, FileRef, InodeRef, file::{FileFlags, OpenFiles}, inode::{INodeFlag, INodeMode, Inode, OpenError}
+    }, sync::SpinExt
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
