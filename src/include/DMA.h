@@ -1,7 +1,27 @@
 #ifndef DMA_H
 #define DMA_H
 
-extern int dmaConfig[64]; // todo
+class PhysicalRegionDescriptor;
+class PRDTable;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void dma_init();
+void dma_reset();
+bool dma_is_error();
+void dma_start(int type, unsigned long baseAddress);
+
+void prd_set_base_address(PhysicalRegionDescriptor* prd, unsigned long phyBaseAddr);
+void prd_set_byte_count(PhysicalRegionDescriptor* prd, unsigned short bytes);
+void prd_set_end_of_table(PhysicalRegionDescriptor* prd, bool EOT);
+void prd_table_set_physical_region_descriptor(PRDTable* table, int index, PhysicalRegionDescriptor* prd, bool EOT);
+unsigned long prd_table_base_address(PRDTable* table);
+
+#ifdef __cplusplus
+}
+#endif
 /* 
  * Physical Region Descriptor(PRD) 物理内存区描述符
  * 用于描述物理内存与外设之间进行DMA方式数据传输时，
@@ -9,21 +29,18 @@ extern int dmaConfig[64]; // todo
  */
 class PhysicalRegionDescriptor
 {
-	/* Members */
-private:
-	unsigned long m_BaseAddressZeroBit : 1;	/*  内存区域 "物理起始地址"(注：不是线性地址)的第0位，该位必须为0，意味着内存缓冲区必须2字节对齐 */
-	unsigned long m_MemoryRegionPhysicalBaseAddress : 31;	/* 内存区域 "物理起始地址"的第[31 : 1]位 */
-	unsigned short m_ByteCountZeroBit : 1;			/* DMA传输字节数Byte Count的第0位，恒为0， 意味着每次传输的字节数不可以是奇数个字节长度 */
-	unsigned short m_ByteCount : 15;				/* DMA传输字节数Byte Count的第[15 : 1]位 */
-	unsigned short m_Reserved : 15;					/* 保留区域 */
-	unsigned short m_EOT : 1;						/* Bit(31)：End of Table位。该位为1表示当前物理内存区描述符(PRD)是PRD表中的最后一项。 */
-	
 public:
-	void SetBaseAddress(unsigned long phyBaseAddr);
-	void SetByteCount(unsigned short bytes);
-	void SetEndOfTable(bool EOT /* End of Table */ );
+	void SetBaseAddress(unsigned long phyBaseAddr) {
+        prd_set_base_address(this, phyBaseAddr);
+    }
+	void SetByteCount(unsigned short bytes) {
+        prd_set_byte_count(this, bytes);
+    }
+	void SetEndOfTable(bool EOT /* End of Table */ ) {
+        prd_set_end_of_table(this, EOT);
+    }
 	
-}__attribute__((packed));
+};
 
 
 /* 
@@ -42,27 +59,18 @@ public:
  */
 class PRDTable
 {
-public:
-	/* static const */
-	static const int NSIZE = 10;		/* PRD Table中描述符的最大允许数目 */
-
 	/* Members */
 public:
 	/* 设置index相应的物理内存区描述符(PRD) */
-	void SetPhysicalRegionDescriptor(int index, PhysicalRegionDescriptor& prd, bool EOT /* End of Table */);
+	void SetPhysicalRegionDescriptor(int index, PhysicalRegionDescriptor& prd, bool EOT /* End of Table */) {
+        prd_table_set_physical_region_descriptor(this, index, &prd, EOT);
+    }
 	
 	/* 获取PRD Table的物理起始地址 (注：返回的是物理地址，而不是线性地址) */
-	unsigned long GetPRDTableBaseAddress();
-	
-private:
-	/* 
-	 * PRD Table的起始地址必须4字节对齐，这是由于DMA控制芯片内部的
-	 * 物理区域描述符表寄存器(PRDTR)，该寄存器存放PRD Table的Base Address中
-	 * 的[31 : 2]位,而忽略掉[1 : 0]两位，因此需要4字节对齐。
-	 */
-	PhysicalRegionDescriptor m_Descriptors[NSIZE] __attribute__((aligned (4)));
+	unsigned long GetPRDTableBaseAddress() {
+        return prd_table_base_address(this);
+    }
 };
-
 
 /* 
  * DMA类封装了DMA控制芯片的内部寄存器的端口号，
@@ -74,49 +82,28 @@ private:
 class DMA
 {
 public:
-	/* static member */
-	static unsigned short COMMAND_PORT;		/* 命令寄存器的端口号 */
-	static unsigned short STATUS_PORT;		/* 状态寄存器的端口号 */
-	static unsigned short PRDTR_PORT;		/* PRD Table基地址寄存器的端口号 */
-
-	/* 命令寄存器 (端口号：COMMAND_PORT) 比特位定义 */
-	enum DMAStart	/* 命令寄存器Bit(0)，Start/Stop位 */
-	{
-		START	=	0x01,		/* Bit(0) = 1；启动一次DMA */
-		STOP	=	0x00		/* Bit(0) = 0；停止正在执行的DMA；
-								在执行完前一次DMA之后也需要用软件指令将Bit(0)置为0 */
-	};
-
 	enum DMAType	/* 命令寄存器Bit(3), Read/Write位；告诉DMA控制芯片进行DMA传输的方向 */
 	{
 		READ	=	0x08,		/* DMA Read，Bit(3) = 1；表示读硬盘，写入内存 */
 		WRITE	=	0x00		/* DMA Write，Bit(3) = 0；表示写硬盘，读内存 */
 	};
-	/* 命令寄存器 (端口号：COMMAND_PORT) 8比特中只有Bit(0)和Bit(3)为有效位。 */
-
-
-	/* 状态寄存器 (端口号：STATUS_PORT) 比特位定义： 只用到8个比特位中的Bit(0 - 2) */
-	static const unsigned char ACTIVE = 0x01;	/* Acitve位Bit(0)在DMA操作执行期间硬件置1，
-												DMA完成后由硬件自动置0。*/
-												
-	static const unsigned char ERROR =	0x02;	/* Error位Bit(1)：DMA执行过程中如果出错，硬件将该位置1，
-												软件指令通过写入一个’1‘将该比特位复位到0。
-												通过写’1‘来清零，有点奇怪～～ 但是绝对有效！*/
-												
-	static const unsigned char Interrupt = 0x04; /* Interrupt位Bit(2)：当DMA传输完成，
-												并且外设已向CPU发出中断请求(不论CPU是否关中断)之后，
-												由硬件置为1，表示已经发出中断请求。 
-												软件指令通过写入一个’1‘将该比特位复位到0。*/
-
 public:
-	static void Init();			/* 初始化DMA芯片，确定DMA控制芯片内部寄存器所占据的I/O端口号 */
+	static void Init() {
+        dma_init();
+    }			/* 初始化DMA芯片，确定DMA控制芯片内部寄存器所占据的I/O端口号 */
 
-	static void Reset();		/* 重设DMA控制芯片，清除前一次DMA传输的结果状态 */
+	static void Reset() {
+        dma_reset();
+    }		/* 重设DMA控制芯片，清除前一次DMA传输的结果状态 */
 	
-	static bool IsError();		/* 检查前一次DMA执行过程中是否出错 */
+	static bool IsError() {
+        return dma_is_error();
+    }		/* 检查前一次DMA执行过程中是否出错 */
 
 	/* 根据参数规定的DMA类型、PRD Table的起始物理地址，启动DMA操作 */
-	static void Start(enum DMAType type, unsigned long baseAddress);
+	static void Start(enum DMAType type, unsigned long baseAddress) {
+        dma_start(type, baseAddress);
+    }
 };
 
 #endif
