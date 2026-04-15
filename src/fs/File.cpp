@@ -15,18 +15,16 @@ File::~File()
 	//nothing to do here
 }
 
-extern "C" struct open_files* new_open_files(void);
-extern "C" void free_open_files(struct open_files*);
+extern "C" struct open_files* OpenFiles_new(void);
+extern "C" void OpenFiles_free(struct open_files*);
 
 /*==============================class OpenFiles===================================*/
-OpenFiles::OpenFiles()
-	: impl(new_open_files())
-{
-}
+OpenFiles::OpenFiles() : impl(OpenFiles_new()) { }
 
 OpenFiles::~OpenFiles()
 {
-	free_open_files(this->impl);
+	if (this->impl)
+		OpenFiles_free(this->impl);
 }
 
 extern "C" int OpenFiles_alloc_free_slot(struct open_files* impl);

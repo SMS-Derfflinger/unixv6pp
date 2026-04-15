@@ -148,7 +148,7 @@ pub fn fileref_leak(file_ref: FileRef) -> FileRefCompat {
     unsafe {
         // SAFETY: Leaking the Inode is always safe.
         //         Just make sure we don't leak too much...
-        FileRefCompat::new(&file_ref)
+        FileRefCompat::new(&file_ref.lock())
     }
 }
 

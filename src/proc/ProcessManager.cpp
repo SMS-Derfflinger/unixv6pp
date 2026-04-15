@@ -105,6 +105,12 @@ int ProcessManager::NewProc()
 	//修改u_procp的地址的
 	u.u_procp = child;
 
+	// Save the old
+	OpenFiles old_files = move(u.u_ofiles);
+
+	// Clone the old
+	u.u_ofiles = OpenFiles(old_files);
+
 	UserPageManager& userPageManager = Kernel::Instance().GetUserPageManager();
 
 	unsigned long srcAddress = current->p_addr;
@@ -130,6 +136,10 @@ int ProcessManager::NewProc()
 			Utility::CopySeg(srcAddress++, desAddress++);
 		}
 	}
+
+	// Forget the new one.
+	u.u_ofiles.impl = nullptr;
+	u.u_ofiles = move(old_files);
 	u.u_procp = current;
 	/* 
 	 * 拷贝进程图像期间，父进程的m_UserPageTableArray指向子进程的相对地址映照表；

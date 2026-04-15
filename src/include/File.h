@@ -35,6 +35,36 @@ public:
 };
 
 struct open_files;
+extern "C" struct open_files* OpenFiles_clone(struct open_files const*);
+
+template <typename T>
+struct remove_reference { using type = T; };
+template <typename T>
+struct remove_reference<T&> { using type = T; };
+template <typename T>
+struct remove_reference<T&&> { using type = T; };
+
+template <typename T>
+constexpr typename remove_reference<T>::type&& move(T&& val) noexcept {
+	return (typename remove_reference<T>::type&&)val;
+}
+
+template <typename T>
+constexpr T&& forward(typename remove_reference<T>::type&& val) noexcept {
+	return (T&&)val;
+}
+
+template <typename T>
+constexpr T&& forward(typename remove_reference<T>::type& val) noexcept {
+	return (T&&)val;
+}
+
+template <typename T, typename U>
+constexpr T exchange(T& val, U&& new_val) noexcept {
+	T ret_val = move(val);
+	val = forward<U>(new_val);
+	return ret_val;
+}
 
 /*
  * 进程打开文件描述符表(OpenFiles)的定义
@@ -49,6 +79,23 @@ public:
 
 public:
 	OpenFiles();
+
+	constexpr OpenFiles(const OpenFiles& other) noexcept
+		: impl(OpenFiles_clone(other.impl)) {  }
+
+	constexpr OpenFiles(OpenFiles&& other) noexcept
+		: impl(exchange(other.impl, nullptr)) { }
+
+	OpenFiles& operator=(const OpenFiles& other) noexcept {
+		exchange(*this, OpenFiles(other));
+		return *this;
+	}
+
+	OpenFiles& operator=(OpenFiles&& other) noexcept {
+		this->impl = exchange(other.impl, nullptr);
+		return *this;
+	}
+
 	~OpenFiles();
 
 	/* Functions */

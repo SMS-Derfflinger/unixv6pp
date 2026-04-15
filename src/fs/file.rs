@@ -5,9 +5,7 @@ use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::PosixError,
-    fs::{inode::fileref_leak, open_file_manager::seterr, FileRef, InodeRef},
-    sync::SpinExt,
+    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak, open_file_manager::seterr}, println_fatal, sync::SpinExt
 };
 
 use super::inode::Inode;
@@ -74,11 +72,8 @@ impl FileRefCompat {
     /// # Safety
     /// The created FileRefCompat holds **NO REFCOUNTS**. The caller MUST
     /// manage the lifetime manually.
-    pub unsafe fn new(file: &Spin<File>) -> Self {
-        let file = file.lock();
-        let file_ref = &*file;
-
-        Self(NonNull::from_ref(file_ref))
+    pub unsafe fn new(file: &File) -> Self {
+        Self(NonNull::from_ref(file))
     }
 
     pub fn own(&self) -> FileRef {
@@ -124,6 +119,7 @@ impl File {
     }
 }
 
+#[derive(Clone)]
 pub struct OpenFiles {
     table: [Option<FileRef>; OpenFiles::NOFILES],
 }
@@ -175,22 +171,22 @@ impl OpenFiles {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn new_open_files() -> *mut OpenFiles {
-    let ofiles = Box::new(OpenFiles::new());
-
-    Box::into_raw(ofiles)
-}
-
-#[no_mangle]
-pub extern "C" fn free_open_files(ofiles: *mut OpenFiles) {
-    unsafe {
-        Box::from_raw(ofiles);
-    }
-}
-
 define_class_compat! {
     impl OpenFiles {
+        pub fn new() -> *mut OpenFiles {
+            Box::into_raw(Box::new(OpenFiles::new()))
+        }
+
+        pub fn free(&mut self) {
+            unsafe {
+                Box::from_raw(this);
+            }
+        }
+
+        pub fn clone(&self) -> *const OpenFiles {
+            Box::into_raw(Box::new(this.clone()))
+        }
+
         pub fn alloc_free_slot(&mut self) -> i32 {
             match this.alloc_free_slot() {
                 Ok(fd) => fd as i32,

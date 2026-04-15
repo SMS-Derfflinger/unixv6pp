@@ -18,6 +18,8 @@ use crate::{
 extern "C" {
     fn _seterr(errno: PosixError);
     fn _set_user_retval(retval: u32);
+    fn f_close_bottom1(file: FileRefCompat);
+    fn f_close_bottom2(file: FileRefCompat);
 }
 
 pub fn seterr(errno: PosixError) {
@@ -100,31 +102,37 @@ impl OpenFileTable {
         Ok((fd, free_file.clone()))
     }
 
-    pub fn close_f(&mut self, file: &FileRef) {
-        let mut file = file.lock();
-        file.f_count -= 1;
-        return;
+    pub fn close_f(&mut self, fileref: &FileRef) {
+        let mut file = fileref.lock();
 
         if file.f_flag.contains(FileFlags::FPIPE) {
-            if let Some(inode) = file.f_inode.as_ref() {
-                let mut inode = inode.lock();
-                inode.i_mode &= !(INodeMode::IREAD | INodeMode::IWRITE);
-                // TODO: wake up
-                // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 1);
-                // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 2);
-                println_warn!("TODO: wakeup pipe other ends");
+            unsafe {
+                f_close_bottom1(FileRefCompat::new(&file));
             }
+            // if let Some(inode) = file.f_inode.as_ref() {
+            //     let mut inode = inode.lock();
+            //     inode.i_mode &= !(INodeMode::IREAD | INodeMode::IWRITE);
+            //     // TODO: wake up
+            //     // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 1);
+            //     // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 2);
+            //     println_warn!("TODO: wakeup pipe other ends");
+            // }
         }
 
+        // if file.f_count <= 1 {
+        //     if let Some(inode) = file.f_inode.take() {
+        //         let write_flag = if file.f_flag.contains(FileFlags::FWRITE) {
+        //             1
+        //         } else {
+        //             0
+        //         };
+        //         inode.lock().close_i(write_flag);
+        //         fs::global_inode_table().i_put(inode.own());
+        //     }
+        // }
         if file.f_count <= 1 {
-            if let Some(inode) = file.f_inode.take() {
-                let write_flag = if file.f_flag.contains(FileFlags::FWRITE) {
-                    1
-                } else {
-                    0
-                };
-                inode.lock().close_i(write_flag);
-                fs::global_inode_table().i_put(inode.own());
+            unsafe {
+                f_close_bottom2(FileRefCompat::new(&file));
             }
         }
 
