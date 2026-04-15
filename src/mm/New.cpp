@@ -7,6 +7,11 @@ void* operator new(unsigned int size)
 	return nullptr;
 }
 
+void* operator new(__SIZE_TYPE__ size, void* ptr)
+{
+	return ptr;
+}
+
 void operator delete(void* p)
 {
 	Utility::Panic("operator delete called\n");

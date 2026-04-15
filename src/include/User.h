@@ -15,7 +15,7 @@ class User
 {
 public:
 	static const int EAX = 0;	/* u.u_ar0[EAX]；访问现场保护区中EAX寄存器的偏移量 */
-	
+
 	/* u_error's Error Code */
 	/* 1~32 来自linux 的内核代码中的/usr/include/asm/errno.h, 其余for V6++ */
 	enum ErrorCode
@@ -120,12 +120,12 @@ public:
 	int u_stime;		/* 进程核心态时间 */
 	int u_cutime;		/* 子进程用户态时间总和 */
 	int u_cstime;		/* 子进程核心态时间总和 */
-	
+
 	/* 信号处理相关成员 */
 	unsigned long u_signal[NSIG];	/* 信号处理表 */
 	unsigned long u_qsav[2];		/* 用于接收到信号时直接从Sleep()函数跳回至Trap() */
 	bool u_intflg;		/* 系统调用期间是否受到信号打断 ，1表示被打断、0表示未被打断*/
-	
+
 	/* 文件系统相关成员 */
 	Inode* u_cdir;		/* 指向当前目录的Inode指针 */
 	Inode* u_pdir;		/* 指向父目录的Inode指针 */
@@ -142,7 +142,7 @@ public:
 	short u_gid;		/* 有效组ID */
 	short u_ruid;		/* 真实用户ID */
 	short u_rgid;		/* 真实组ID */
-	
+
 	/* 文件系统相关成员 */
 	OpenFiles u_ofiles;		/* 进程打开文件描述符表对象 */
 

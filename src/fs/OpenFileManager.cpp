@@ -11,6 +11,10 @@ extern "C" void _seterr(User::ErrorCode errno) {
         Kernel::Instance().GetUser().u_error = errno;
 }
 
+extern "C" void _set_user_retval(int retval) {
+        Kernel::Instance().GetUser().u_ar0[User::EAX] = retval;
+}
+
 User::ErrorCode errno() {
         return Kernel::Instance().GetUser().u_error;
 }
@@ -19,7 +23,7 @@ File* f_alloc(struct open_file_table* oft, struct open_files* ofiles) {
 	User& u = Kernel::Instance().GetUser();
         File* retval = OpenFileTable_f_alloc(oft, u.u_ofiles.impl);
 
-        if (retval || errno()) {
+        if (!retval || errno()) {
                 Diagnose::Write("No Free File Struct\n");
                 return NULL;
         }

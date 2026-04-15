@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, sync::Arc};
 use bitflags::bitflags;
-use core::{array, ops::Deref};
+use core::{array, ops::Deref, ptr::NonNull};
 use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
@@ -23,7 +23,7 @@ bitflags! {
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-pub struct InodeRefCompat(*const Inode);
+pub struct InodeRefCompat(NonNull<Inode>);
 
 unsafe impl Send for InodeRefCompat {}
 unsafe impl Sync for InodeRefCompat {}
@@ -38,7 +38,7 @@ impl InodeRefCompat {
         let inode = inode.lock();
         let inode_ref = &*inode;
 
-        Self(inode_ref as *const Inode)
+        Self(NonNull::from_ref(inode_ref))
     }
 
     pub fn own(&self) -> InodeRef {
@@ -63,7 +63,7 @@ impl Deref for InodeRefCompat {
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-pub struct FileRefCompat(*const File);
+pub struct FileRefCompat(NonNull<File>);
 
 unsafe impl Send for FileRefCompat {}
 unsafe impl Sync for FileRefCompat {}
@@ -78,7 +78,7 @@ impl FileRefCompat {
         let file = file.lock();
         let file_ref = &*file;
 
-        Self(file_ref as *const File)
+        Self(NonNull::from_ref(file_ref))
     }
 
     pub fn own(&self) -> FileRef {
@@ -96,7 +96,7 @@ impl Deref for FileRefCompat {
     fn deref(&self) -> &Self::Target {
         unsafe {
             // SAFETY: InodeRefCompat invariant guarantees this.
-            &*Spin::ref_from_inner(self as *const _ as *mut _)
+            &*Spin::ref_from_inner(self.0.as_ptr())
         }
     }
 }
@@ -211,12 +211,16 @@ define_class_compat! {
                 .inspect_err(|&err| seterr(err)).ok().map(fileref_leak)
         }
 
-        pub fn set_file(&mut self, fd: i32, file: FileRefCompat) {
+        pub fn set_file(&mut self, fd: i32, file: Option<FileRefCompat>) {
             if fd < 0 {
                 return;
             }
 
-            this.set_f(fd as _, file.own());
+            if let Some(file) = file {
+                this.set_f(fd as _, file.own());
+            } else {
+                this.clear_f(fd as _);
+            }
         }
     }
 }

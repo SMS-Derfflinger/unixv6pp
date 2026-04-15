@@ -17,6 +17,7 @@ use crate::{
 
 extern "C" {
     fn _seterr(errno: PosixError);
+    fn _set_user_retval(retval: u32);
 }
 
 pub fn seterr(errno: PosixError) {
@@ -25,10 +26,19 @@ pub fn seterr(errno: PosixError) {
     }
 }
 
+pub fn set_user_retval(retval: u32) {
+    unsafe {
+        _set_user_retval(retval);
+    }
+}
+
 define_class_compat! {impl OpenFileTable {
     pub fn f_alloc(&mut self, open_files: &mut OpenFiles) -> Option<FileRefCompat> {
         match this.f_alloc(open_files) {
-            Ok((_, fileref)) => Some(fileref_leak(fileref)),
+            Ok((fd, fileref)) => {
+                set_user_retval(fd as u32);
+                Some(fileref_leak(fileref))
+            }
             Err(e) => {
                 seterr(e);
                 None
@@ -92,6 +102,8 @@ impl OpenFileTable {
 
     pub fn close_f(&mut self, file: &FileRef) {
         let mut file = file.lock();
+        file.f_count -= 1;
+        return;
 
         if file.f_flag.contains(FileFlags::FPIPE) {
             if let Some(inode) = file.f_inode.as_ref() {

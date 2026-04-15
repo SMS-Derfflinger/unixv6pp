@@ -6,6 +6,7 @@
 #include "Utility.h"
 #include "PEParser.h"
 #include "Regs.h"
+#include "New.h"
 #include "MemoryDescriptor.h"
 #include "ELF.h"
 
@@ -43,6 +44,8 @@ void ProcessManager::SetupProcessZero()
 	pProcZero->p_size = 0x1000;
 	pProcZero->p_addr = PROCESS_ZERO_PPDA_ADDRESS;
 	pProcZero->p_textp = NULL;
+
+	User* ua = new ((User*)Kernel::USER_ADDRESS) User();
 
 	User& u = Kernel::Instance().GetUser();
 	u.u_procp = pProcZero;

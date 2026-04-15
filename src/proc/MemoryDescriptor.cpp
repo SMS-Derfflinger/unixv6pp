@@ -5,6 +5,9 @@
 #include "PageDirectory.h"
 #include "Video.h"
 
+MemoryDescriptor::MemoryDescriptor() {}
+MemoryDescriptor::~MemoryDescriptor() {}
+
 void MemoryDescriptor::Initialize()
 {
 	KernelPageManager& kernelPageManager = Kernel::Instance().GetKernelPageManager();

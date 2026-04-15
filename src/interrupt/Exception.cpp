@@ -273,8 +273,10 @@ void Exception::PageFault(struct pt_regs* regs, struct pte_context* context)
 				current->PSig( (pt_context *)&context->eip );
 		}
 	}
-        else
+	else {
+		Diagnose::Write("at eip=0x%x cr2=0x%x, ", context->eip, cr2);
 		Utility::Panic("Page Fault in Kernel Mode.");
+	}
 }
 
 //x87 FPU¸¡µã´íÎó(INT 16)

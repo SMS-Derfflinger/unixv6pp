@@ -275,10 +275,10 @@ extern "C" void next()
 	//这个时候0M-4M的内存映射已经不被使用了，所以要重新映射用户态的页表，为用户态程序运行做好准备
 	//Machine::Instance().InitUserPageTable();
 	//FlushPageDirectory();
-	
+
 
 	Machine::Instance().LoadTaskRegister();
-	
+
 	/* 获取CMOS当前时间，设置系统时钟 */
 	struct SystemTime cTime;
 	CMOSTime::ReadCMOSTime(&cTime);
@@ -300,7 +300,7 @@ extern "C" void next()
 	// UserPageManager::USER_PAGE_POOL_SIZE = PageManager::PHY_MEM_SIZE - UserPageManager::USER_PAGE_POOL_START_ADDR;
 
 	/* 真正操作系统内核初始化逻辑	 */
-	Kernel::Instance().Initialize();	
+	Kernel::Instance().Initialize();
 	Kernel::Instance().GetProcessManager().SetupProcessZero();
 	isInit = true;
 
