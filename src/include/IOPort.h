@@ -1,6 +1,21 @@
 #ifndef IOPORT_H
 #define IOPORT_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+unsigned char port_in_byte(unsigned short port);
+unsigned short port_in_word(unsigned short port);
+unsigned int port_in_dword(unsigned short port);
+
+void port_out_byte(unsigned short port, unsigned char data);
+void port_out_word(unsigned short port, unsigned short data);
+void port_out_dword(unsigned short port, unsigned int data);
+
+#ifdef __cplusplus
+}
+#endif
 
 /*
 	创建时间：3:09 PM 2008-8-9
@@ -41,56 +56,35 @@ class IOPort
 	
 	public:
 		//从指定端口port读入8比特数据，放入data中作为返回值
-		static inline unsigned char InByte(unsigned short port)
-		{
-			unsigned char data;
-			__asm__ __volatile__("inb %%dx, %%al"
-						:"=a" (data)
-						:"d" (port) );
-			return data;
+		static inline unsigned char InByte(unsigned short port) {
+            return port_in_byte(port);
 		}
 		
 		//从指定端口port读入16比特数据，放入data中作为返回值
-		static inline unsigned short InWord(unsigned short port)
-		{
-			unsigned short data;
-			__asm__ __volatile__("inw %%dx, %%ax"
-						:"=a" (data)
-						:"d"	(port)	);
-			return data;
-		}
+		static inline unsigned short InWord(unsigned short port) {
+            return port_in_word(port);
+        }
 		
 		//从指定端口port读入32比特数据，放入data中作为返回值
-		static inline unsigned int InDWord(unsigned short port)
-		{
-			unsigned int data;
-			__asm__ __volatile__("inl %%dx, %%eax"
-						:"=a" (data)
-						:"d" (port)	);
-			return data;
+		static inline unsigned int InDWord(unsigned short port) {
+            return port_in_dword(port);
 		}
 	//=====================================================================
 	//以上是对IN的封装，以下是对OUT指令的封装
 		
 		//将8比特数据data，写入到指定端口port中
-		static inline void OutByte(unsigned short port, unsigned char data)
-		{
-			__asm__ __volatile__("outb %%al, %%dx"
-						:: "d" (port), "a"(data)	);
+		static inline void OutByte(unsigned short port, unsigned char data) {
+            port_out_byte(port, data);
 		}
 		
 		//将16比特数据data，写入到指定端口port中
-		static inline void OutWord(unsigned short port, unsigned short data)
-		{
-			__asm__ __volatile__("outw %%ax, %%dx"
-						:: "d" (port), "a"(data)	);
+		static inline void OutWord(unsigned short port, unsigned short data) {
+			port_out_word(port, data);
 		}
 		
 		//将32比特数据data，写入到指定端口port中
-		static inline void OutDWord(unsigned short port, unsigned int data)
-		{
-			__asm__ __volatile__("outl %%eax, %%dx"
-						:: "d" (port), "a"(data)	);
+		static inline void OutDWord(unsigned short port, unsigned int data) {
+			port_out_dword(port, data);
 		}
 		
 }; // end of class IOPort declearation

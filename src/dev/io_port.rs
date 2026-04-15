@@ -70,3 +70,33 @@ impl IOPort {
         );
     }
 }
+
+#[no_mangle]
+pub extern "C" fn port_in_byte(port: u16) -> u8 {
+    unsafe { IOPort::in_byte(port) }
+}
+
+#[no_mangle]
+pub extern "C" fn port_in_word(port: u16) -> u16 {
+    unsafe { IOPort::in_word(port) }
+}
+
+#[no_mangle]
+pub extern "C" fn port_in_dword(port: u16) -> u32 {
+    unsafe { IOPort::in_dword(port) }
+}
+
+#[no_mangle]
+pub extern "C" fn port_out_byte(port: u16, data: u8) {
+    unsafe { IOPort::out_byte(port, data) }
+}
+
+#[no_mangle]
+pub extern "C" fn port_out_word(port: u16, data: u16) {
+    unsafe { IOPort::out_word(port, data) }
+}
+
+#[no_mangle]
+pub extern "C" fn port_out_dword(port: u16, data: u32) {
+    unsafe { IOPort::out_dword(port, data) }
+}
