@@ -10,7 +10,7 @@ kernel.exe-libs = boot/objs.a dev/objs.a elf/objs.a fs/objs.a \
 		  libyrosstd/objs.a $(rust-target-dir)/librust_kernel.a
 kernel.exe-LDFLAGS := --whole-archive -m elf_i386 -T kernel.link.ld -static
 
-rust-srcs := $(patsubst ./%,%,$(shell find . -type f -name '*.rs'))
+rust-srcs := $(patsubst ./%,%,$(shell find $(abs_srctree)/macros . -type f -name '*.rs'))
 
 rust-preqs = $(abs_srctree)/Cargo.toml $(abs_srctree)/Cargo.lock
 rust-preqs += $(abs_srctree)/i686-none.json
