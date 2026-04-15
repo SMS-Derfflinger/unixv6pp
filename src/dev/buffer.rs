@@ -1,5 +1,3 @@
-use core::mem;
-
 use alloc::slice;
 use bitflags::bitflags;
 
@@ -79,33 +77,5 @@ impl Buf {
 
     pub fn is_delwri(&self) -> bool {
         self.b_flags.contains(BufFlag::B_DELWRI)
-    }
-}
-
-// TODO: 感觉不太合适
-pub struct BufHandle(pub *mut Buf);
-
-impl BufHandle {
-    pub fn blkno(&self) -> PhysicalBlock {
-        PhysicalBlock(unsafe { (*self.0).b_blkno.0 })
-    }
-    pub fn read_table(&self) -> &[i32; 128] {
-        unsafe { &*((*self.0).b_addr as *const [i32; 128]) }
-    }
-    pub fn write_table(&mut self) -> &mut [i32; 128] {
-        unsafe { &mut *((*self.0).b_addr as *mut [i32; 128]) }
-    }
-    pub fn into_bdwrite(self) {
-        let ptr = self.0;
-        mem::forget(self);
-        // TODO: buffer manager
-        //kernel::buf_bdwrite(ptr);
-    }
-}
-
-impl Drop for BufHandle {
-    fn drop(&mut self) {
-        // TODO: buffer manager
-        //kernel::buf_brelse(self.0);
     }
 }

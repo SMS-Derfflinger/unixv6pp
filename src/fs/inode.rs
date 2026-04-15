@@ -1,5 +1,5 @@
 use crate::{
-    dev::buffer::{Buf, BufHandle, DevId, LogicalBlock, PhysicalBlock},
+    dev::buffer::{Buf, DevId, LogicalBlock, PhysicalBlock},
     fs::{self, file_system::FileSystem, InodeRef},
     sync::SpinExt,
 };
@@ -280,7 +280,7 @@ impl Inode {
             // TODO: buffer manager
             // if      has_error          { drop(buf);           }
             // else if m_offset % BLOCK_SIZE == 0 { buf.into_bawrite(); }
-            // else                       { buf.into_bdwrite();  }
+            // else                       { buffer_manager.bdwrite(buf); }
 
             if !is_blk && self.i_size < m_offset as u64 {
                 self.i_size = m_offset as u64;
@@ -319,45 +319,22 @@ impl Inode {
             }
 
             // large
-            IndexKind::Indirect { i_addr_slot, inner } => {
-                let mut indirect = self.get_or_alloc_indirect_buf(i_addr_slot)?;
-
-                let (phy, rablock) = Self::resolve_in_indirect(&mut indirect, inner, self.i_dev)?;
-
-                Ok(BmapResult {
-                    phyblk: phy,
-                    rablock,
-                })
+            IndexKind::Indirect {
+                i_addr_slot: _,
+                inner: _,
+            } => {
+                // TODO: wire BufferManager::bread/bdwrite before translating indirect blocks.
+                Err(BmapError::AllocFailed)
             }
 
             // huge
             IndexKind::DoubleIndirect {
-                i_addr_slot,
-                mid,
-                inner,
+                i_addr_slot: _,
+                mid: _,
+                inner: _,
             } => {
-                let mut first = self.get_or_alloc_indirect_buf(i_addr_slot)?;
-
-                let phy2 = first.read_table()[mid];
-                // TODO: buffer manager
-                let mut second: BufHandle = if phy2 == 0 {
-                    let new_blk = Self::alloc_block_from_fs(self.i_dev)?;
-                    first.write_table()[mid] = new_blk.0 as i32;
-                    first.into_bdwrite();
-                    return Err(BmapError::AllocFailed);
-                } else {
-                    drop(first); // brelse
-                                 // TODO: buffer manager
-                                 //kernel::buf_bread(self.i_dev, PhysicalBlock(phy2 as u32))
-                    BufHandle(core::ptr::null_mut())
-                };
-
-                let (phy, rablock) = Self::resolve_in_indirect(&mut second, inner, self.i_dev)?;
-
-                Ok(BmapResult {
-                    phyblk: phy,
-                    rablock,
-                })
+                // TODO: wire BufferManager::bread/bdwrite before translating double-indirect blocks.
+                Err(BmapError::AllocFailed)
             }
         }
     }
@@ -372,51 +349,6 @@ impl Inode {
         self.i_addr[slot] = blkno;
         self.i_flag |= INodeFlag::IUPD;
         Ok(blkno)
-    }
-
-    /// 读出 i_addr[slot] 指向的间接块，若为 0 则分配新块
-    fn get_or_alloc_indirect_buf(&mut self, slot: usize) -> Result<BufHandle, BmapError> {
-        let blkno = self.i_addr[slot];
-        if blkno.0 == 0 {
-            let blkno = Self::alloc_block_from_fs(self.i_dev)?;
-            self.i_addr[slot] = blkno;
-            self.i_flag |= INodeFlag::IUPD;
-            // TODO: buffer manager
-            // Once buffer allocation is wired, return the new indirect-block buffer handle here.
-            Err(BmapError::AllocFailed)
-        } else {
-            // TODO: buffer manager
-            //Ok(kernel::buf_bread(self.i_dev, blkno))
-            Err(BmapError::AllocFailed)
-        }
-    }
-
-    /// 在一次间接表中找到 inner 处的数据块号，按需分配，并计算预读块号。
-    /// 消费 indirect（bdwrite 或 brelse）。
-    fn resolve_in_indirect(
-        indirect: &mut BufHandle,
-        inner: usize,
-        dev: DevId,
-    ) -> Result<(PhysicalBlock, Option<PhysicalBlock>), BmapError> {
-        let rablock = if inner + 1 < Self::ADDRESS_PER_INDEX_BLOCK {
-            let next = indirect.read_table()[inner + 1];
-            if next != 0 {
-                Some(PhysicalBlock(next as u32))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let phy = indirect.read_table()[inner];
-        if phy == 0 {
-            let blkno = Self::alloc_block_from_fs(dev)?;
-            indirect.write_table()[inner] = blkno.0 as i32;
-            Ok((blkno, rablock))
-        } else {
-            Ok((PhysicalBlock(phy as u32), rablock))
-        }
     }
 
     fn alloc_block_from_fs(dev: DevId) -> Result<PhysicalBlock, BmapError> {
