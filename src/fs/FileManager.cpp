@@ -906,7 +906,7 @@ Inode* FileManager::Owner()
 		return NULL;
 	}
 
-	if ( User_get_uid() == pInode->i_uid || u.SUser() )
+	if ( User_get_uid() == pInode->i_uid || Userspace_is_root() )
 	{
 		return pInode;
 	}
@@ -943,7 +943,7 @@ void FileManager::ChOwn()
 	short gid = User_get_arg()[2];
 
 	/* 不是超级用户或者不是文件主则返回 */
-	if ( !u.SUser() || (pInode = this->Owner()) == NULL )
+	if ( !Userspace_is_root() || (pInode = this->Owner()) == NULL )
 	{
 		return;
 	}
@@ -1004,7 +1004,7 @@ void FileManager::Link()
 		return;
 	}
 	/* 对目录文件的链接只能由超级用户进行 */
-	if ( (pInode->i_mode & Inode::IFMT) == Inode::IFDIR && !u.SUser() )
+	if ( (pInode->i_mode & Inode::IFMT) == Inode::IFDIR && !Userspace_is_root() )
 	{
 		/* 出错，释放资源并退出 */
 		this->m_InodeTable->IPut(pInode);
@@ -1063,7 +1063,7 @@ void FileManager::UnLink()
 		Utility::Panic("unlink -- iget");
 	}
 	/* 只有root可以unlink目录文件 */
-	if ( (pInode->i_mode & Inode::IFMT) == Inode::IFDIR && !u.SUser() )
+	if ( (pInode->i_mode & Inode::IFMT) == Inode::IFDIR && !Userspace_is_root() )
 	{
 		this->m_InodeTable->IPut(pDeleteInode);
 		this->m_InodeTable->IPut(pInode);
@@ -1091,7 +1091,7 @@ void FileManager::MkNod()
 	User& u = Kernel::Instance().GetUser();
 
 	/* 检查uid是否是root，该系统调用只有uid==root时才可被调用 */
-	if ( u.SUser() )
+	if ( Userspace_is_root() )
 	{
 		pInode = this->NameI(FileManager::NextChar, FileManager::CREATE);
 		/* 要创建的文件已经存在,这里并不能去覆盖此文件 */

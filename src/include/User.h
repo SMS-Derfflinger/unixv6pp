@@ -93,13 +93,9 @@ public:
 	static const int SIGIO = 29; /* I/O now possible */
 	static const int SIGPWR = 30; /* Power failure restart */
 	static const int SIGSYS = 31; /* invalid sys call */
-
-public:
-	/* Member Functions */
-public:
-	/* 检查当前用户是否是超级用户 */
-	inline bool SUser() { return true; }
 };
+
+extern "C" bool Userspace_is_root();
 
 extern "C" unsigned long (*User_get_rsav_())[2];
 inline unsigned long (&User_get_rsav())[2] {

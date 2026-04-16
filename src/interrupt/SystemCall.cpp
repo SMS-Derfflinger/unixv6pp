@@ -447,7 +447,7 @@ int SystemCall::Sys_Setuid()
 	User& u = Kernel::Instance().GetUser();
 	short uid = User_get_arg()[0];
 
-	if ( User_get_ruid() == uid || u.SUser() )
+	if ( User_get_ruid() == uid || Userspace_is_root() )
 	{
 		User_get_uid() = uid;
 		User_get_procp()->p_uid = uid;
@@ -480,7 +480,7 @@ int SystemCall::Sys_Stime()
 	User& u = Kernel::Instance().GetUser();
 
 	/* 仅超级用户才具有设置系统时间的权限 */
-	if (u.SUser())
+	if (Userspace_is_root())
 	{
 		Time::time = User_get_ar0()[User::EAX];
 	}
@@ -715,7 +715,7 @@ int SystemCall::Sys_Setgid()
 	User& u = Kernel::Instance().GetUser();
 	short gid = User_get_arg()[0];
 
-	if ( User_get_rgid() == gid || u.SUser() )
+	if ( User_get_rgid() == gid || Userspace_is_root() )
 	{
 		User_get_gid() = gid;
 		User_get_rgid() = gid;

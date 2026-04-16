@@ -502,7 +502,7 @@ void Process::Nice()
 	{
 		niceValue = 20;
 	}
-	if (niceValue < 0 && !u.SUser())
+	if (niceValue < 0 && !Userspace_is_root())
 	{
 		/* 非系统超级用户不能为进程设置小于0的进程优先数计算偏置值 */
 		niceValue = 0;
