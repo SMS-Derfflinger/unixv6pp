@@ -1,6 +1,6 @@
 use eonix_sync_base::LazyLock;
 
-use crate::sync::SuperCell;
+use crate::{dev::buffer_manager::global_buffer_manager, sync::SuperCell};
 
 use super::{
     block_device::{ata_block_device, BlockDevice},
@@ -84,7 +84,7 @@ impl ATADriver {
                 return;
             }
             HandlerAction::Complete(bp) => {
-                // TODO: BufferManager::IODone(bp)
+                global_buffer_manager().io_done(bp);
                 let _ = bp;
             }
         }
@@ -161,5 +161,4 @@ impl ATADriver {
     }
 }
 
-static PRD_TABLE: LazyLock<SuperCell<PRDTable>> =
-    LazyLock::new(|| SuperCell::new(PRDTable::new()));
+static PRD_TABLE: LazyLock<SuperCell<PRDTable>> = LazyLock::new(|| SuperCell::new(PRDTable::new()));

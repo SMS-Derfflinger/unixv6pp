@@ -3,7 +3,7 @@ use core::arch::asm;
 use eonix_sync_base::LazyLock;
 use intrusive_collections::{LinkedList, UnsafeRef};
 
-use crate::sync::SuperCell;
+use crate::{dev::buffer_manager::global_buffer_manager, sync::SuperCell};
 
 use super::{
     ata_driver::ATADriver,
@@ -83,7 +83,7 @@ impl BlockDevice for ATABlockDevice {
         unsafe {
             if (*bp).b_blkno.0 >= Self::NSECTOR {
                 (*bp).b_flags.insert(BufFlag::B_ERROR);
-                // TODO: BufferManager::IODone(bp)
+                global_buffer_manager().io_done(bp);
                 return 0;
             }
         }

@@ -9,7 +9,7 @@ use crate::sync::SuperCell;
 use super::{
     block_device::block_device_for_dev,
     buffer::{Buf, BufFlag, BufFreeAdapter, DevId, PhysicalBlock},
-    device_manager::ROOTDEV,
+    device_manager::{set_minor, ROOTDEV},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,35 +69,48 @@ impl BufferManager {
     pub fn get_blk(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<*mut Buf> {
         self.validate_device(dev)?;
 
-        if let Some(bp) = self.in_core(dev, blkno) {
-            unsafe {
-                if (*bp).b_flags.contains(BufFlag::B_BUSY) {
-                    (*bp).b_flags.insert(BufFlag::B_WANTED);
-                    // TODO: Sleep(bp as usize, PRIBIO), then retry get_blk from the top.
-                    return Err(BufferError::BufferUnavailable);
+        loop {
+            if let Some(bp) = self.in_core(dev, blkno) {
+                unsafe {
+                    if (*bp).b_flags.contains(BufFlag::B_BUSY) {
+                        (*bp).b_flags.insert(BufFlag::B_WANTED);
+                        // TODO: Sleep(bp as usize, PRIBIO), then retry get_blk from the top.
+                        return Err(BufferError::BufferUnavailable);
+                    }
                 }
+
+                self.not_avail(bp);
+                return Ok(bp);
             }
 
+            let bp = match self.find_free_buffer() {
+                Some(bp) => bp,
+                None => {
+                    self.free_list_wanted = true;
+                    // TODO: Sleep(&self.free_list as *const _ as usize, PRIBIO), then retry.
+                    return Err(BufferError::BufferUnavailable);
+                }
+            };
+
             self.not_avail(bp);
+
+            unsafe {
+                if (*bp).b_flags.contains(BufFlag::B_DELWRI) {
+                    (*bp).b_flags.insert(BufFlag::B_ASYNC);
+                    self.bwrite(bp)?;
+                    continue;
+                }
+
+                (*bp).b_flags = BufFlag::B_BUSY;
+                self.remove_from_current_device_queue(bp);
+                (*bp).b_dev = dev.0;
+                (*bp).b_blkno = blkno;
+            }
+
+            self.insert_into_device_queue(dev, bp)?;
+
             return Ok(bp);
         }
-
-        let bp = self
-            .find_reusable_free_buffer()
-            .ok_or(BufferError::BufferUnavailable)?;
-
-        self.not_avail(bp);
-
-        unsafe {
-            (*bp).b_flags = BufFlag::B_BUSY;
-            self.remove_from_current_device_queue(bp);
-            (*bp).b_dev = dev.0;
-            (*bp).b_blkno = blkno;
-        }
-
-        self.insert_into_device_queue(dev, bp)?;
-
-        Ok(bp)
     }
 
     pub fn brelse(&mut self, bp: *mut Buf) {
@@ -113,6 +126,10 @@ impl BufferManager {
             if self.free_list_wanted {
                 self.free_list_wanted = false;
                 // TODO: WakeUpAll(&self.free_list as *const _ as usize).
+            }
+
+            if (*bp).b_flags.contains(BufFlag::B_ERROR) {
+                (*bp).b_dev = set_minor((*bp).b_dev, -1);
             }
 
             (*bp)
@@ -141,7 +158,6 @@ impl BufferManager {
         self.get_error(bp)
     }
 
-    /// TODO
     pub fn io_done(&mut self, bp: *mut Buf) {
         if bp.is_null() {
             return;
@@ -414,6 +430,11 @@ impl BufferManager {
         }
 
         unsafe {
+            if !(*bp).free_link.is_linked() {
+                (*bp).b_flags.insert(BufFlag::B_BUSY);
+                return;
+            }
+
             let mut cursor = self.free_list.cursor_mut_from_ptr(bp as *const Buf);
             cursor.remove();
             (*bp).b_flags.insert(BufFlag::B_BUSY);
@@ -451,22 +472,11 @@ impl BufferManager {
         }
     }
 
-    fn find_reusable_free_buffer(&mut self) -> Option<*mut Buf> {
-        let mut cursor = self.free_list.front();
-
-        while let Some(bp) = cursor.get() {
-            if !bp.b_flags.contains(BufFlag::B_DELWRI) {
-                return cursor
-                    .clone_pointer()
-                    .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf);
-            }
-
-            cursor.move_next();
-        }
-
-        self.free_list_wanted = true;
-        // TODO: Sleep(&self.free_list as *const _ as usize, PRIBIO), then retry get_blk.
-        None
+    fn find_free_buffer(&mut self) -> Option<*mut Buf> {
+        self.free_list
+            .front()
+            .clone_pointer()
+            .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf)
     }
 
     fn find_delayed_write_buffer(&self, dev: Option<DevId>) -> Option<*mut Buf> {
@@ -494,6 +504,10 @@ impl BufferManager {
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
         device.devtab().with_mut(|devtab| unsafe {
+            if (*bp).device_link.is_linked() {
+                return;
+            }
+
             devtab.buffers.push_front(Self::buf_ref(bp));
         });
 
@@ -501,6 +515,10 @@ impl BufferManager {
     }
 
     unsafe fn remove_from_current_device_queue(&self, bp: *mut Buf) {
+        if !(*bp).device_link.is_linked() {
+            return;
+        }
+
         let dev = (*bp).b_dev;
         if dev < 0 {
             return;
