@@ -189,7 +189,7 @@ Inode* FileSystem::IAlloc(short dev)
 	/* 如果SuperBlock空闲Inode表被上锁，则睡眠等待至解锁 */
 	while(sb->s_ilock)
 	{
-		u.u_procp->Sleep((unsigned long)&sb->s_ilock, ProcessManager::PINOD);
+		User_get_procp()->Sleep((unsigned long)&sb->s_ilock, ProcessManager::PINOD);
 	}
 
 	/* 
@@ -349,7 +349,7 @@ Buf* FileSystem::Alloc(short dev)
 	while(sb->s_flock)
 	{
 		/* 进入睡眠直到获得该锁才继续 */
-		u.u_procp->Sleep((unsigned long)&sb->s_flock, ProcessManager::PINOD);
+		User_get_procp()->Sleep((unsigned long)&sb->s_flock, ProcessManager::PINOD);
 	}
 
 	/* 从索引表“栈顶”获取空闲磁盘块编号 */
@@ -430,7 +430,7 @@ void FileSystem::Free(short dev, int blkno)
 	/* 如果空闲磁盘块索引表被上锁，则睡眠等待解锁 */
 	while(sb->s_flock)
 	{
-		u.u_procp->Sleep((unsigned long)&sb->s_flock, ProcessManager::PINOD);
+		User_get_procp()->Sleep((unsigned long)&sb->s_flock, ProcessManager::PINOD);
 	}
 
 	/* 检查释放磁盘块的合法性 */

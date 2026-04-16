@@ -354,7 +354,7 @@ extern "C" void next()
 	int pid = Kernel::Instance().GetProcessManager().NewProc();         /* 0#进程创建1#进程 */
 	if( 0 == pid )     /* 0#进程执行Sched()，成为系统中永远运行在核心态的唯一进程  */
 	{
-		us.u_procp->p_ttyp = NULL;
+		// us.u_procp->p_ttyp = NULL;
 		Kernel::Instance().GetProcessManager().Sched();
 	}
 	else               /* 1#进程执行应用程序shell.exe,是普通进程  */

@@ -129,7 +129,7 @@ void Exception::Exception_Entrance() \
 void Exception::Exception_Handler(struct pt_regs* regs, struct pt_context* context) \
 {	\
 	User& u = Kernel::Instance().GetUser();			\
-	Process* current = u.u_procp;					\
+	Process* current = User_get_procp();					\
 													\
 	if ( (context->xcs & USER_MODE) == USER_MODE )	\
 	{												\
@@ -147,7 +147,7 @@ void Exception::Exception_Handler(struct pt_regs* regs, struct pt_context* conte
 void Exception::Exception_Handler(struct pt_regs* regs, struct pte_context* context) \
 {	\
 	User& u = Kernel::Instance().GetUser();			\
-	Process* current = u.u_procp;					\
+	Process* current = User_get_procp();					\
 													\
 	if ( (context->xcs & USER_MODE) == USER_MODE )	\
 	{												\
@@ -252,7 +252,7 @@ void Exception::PageFault(struct pt_regs* regs, struct pte_context* context)
 {
 
 	User& u = Kernel::Instance().GetUser();
-	Process* current = u.u_procp;
+	Process* current = User_get_procp();
 	MemoryDescriptor& md = User_get_MemoryDescriptor();
 
 	unsigned int cr2;

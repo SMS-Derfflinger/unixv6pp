@@ -146,9 +146,9 @@ void MemoryDescriptor::MapToPageTable()
 
 	PageTable* pUserPageTable = Machine::Instance().GetUserPageTableArray();
 	unsigned int textAddress = 0;
-	if ( u.u_procp->p_textp != NULL )
+	if ( User_get_procp()->p_textp != NULL )
 	{
-		textAddress = u.u_procp->p_textp->x_caddr;
+		textAddress = User_get_procp()->p_textp->x_caddr;
 	}
 
 	for (unsigned int i = 0; i < Machine::USER_PAGE_TABLE_CNT; i++)
@@ -171,7 +171,7 @@ void MemoryDescriptor::MapToPageTable()
 				{
 					pUserPageTable[i].m_Entrys[j].m_Present = 1;
 					pUserPageTable[i].m_Entrys[j].m_ReadWriter = this->m_UserPageTableArray[i].m_Entrys[j].m_ReadWriter;
-					pUserPageTable[i].m_Entrys[j].m_PageBaseAddress = this->m_UserPageTableArray[i].m_Entrys[j].m_PageBaseAddress + (u.u_procp->p_addr >> 12);
+					pUserPageTable[i].m_Entrys[j].m_PageBaseAddress = this->m_UserPageTableArray[i].m_Entrys[j].m_PageBaseAddress + (User_get_procp()->p_addr >> 12);
 				}
 			}
 		}

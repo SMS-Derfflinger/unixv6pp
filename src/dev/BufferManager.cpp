@@ -85,7 +85,7 @@ loop:
 			if(bp->b_flags & Buf::B_BUSY)
 			{
 				bp->b_flags |= Buf::B_WANTED;
-				u.u_procp->Sleep((unsigned long)bp, ProcessManager::PRIBIO);
+				User_get_procp()->Sleep((unsigned long)bp, ProcessManager::PRIBIO);
 				X86Assembly::STI();
 				goto loop;
 			}
@@ -101,7 +101,7 @@ loop:
 	if(this->bFreeList.av_forw == &this->bFreeList)
 	{
 		this->bFreeList.b_flags |= Buf::B_WANTED;
-		u.u_procp->Sleep((unsigned long)&this->bFreeList, ProcessManager::PRIBIO);
+		User_get_procp()->Sleep((unsigned long)&this->bFreeList, ProcessManager::PRIBIO);
 		X86Assembly::STI();
 		goto loop;
 	}
@@ -191,7 +191,7 @@ void BufferManager::IOWait(Buf* bp)
 	X86Assembly::CLI();
 	while( (bp->b_flags & Buf::B_DONE) == 0 )
 	{
-		u.u_procp->Sleep((unsigned long)bp, ProcessManager::PRIBIO);
+		User_get_procp()->Sleep((unsigned long)bp, ProcessManager::PRIBIO);
 	}
 	X86Assembly::STI();
 
@@ -418,7 +418,7 @@ bool BufferManager::Swap(int blkno, unsigned long addr, int count, enum Buf::Buf
 	while ( this->SwBuf.b_flags & Buf::B_BUSY )
 	{
 		this->SwBuf.b_flags |= Buf::B_WANTED;
-		u.u_procp->Sleep((unsigned long)&SwBuf, ProcessManager::PSWP);
+		User_get_procp()->Sleep((unsigned long)&SwBuf, ProcessManager::PSWP);
 	}
 
 	this->SwBuf.b_flags = Buf::B_BUSY | flag;
@@ -434,7 +434,7 @@ bool BufferManager::Swap(int blkno, unsigned long addr, int count, enum Buf::Buf
 	/* 这里Sleep()等同于同步I/O中IOWait()的效果 */
 	while ( (this->SwBuf.b_flags & Buf::B_DONE) == 0 )
 	{
-		u.u_procp->Sleep((unsigned long)&SwBuf, ProcessManager::PSWP);
+		User_get_procp()->Sleep((unsigned long)&SwBuf, ProcessManager::PSWP);
 	}
 
 	/* 这里Wakeup()等同于Brelse()的效果 */

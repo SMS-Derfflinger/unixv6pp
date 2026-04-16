@@ -64,7 +64,7 @@ void Time::Clock( struct pt_regs* regs, struct pt_context* context )
 		User_get_stime()++;
 	}
 
-	Process* current = u.u_procp;
+	Process* current = User_get_procp();
 	/* 计算当前进程占用的CPU时间 */
 	current->p_cpu = Utility::Min(++current->p_cpu, 1024);
 

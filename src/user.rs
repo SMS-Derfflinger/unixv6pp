@@ -8,8 +8,42 @@ use crate::{
 
 pub struct Pointer(usize);
 
+pub struct Text;
+pub struct Terminal;
+
+#[repr(u32)]
+enum ProcessState {
+    SNULL= 0,
+    SSLEEP= 1,
+    SWAIT= 2,
+    SRUN= 3,
+    SIDL= 4,
+    SZOMB= 5,
+    SSTOP= 6,
+}
+
+#[repr(C)]
 pub struct Process {
     uid: u16,
+    pid: u32,
+    ppid: u32,
+
+    addr: usize,
+    size: u32,
+    textp: *mut Text,
+    stat: ProcessState,
+    flag: u32,
+
+    pri: u32,
+    cpu: u32,
+    nice: u32,
+    time: u32,
+
+    wchan: usize,
+
+    sig: u32,
+    tty: *const Terminal,
+    sigmap: usize,
 }
 
 #[repr(C)]
@@ -25,7 +59,7 @@ pub struct Userspace {
     /// Save esp and ebp AGAIN
     ssav: [Pointer; 2],
 
-    proc: &'static mut Process,
+    proc: *mut Process,
     mem: MemoryDescriptor,
 
     ar0: *mut u32,
@@ -98,7 +132,9 @@ impl Userspace {
         if self.euid == uid || self.is_root() {
             self.uid = uid;
             self.euid = uid;
-            self.proc.uid = uid;
+            unsafe {
+                (&mut *self.proc).uid = uid;
+            }
         } else {
             self.error = Some(PosixError::EPERM);
         }
@@ -202,4 +238,5 @@ define_user_compat! {
     cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
     mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
     ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
+    proc: *mut Process => get_procp_ := core::ptr::null_mut();
 }

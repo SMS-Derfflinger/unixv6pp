@@ -3,7 +3,7 @@
 #include "Utility.h"
 
 extern "C" void rust_process_sleep(unsigned long chan, int pri) {
-    Kernel::Instance().GetUser().u_procp->Sleep(chan, pri);
+    User_get_procp()->Sleep(chan, pri);
 }
 
 extern "C" void rust_process_wakeup_all(unsigned long chan) {
@@ -59,8 +59,8 @@ void ConsoleDevice::Open(short dev, int mode) {
         return;
     }
 
-    if (NULL == u.u_procp->p_ttyp) {
-        u.u_procp->p_ttyp = &g_TTy;
+    if (NULL == User_get_procp()->p_ttyp) {
+        User_get_procp()->p_ttyp = &g_TTy;
     }
 
     result = char_device_open(dev, mode);

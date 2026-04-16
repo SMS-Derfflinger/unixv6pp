@@ -640,7 +640,7 @@ void Inode::NFlock()
 	while( this->i_flag & Inode::ILOCK )
 	{
 		this->i_flag |= Inode::IWANT;
-		u.u_procp->Sleep((unsigned long)this, ProcessManager::PRIBIO);
+		User_get_procp()->Sleep((unsigned long)this, ProcessManager::PRIBIO);
 	}
 	this->i_flag |= Inode::ILOCK;
 }
@@ -664,7 +664,7 @@ void Inode::Plock()
 	while( this->i_flag & Inode::ILOCK )
 	{
 		this->i_flag |= Inode::IWANT;
-		u.u_procp->Sleep((unsigned long)this, ProcessManager::PPIPE);
+		User_get_procp()->Sleep((unsigned long)this, ProcessManager::PPIPE);
 	}
 	this->i_flag |= Inode::ILOCK;
 }

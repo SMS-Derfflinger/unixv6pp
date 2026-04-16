@@ -133,7 +133,7 @@ void Process::Expand(unsigned int newSize)
 	UserPageManager& userPgMgr = Kernel::Instance().GetUserPageManager();
 	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
 	User& u = Kernel::Instance().GetUser();
-	Process* pProcess = u.u_procp;
+	Process* pProcess = User_get_procp();
 
 	unsigned int oldSize = pProcess->p_size;
 	p_size = newSize;
@@ -189,9 +189,9 @@ void Process::Exit()
 	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
 	InodeTable& inodeTable = *Kernel::Instance().GetFileManager().m_InodeTable;
 
-	Diagnose::Write("Process %d is exiting\n",u.u_procp->p_pid);
+	Diagnose::Write("Process %d is exiting\n",User_get_procp()->p_pid);
 	/* Reset Tracing flag */
-	u.u_procp->p_flag &= (~Process::STRC);
+	User_get_procp()->p_flag &= (~Process::STRC);
 
 	/* 清除进程的信号处理函数，设置为1表示不对该信号作任何处理 */
 	for ( i = 0; i < User::NSIG; i++ )
@@ -216,10 +216,10 @@ void Process::Exit()
 	inodeTable.IPut(u.u_cdir);
 
 	/* 释放该进程对共享正文段的引用 */
-	if ( u.u_procp->p_textp != NULL )
+	if ( User_get_procp()->p_textp != NULL )
 	{
-		u.u_procp->p_textp->XFree();
-		u.u_procp->p_textp = NULL;
+		User_get_procp()->p_textp->XFree();
+		User_get_procp()->p_textp = NULL;
 	}
 
 	/* 将u区写入交换区，等待父进程做善后处理 */
@@ -237,7 +237,7 @@ void Process::Exit()
 
 	/* 释放内存资源 */
 	User_get_MemoryDescriptor().Release();
-	Process* current = u.u_procp;
+	Process* current = User_get_procp();
 	UserPageManager& userPageMgr = Kernel::Instance().GetUserPageManager();
 	userPageMgr.FreeMemory(current->p_size, current->p_addr);
 	current->p_addr = blkno;
@@ -342,7 +342,7 @@ void Process::SStack()
 	}
 
 	this->Expand(newSize);
-	int dst = u.u_procp->p_addr + newSize;
+	int dst = User_get_procp()->p_addr + newSize;
 	unsigned int count = md.m_StackSize - change;
 	while(count--)
 	{
@@ -382,7 +382,7 @@ void Process::SBreak()
 	/* 数据段缩小 */
 	if ( change < 0 )
 	{
-		int dst = u.u_procp->p_addr + newSize - md.m_StackSize;
+		int dst = User_get_procp()->p_addr + newSize - md.m_StackSize;
 		int count = md.m_StackSize;
 		while(count--)
 		{
@@ -395,7 +395,7 @@ void Process::SBreak()
 	else if ( change > 0 )
 	{
 		this->Expand(newSize);
-		int dst = u.u_procp->p_addr + newSize;
+		int dst = User_get_procp()->p_addr + newSize;
 		int count = md.m_StackSize;
 		while(count--)
 		{
@@ -490,7 +490,7 @@ void Process::PSig(struct pt_context* pContext)
 	serial_write_cstr("signal?");
 
 	/* User_get_signal()[n]为0，则对信号的处理方式是终止本进程 */
-	u.u_procp->Exit();
+	User_get_procp()->Exit();
 }
 
 void Process::Nice()
@@ -527,9 +527,9 @@ void Process::Ssig()
 	User_get_ar0()[User::EAX] = User_get_signal()[signalIndex];
 	User_get_signal()[signalIndex] = func;
 	/* 清当前信号 */
-	if ( u.u_procp->p_sig == signalIndex )
+	if ( User_get_procp()->p_sig == signalIndex )
 	{
-		u.u_procp->p_sig = 0;
+		User_get_procp()->p_sig = 0;
 	}
 }
 

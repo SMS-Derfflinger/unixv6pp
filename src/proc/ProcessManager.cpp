@@ -50,7 +50,7 @@ void ProcessManager::SetupProcessZero()
 	Userspace_init();
 
 	User& u = Kernel::Instance().GetUser();
-	u.u_procp = pProcZero;
+	User_get_procp() = pProcZero;
 	User_get_MemoryDescriptor().m_TextStartAddress = 0;
 	User_get_MemoryDescriptor().m_TextSize = 0;
 	User_get_MemoryDescriptor().m_DataStartAddress = 0;
@@ -86,7 +86,7 @@ int ProcessManager::NewProc()
 	}
 
 	User& u = Kernel::Instance().GetUser();
-	Process* current = (Process*)u.u_procp;
+	Process* current = (Process*)User_get_procp();
 	//Newproc函数被分成两部分，clone仅复制process结构内的数据
 	current->Clone(*child);
 
@@ -108,7 +108,7 @@ int ProcessManager::NewProc()
 	//这样可以在被复制的时候可以直接复制u_procp的
 	//地址，在内存不够时，是无法将u区映射到用户区，
 	//修改u_procp的地址的
-	u.u_procp = child;
+	User_get_procp() = child;
 
 	void* handle = Userspace_before_fork();
 
@@ -140,7 +140,7 @@ int ProcessManager::NewProc()
 
 	Userspace_after_fork(handle);
 
-	u.u_procp = current;
+	User_get_procp() = current;
 	/* 
 	 * 拷贝进程图像期间，父进程的m_UserPageTableArray指向子进程的相对地址映照表；
 	 * 复制完成后才能恢复为先前备份的pgTable。
@@ -204,9 +204,9 @@ int ProcessManager::Swtch()
 	 *
 	 * You are not expected to understand this.
 	 */
-	if ( newu.u_procp->p_flag & Process::SSWAP )
+	if ( User_get_procp()->p_flag & Process::SSWAP )
 	{
-		newu.u_procp->p_flag &= ~Process::SSWAP;
+		User_get_procp()->p_flag &= ~Process::SSWAP;
 		aRetU(newu.u_ssav);
 	}
 	
@@ -232,7 +232,7 @@ void ProcessManager::Sched()
 
 sloop:
 	this->RunIn++;
-	u.u_procp->Sleep((unsigned long)&RunIn, ProcessManager::PSWP);
+	User_get_procp()->Sleep((unsigned long)&RunIn, ProcessManager::PSWP);
 
 loop:
 	X86Assembly::CLI();
@@ -250,7 +250,7 @@ loop:
 	if ( -1 == seconds )
 	{
 		this->RunOut++;
-		u.u_procp->Sleep((unsigned long)&RunOut, ProcessManager::PSWP);
+		User_get_procp()->Sleep((unsigned long)&RunOut, ProcessManager::PSWP);
 		goto loop;
 	}
 
@@ -374,12 +374,12 @@ void ProcessManager::Wait()
 	SwapperManager& swapperMgr = Kernel::Instance().GetSwapperManager();
 	BufferManager& bufMgr = Kernel::Instance().GetBufferManager();
 	
-	Diagnose::Write("Process %d finding dead son. They are ",u.u_procp->p_pid);
+	Diagnose::Write("Process %d finding dead son. They are ",User_get_procp()->p_pid);
 	while(true)
 	{
 		for ( i = 0; i < NPROC; i++ )
 		{
-			if ( u.u_procp->p_pid == process[i].p_ppid )
+			if ( User_get_procp()->p_pid == process[i].p_ppid )
 			{
 				Diagnose::Write("Process %d (Status:%d)  ",process[i].p_pid,process[i].p_stat);
 				hasChild = true;
@@ -422,7 +422,7 @@ void ProcessManager::Wait()
 		{
 			/* 睡眠等待直至子进程结束 */
 			Diagnose::Write("wait until child process Exit! ");
-			u.u_procp->Sleep((unsigned long)u.u_procp, ProcessManager::PWAIT);
+			User_get_procp()->Sleep((unsigned long)User_get_procp(), ProcessManager::PWAIT);
 			Diagnose::Write("end sleep\n");
 			continue;	/* 回到外层while(true)循环 */
 		}
@@ -488,7 +488,7 @@ void ProcessManager::Exec()
 	KernelPageManager& kernelPgMgr = Kernel::Instance().GetKernelPageManager();
 	BufferManager& bufMgr = Kernel::Instance().GetBufferManager();
 
-	Diagnose::Write("Process %d execing\n",u.u_procp->p_pid);
+	Diagnose::Write("Process %d execing\n",User_get_procp()->p_pid);
 	pInode = fileMgr.NameI(FileManager::NextChar, FileManager::OPEN);
 	if ( NULL == pInode )	//搜索目录失败
 	{
@@ -498,7 +498,7 @@ void ProcessManager::Exec()
 	/* 如果同时进行图像改换的进程数超出限制，则先进入睡眠 */
 	while( this->ExeCnt >= NEXEC )
 	{
-		u.u_procp->Sleep((unsigned long)&ExeCnt, ProcessManager::EXPRI);
+		User_get_procp()->Sleep((unsigned long)&ExeCnt, ProcessManager::EXPRI);
 	}
 	this->ExeCnt++;
 
@@ -618,12 +618,12 @@ void ProcessManager::Exec()
 
 
 	/* 释放原进程图像的共享正文段，数据段，堆栈段 */
-	if ( u.u_procp->p_textp != NULL )
+	if ( User_get_procp()->p_textp != NULL )
 	{
-		u.u_procp->p_textp->XFree();
-		u.u_procp->p_textp = NULL;
+		User_get_procp()->p_textp->XFree();
+		User_get_procp()->p_textp = NULL;
 	}
-	u.u_procp->Expand(ProcessManager::USIZE);
+	User_get_procp()->Expand(ProcessManager::USIZE);
 
 	pText = NULL;
 	/* 分配一个空闲Text结构，或者和其它进程共享同一正文段 */
@@ -640,7 +640,7 @@ void ProcessManager::Exec()
 		{
 			this->text[i].x_count++;
 			this->text[i].x_ccount++;
-			u.u_procp->p_textp = &(this->text[i]);
+			User_get_procp()->p_textp = &(this->text[i]);
 			pText = NULL;	/* 与其它进程共享同一正文段，则pText重新清零，否则指向一空闲Text结构 */
 			break;
 		}
@@ -669,17 +669,17 @@ void ProcessManager::Exec()
 		pText->x_caddr = userPgMgr.AllocMemory(pText->x_size);
 		pText->x_daddr = Kernel::Instance().GetSwapperManager().AllocSwap(pText->x_size);
 		/* 建立u区和Text结构的勾连关系 */
-		u.u_procp->p_textp = pText;
+		User_get_procp()->p_textp = pText;
 	}
 	else
 	{
-		pText = u.u_procp->p_textp;
+		pText = User_get_procp()->p_textp;
 		sharedText = true;
 	}
 
 	unsigned int newSize = ProcessManager::USIZE + User_get_MemoryDescriptor().m_DataSize + User_get_MemoryDescriptor().m_StackSize;
 	/* 将进程图像由USIZE扩充为USIZE + dataSize + stackSize */
-	u.u_procp->Expand(newSize);
+	User_get_procp()->Expand(newSize);
 
 	/* 根据正文段、数据段、堆栈段长度建立相对地址映照表，并加载到页表中 */
 	User_get_MemoryDescriptor().EstablishUserPageTable(textAddr, textSize, dataAddr, dataSize, stackSize);
@@ -694,9 +694,9 @@ void ProcessManager::Exec()
 	/* .text段在swap分区上留复本 */
 	if(!sharedText)
 	{
-		u.u_procp->p_flag |= Process::SLOCK;
+		User_get_procp()->p_flag |= Process::SLOCK;
 		bufMgr.Swap(pText->x_daddr, pText->x_caddr, pText->x_size, Buf::B_WRITE);
-		u.u_procp->p_flag &= ~Process::SLOCK;
+		User_get_procp()->p_flag &= ~Process::SLOCK;
 	}
 
 	/* 将fakeStack中备份的用户栈参数复制到新进程图像的用户栈中 */
@@ -807,7 +807,7 @@ void ProcessManager::Kill()
 	for ( int i = 0; i < ProcessManager::NPROC; i++ )
 	{
 		/* 不允许发送信号给进程自身 */
-		if ( u.u_procp == &process[i] )
+		if ( User_get_procp() == &process[i] )
 		{
 			continue;
 		}
@@ -817,7 +817,7 @@ void ProcessManager::Kill()
 			continue;
 		}
 		/* pid为0，则将信号发送至与发送进程同一终端的所有进程，0#进程不包括在内 */
-		if ( pid == 0 && (process[i].p_ttyp != u.u_procp->p_ttyp || i == 0 ) )
+		if ( pid == 0 && (process[i].p_ttyp != User_get_procp()->p_ttyp || i == 0 ) )
 		{
 			continue;
 		}

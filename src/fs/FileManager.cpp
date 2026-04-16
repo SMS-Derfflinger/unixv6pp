@@ -471,7 +471,7 @@ loop:
 
 		/* IREAD标志表示有进程等待读Pipe */
 		pInode->i_mode |= Inode::IREAD;
-		u.u_procp->Sleep((unsigned long)(pInode + 2), ProcessManager::PPIPE);
+		User_get_procp()->Sleep((unsigned long)(pInode + 2), ProcessManager::PPIPE);
 		goto loop;
 	}
 
@@ -505,7 +505,7 @@ loop:
 	{
 		pInode->Prele();
 		u.u_error = User::EPIPE;
-		u.u_procp->PSignal(User::SIGPIPE);
+		User_get_procp()->PSignal(User::SIGPIPE);
 		return;
 	}
 
@@ -514,7 +514,7 @@ loop:
 	{
 		pInode->i_mode |= Inode::IWRITE;
 		pInode->Prele();
-		u.u_procp->Sleep((unsigned long)(pInode + 1), ProcessManager::PPIPE);
+		User_get_procp()->Sleep((unsigned long)(pInode + 1), ProcessManager::PPIPE);
 		goto loop;
 	}
 

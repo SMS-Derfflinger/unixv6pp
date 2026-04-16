@@ -145,9 +145,9 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 	/* reference: User_get_ar0() = &r0 @line 2701 */
 
 	/* 新加进的代码。判断有无接收到信号，如接收到信号则进行响应 */
-	if ( u.u_procp->IsSig() )
+	if ( User_get_procp()->IsSig() )
 	{
-		u.u_procp->PSig(context);
+		User_get_procp()->PSig(context);
 		u.u_error = User::EINTR;
 		regs->eax = -u.u_error;
 		return;
@@ -209,13 +209,13 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 	}
 
 	/* 判断有无接收到信号，如接收到信号则进行响应 */
-	if ( u.u_procp->IsSig() )
+	if ( User_get_procp()->IsSig() )
 	{
-		u.u_procp->PSig(context);
+		User_get_procp()->PSig(context);
 	}
 
 	/* Trap()末尾重算当前进程优先数 */
-	u.u_procp->SetPri();
+	User_get_procp()->SetPri();
 }
 
 void SystemCall::Trap1(int (*func)())
@@ -223,7 +223,7 @@ void SystemCall::Trap1(int (*func)())
 	User& u = Kernel::Instance().GetUser();
 
 	User_get_intflg() = 1;
-/*	int pid = u.u_procp->p_pid;
+/*	int pid = User_get_procp()->p_pid;
 	int text = User_get_MemoryDescriptor().m_TextSize;
 	int data =  User_get_MemoryDescriptor().m_DataSize;*/
 	SaveU(u.u_qsav);
@@ -253,7 +253,7 @@ int SystemCall::Sys_NullSystemCall()
 int SystemCall::Sys_Rexit()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.u_procp->Exit();
+	User_get_procp()->Exit();
 
 	return 0;	/* GCC likes it ! */
 }
@@ -397,7 +397,7 @@ int SystemCall::Sys_ChOwn()
 int SystemCall::Sys_SBreak()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.u_procp->SBreak();
+	User_get_procp()->SBreak();
 
 	return 0;	/* GCC likes it ! */
 }
@@ -424,7 +424,7 @@ int SystemCall::Sys_Seek()
 int SystemCall::Sys_Getpid()
 {
 	User& u = Kernel::Instance().GetUser();
-	User_get_ar0()[User::EAX] = u.u_procp->p_pid;
+	User_get_ar0()[User::EAX] = User_get_procp()->p_pid;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -450,7 +450,7 @@ int SystemCall::Sys_Setuid()
 	if ( User_get_ruid() == uid || u.SUser() )
 	{
 		User_get_uid() = uid;
-		u.u_procp->p_uid = uid;
+		User_get_procp()->p_uid = uid;
 		User_get_ruid() = uid;
 	}
 	else
@@ -588,7 +588,7 @@ int SystemCall::Sys_Gtty()
 int SystemCall::Sys_Nice()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.u_procp->Nice();
+	User_get_procp()->Nice();
 
 	return 0;	/* GCC likes it ! */
 }
@@ -626,7 +626,7 @@ int SystemCall::Sys_Sslep()
 		{
 			Time::tout = wakeTime;
 		}
-		u.u_procp->Sleep((unsigned long)&Time::tout, ProcessManager::PSLEP);
+		User_get_procp()->Sleep((unsigned long)&Time::tout, ProcessManager::PSLEP);
 	}
 
 	X86Assembly::STI();
@@ -745,7 +745,7 @@ int SystemCall::Sys_Getgid()
 int SystemCall::Sys_Ssig()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.u_procp->Ssig();
+	User_get_procp()->Ssig();
 
 	return 0;	/* GCC likes it ! */
 }
