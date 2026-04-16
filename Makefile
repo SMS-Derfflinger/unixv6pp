@@ -95,4 +95,8 @@ tools/compile_commands.json: build-tools
 compile_commands.json: all
 	$(call cmd_compile_commands,src)
 
+PHONY += cargo
+cargo: src
+	$(call cmd,submake,cargo)
+
 include $(abs_srctree)/scripts/Makefile.lib

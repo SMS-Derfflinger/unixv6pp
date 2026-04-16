@@ -22,16 +22,25 @@ rust-target-triplet = i686-none
 
 rust-target-dir = $(rust-output-dir)/$(rust-target-triplet)/$(rust-profile)
 
+quiet_cmd_cargo = "CARGO	$(2)"
+cmd_cargo = cd $(abs_srctree) && CARGO_TARGET_DIR=$(rust-output-dir) cargo +nightly-2026-04-07 $(2)
+
+quiet_cmd_rustc = RUSTC
+cmd_rustc = $(call expand_cmd,cargo,rustc) $(RUSTCFLAGS)
+
+RUSTCFLAGS = \
+	--manifest-path Cargo.toml \
+	--target i686-none.json \
+	-Z build-std=core,compiler_builtins,alloc \
+	-Z build-std-features=compiler-builtins-mem \
+	-Z json-target-spec
+
+ifeq ($(rust-profile),release)
+RUSTCFLAGS += --release
+endif
+
 $(rust-target-dir)/librust_kernel.a: $(rust-preqs)
-	cd $(abs_srctree) && \
-		CARGO_TARGET_DIR=$(rust-output-dir) cargo \
-		+nightly-2026-04-07 rustc \
-		--manifest-path Cargo.toml \
-		--target i686-none.json \
-		-Z build-std=core,compiler_builtins,alloc \
-		-Z build-std-features=compiler-builtins-mem \
-		-Zjson-target-spec \
-		--release
+	$(call cmd,rustc)
 
 PHONY += rust
 rust: $(rust-target-dir)/librust_kernel.a

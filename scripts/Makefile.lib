@@ -8,6 +8,7 @@ log_print = echo "$(cmd_$(1))";
 filter-out-phony = $(filter-out $(PHONY),$(1))
 
 cmd = @$(if $(cmd_$(1)),set -e; $($(quiet)log_print) $(cmd_$(1)),:)
+expand_cmd = $(cmd_$(1))
 
 submake = $(MAKE) --no-print-directory -C $<
 
