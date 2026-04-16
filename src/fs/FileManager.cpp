@@ -145,7 +145,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 	pInode->Prele();
 
 	/* 分配打开文件控制块File结构 */
-	File* pFile = f_alloc(this->m_OpenFileTable, u.u_ofiles.impl);
+	File* pFile = f_alloc(this->m_OpenFileTable);
 	if ( NULL == pFile )
 	{
 		this->m_InodeTable->IPut(pInode);
@@ -169,7 +169,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 		int fd = u.u_ar0[User::EAX];
 		if(fd != -1)
 		{
-			u.u_ofiles.SetF(fd, NULL);
+			OpenFiles_set_file(fd, NULL);
 			/* 递减File结构和Inode的引用计数 ,File结构没有锁 f_count为0就是释放File结构了*/
 			pFile->f_count--;
 		}
@@ -183,14 +183,14 @@ void FileManager::Close()
 	int fd = u.u_arg[0];
 
 	/* 获取打开文件控制块File结构 */
-	File* pFile = u.u_ofiles.GetF(fd);
+	File* pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
 	{
 		return;
 	}
 
 	/* 释放打开文件描述符fd，递减File结构引用计数 */
-	u.u_ofiles.SetF(fd, NULL);
+	OpenFiles_set_file(fd, NULL);
         f_close(this->m_OpenFileTable, pFile);
 }
 
@@ -200,7 +200,7 @@ void FileManager::Seek()
 	User& u = Kernel::Instance().GetUser();
 	int fd = u.u_arg[0];
 
-	pFile = u.u_ofiles.GetF(fd);
+	pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
 	{
 		return;  /* 若FILE不存在，GetF有设出错码 */
@@ -245,19 +245,19 @@ void FileManager::Dup()
 	User& u = Kernel::Instance().GetUser();
 	int fd = u.u_arg[0];
 
-	pFile = u.u_ofiles.GetF(fd);
+	pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
 	{
 		return;
 	}
 
-	int newFd = u.u_ofiles.AllocFreeSlot();
+	int newFd = OpenFiles_alloc_free_slot();
 	if ( newFd < 0 )
 	{
 		return;
 	}
 	/* 至此分配新描述符newFd成功 */
-	u.u_ofiles.SetF(newFd, pFile);
+	OpenFiles_set_file(newFd, pFile);
 	pFile->f_count++;
 }
 
@@ -267,7 +267,7 @@ void FileManager::FStat()
 	User& u = Kernel::Instance().GetUser();
 	int fd = u.u_arg[0];
 
-	pFile = u.u_ofiles.GetF(fd);
+	pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
 	{
 		return;
@@ -324,7 +324,7 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 	User& u = Kernel::Instance().GetUser();
 
 	/* 根据Read()/Write()的系统调用参数fd获取打开文件控制块结构 */
-	pFile = u.u_ofiles.GetF(u.u_arg[0]);	/* fd */
+	pFile = OpenFiles_get_file(u.u_arg[0]); /* fd */
 	if ( NULL == pFile )
 	{
 		/* 不存在该打开文件，GetF已经设置过出错码，所以这里不需要再设置了 */
@@ -398,7 +398,7 @@ void FileManager::Pipe()
 	}
 
 	/* 分配读管道的File结构 */
-	pFileRead = f_alloc(this->m_OpenFileTable, u.u_ofiles.impl);
+	pFileRead = f_alloc(this->m_OpenFileTable);
 	if ( NULL == pFileRead )
 	{
 		this->m_InodeTable->IPut(pInode);
@@ -408,11 +408,11 @@ void FileManager::Pipe()
 	fd[0] = u.u_ar0[User::EAX];
 
 	/* 分配写管道的File结构 */
-	pFileWrite = f_alloc(this->m_OpenFileTable, u.u_ofiles.impl);
+	pFileWrite = f_alloc(this->m_OpenFileTable);
 	if ( NULL == pFileWrite )    /*若分配失败，擦除管道读端相关的所有打开文件结构*/
 	{
 		pFileRead->f_count = 0;
-		u.u_ofiles.SetF(fd[0], NULL);
+		OpenFiles_set_file(fd[0], NULL);
 		this->m_InodeTable->IPut(pInode);
 		return;
 	}

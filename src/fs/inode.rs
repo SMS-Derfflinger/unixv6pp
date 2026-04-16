@@ -133,19 +133,25 @@ fn map_fs_alloc_error<T>(_err: T) -> BmapError {
 }
 
 pub fn inoderef_leak(inode_ref: InodeRef) -> InodeRefCompat {
-    unsafe {
+    let inoderef_compat = unsafe {
         // SAFETY: Leaking the Inode is always safe.
         //         Just make sure we don't leak too much...
         InodeRefCompat::new(&inode_ref)
-    }
+    };
+
+    core::mem::forget(inode_ref);
+    inoderef_compat
 }
 
 pub fn fileref_leak(file_ref: FileRef) -> FileRefCompat {
-    unsafe {
+    let fileref_compat = unsafe {
         // SAFETY: Leaking the Inode is always safe.
         //         Just make sure we don't leak too much...
         FileRefCompat::new(&file_ref.lock())
-    }
+    };
+
+    core::mem::forget(file_ref);
+    fileref_compat
 }
 
 #[allow(unused)]

@@ -1,11 +1,11 @@
 use alloc::{boxed::Box, sync::Arc};
 use bitflags::bitflags;
-use core::{array, ops::Deref, ptr::NonNull};
+use core::{array, ops::Deref, ptr::NonNull, sync::atomic::{AtomicPtr, Ordering}};
 use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak, open_file_manager::seterr}, println_fatal, sync::SpinExt
+    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak, open_file_manager::{set_user_retval, seterr}}, println_fatal, sync::SpinExt, user::Userspace
 };
 
 use super::inode::Inode;
@@ -125,7 +125,7 @@ impl File {
 
 #[derive(Clone)]
 pub struct OpenFiles {
-    table: [Option<FileRef>; OpenFiles::NOFILES],
+    table: [Option<FileRef>; 15],
 }
 
 impl OpenFiles {
@@ -159,48 +159,43 @@ impl OpenFiles {
             return Err(PosixError::EBADF);
         }
 
+        crate::println_info!("Get({})", fd);
         self.table[fd].clone().ok_or(PosixError::EBADF)
     }
 
     pub fn set_f(&mut self, fd: usize, file: FileRef) {
         if fd < Self::NOFILES {
+            crate::println_info!("Set({})", fd);
             self.table[fd] = Some(file);
         }
     }
 
     pub fn clear_f(&mut self, fd: usize) {
         if fd < Self::NOFILES {
+            crate::println_info!("Close({})", fd);
             self.table[fd] = None;
         }
     }
 }
 
 define_class_compat! {impl OpenFiles {
-    pub fn new() -> *mut OpenFiles {
-        Box::into_raw(Box::new(OpenFiles::new()))
-    }
-
-    pub fn free(&mut self) {
-        unsafe {
-            Box::from_raw(this);
-        }
-    }
-
-    pub fn clone(&self) -> *const OpenFiles {
-        Box::into_raw(Box::new(this.clone()))
-    }
-
-    pub fn alloc_free_slot(&mut self) -> i32 {
-        match this.alloc_free_slot() {
+    pub fn alloc_free_slot() -> i32 {
+        let this = &mut Userspace::get().open_files;
+        let retval = match this.alloc_free_slot() {
             Ok(fd) => fd as i32,
             Err(err) => {
                 seterr(err);
                 -1
             }
-        }
+        };
+
+        set_user_retval(retval as _);
+        retval
     }
 
-    pub fn get_file(&self, fd: i32) -> Option<FileRefCompat> {
+    pub fn get_file(fd: i32) -> Option<FileRefCompat> {
+        let this = &Userspace::get().open_files;
+
         if fd < 0 {
             seterr(PosixError::EBADF);
             return None;
@@ -210,7 +205,9 @@ define_class_compat! {impl OpenFiles {
             .inspect_err(|&err| seterr(err)).ok().map(fileref_leak)
     }
 
-    pub fn set_file(&mut self, fd: i32, file: Option<FileRefCompat>) {
+    pub fn set_file(fd: i32, file: Option<FileRefCompat>) {
+        let this = &mut Userspace::get().open_files;
+
         if fd < 0 {
             return;
         }
@@ -238,3 +235,6 @@ impl IOParameter {
         }
     }
 }
+
+define_class_compat! {impl User {
+}}

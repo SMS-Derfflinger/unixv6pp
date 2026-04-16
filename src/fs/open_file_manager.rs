@@ -14,6 +14,7 @@ use crate::{
     println_warn,
     proc::wakeup_all,
     sync::SpinExt,
+    user::Userspace,
 };
 
 extern "C" {
@@ -35,7 +36,8 @@ pub fn set_user_retval(retval: u32) {
 }
 
 define_class_compat! {impl OpenFileTable {
-    pub fn f_alloc(&mut self, open_files: &mut OpenFiles) -> Option<FileRefCompat> {
+    pub fn f_alloc(&mut self) -> Option<FileRefCompat> {
+        let open_files = &mut Userspace::get().open_files;
         match this.f_alloc(open_files) {
             Ok((fd, fileref)) => {
                 set_user_retval(fd as u32);

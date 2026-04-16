@@ -31,6 +31,8 @@ void ProcessManager::Initialize()
 	//nothing to do here
 }
 
+extern "C" void Userspace_init();
+
 void ProcessManager::SetupProcessZero()
 {
 	//初始化Process#0的Process和User结构
@@ -45,7 +47,7 @@ void ProcessManager::SetupProcessZero()
 	pProcZero->p_addr = PROCESS_ZERO_PPDA_ADDRESS;
 	pProcZero->p_textp = NULL;
 
-	User* ua = new ((User*)Kernel::USER_ADDRESS) User();
+	Userspace_init();
 
 	User& u = Kernel::Instance().GetUser();
 	u.u_procp = pProcZero;
@@ -62,6 +64,9 @@ unsigned int ProcessManager::NextUniquePid()
 {
 	return ProcessManager::m_NextUniquePid++;
 }
+
+extern "C" void* Userspace_before_fork();
+extern "C" void Userspace_after_fork(void*);
 
 int ProcessManager::NewProc()
 {
@@ -105,11 +110,7 @@ int ProcessManager::NewProc()
 	//修改u_procp的地址的
 	u.u_procp = child;
 
-	// Save the old
-	OpenFiles old_files = move(u.u_ofiles);
-
-	// Clone the old
-	u.u_ofiles = OpenFiles(old_files);
+	void* handle = Userspace_before_fork();
 
 	UserPageManager& userPageManager = Kernel::Instance().GetUserPageManager();
 
@@ -137,9 +138,8 @@ int ProcessManager::NewProc()
 		}
 	}
 
-	// Forget the new one.
-	u.u_ofiles.impl = nullptr;
-	u.u_ofiles = move(old_files);
+	Userspace_after_fork(handle);
+
 	u.u_procp = current;
 	/* 
 	 * 拷贝进程图像期间，父进程的m_UserPageTableArray指向子进程的相对地址映照表；

@@ -1,3 +1,6 @@
+use alloc::boxed::Box;
+use kernel_macros::define_class_compat;
+
 use crate::{
     constants::{PosixError, SIGMAX},
     fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
@@ -9,7 +12,11 @@ pub struct Process {
     uid: u16,
 }
 
-pub struct MemoryDescriptor {}
+#[repr(C)]
+pub struct MemoryDescriptor {
+    /// Opaque for now...
+    data: [usize; 6],
+}
 
 pub struct Userspace {
     /// Save esp and ebp
@@ -20,8 +27,12 @@ pub struct Userspace {
     proc: &'static mut Process,
     mem: MemoryDescriptor,
 
+    ar0: &'static mut u32,
+
     /// Used by syscall handlers
     args: [usize; 5],
+
+    dirp: &'static mut u8,
 
     /// User time elapsed
     utime: u32,
@@ -34,12 +45,13 @@ pub struct Userspace {
     children_stime: u32,
 
     /// Pending signals
-    signals: [usize; SIGMAX],
-    /// Do we have pending signals?
-    signal_pending: bool,
+    signals: [usize; 32],
 
     /// Used to jump back to Trap() on signal received
     qsav: [Pointer; 2],
+
+    /// Do we have pending signals?
+    signal_pending: bool,
 
     /// Inode of our working directory
     cwd: InodeRef,
@@ -47,12 +59,12 @@ pub struct Userspace {
     cwd_parent: InodeRef,
 
     /// Dentry of our pwd
-    dentry: &'static DirectoryEntry,
+    dentry: DirectoryEntry,
 
     /// Last component of pwd
     cwd_name: [u8; 28],
     /// Full path of pwd
-    cwd_full: [u8; 28],
+    cwd_full: [u8; 128],
 
     /// Userspace error code
     error: Option<PosixError>,
@@ -64,11 +76,16 @@ pub struct Userspace {
     euid: u16,
     egid: u16,
 
-    open_files: OpenFiles,
+    pub open_files: OpenFiles,
     ioparam: IOParameter,
 }
 
 impl Userspace {
+    pub fn get() -> &'static mut Self {
+        const RUST_USER_ADDRESS: usize = 0x3ff800;
+        unsafe { &mut *(RUST_USER_ADDRESS as *mut Self) }
+    }
+
     fn is_root(&mut self) -> bool {
         if self.uid == 0 {
             return true;
@@ -105,7 +122,42 @@ impl Userspace {
         ((self.gid as u32) << 16) | ((self.egid as u32) & 0xff)
     }
 
-    fn getpwd(&self) -> [u8; 28] {
+    fn getpwd(&self) -> [u8; 128] {
         self.cwd_full.clone()
     }
 }
+
+struct SaveHandle {
+    open_files: OpenFiles,
+}
+
+define_class_compat! {impl Userspace {
+    pub fn before_fork() -> Box<SaveHandle> {
+        let user = Userspace::get();
+
+        crate::println_info!("Userspace::before_fork()");
+
+        Box::new(SaveHandle {
+            open_files: user.open_files.clone(),
+        })
+    }
+
+    pub fn after_fork(handle: Box<SaveHandle>) {
+        let user = Userspace::get();
+
+        crate::println_info!("Userspace::after_fork()");
+
+        user.open_files = handle.open_files;
+    }
+
+    pub fn init() {
+        let user = Userspace::get();
+        let open_files_ptr = &raw mut user.open_files;
+
+        crate::println_info!("Userspace::init()");
+
+        unsafe {
+            open_files_ptr.write(OpenFiles::new());
+        }
+    }
+}}

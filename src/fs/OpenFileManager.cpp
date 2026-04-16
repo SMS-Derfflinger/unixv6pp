@@ -5,7 +5,7 @@
 #include "fs_defines.h"
 
 /*==============================class OpenFileTable===================================*/
-extern "C" File* OpenFileTable_f_alloc(struct open_file_table*, struct open_files*);
+extern "C" File* OpenFileTable_f_alloc(struct open_file_table*);
 extern "C" void OpenFileTable_f_close(struct open_file_table*, File*);
 extern "C" void _seterr(User::ErrorCode errno) {
         Kernel::Instance().GetUser().u_error = errno;
@@ -19,9 +19,9 @@ User::ErrorCode errno() {
         return Kernel::Instance().GetUser().u_error;
 }
 
-File* f_alloc(struct open_file_table* oft, struct open_files* ofiles) {
+File* f_alloc(struct open_file_table* oft) {
 	User& u = Kernel::Instance().GetUser();
-        File* retval = OpenFileTable_f_alloc(oft, u.u_ofiles.impl);
+        File* retval = OpenFileTable_f_alloc(oft);
 
         if (!retval || errno()) {
                 Diagnose::Write("No Free File Struct\n");

@@ -34,8 +34,9 @@ public:
 	int		f_offset;			/* 文件读写位置指针 */
 };
 
-struct open_files;
-extern "C" struct open_files* OpenFiles_clone(struct open_files const*);
+extern "C" int OpenFiles_alloc_free_slot();
+extern "C" File* OpenFiles_get_file(int fd);
+extern "C" void OpenFiles_set_file(int fd, File*);
 
 template <typename T>
 struct remove_reference { using type = T; };
@@ -76,47 +77,6 @@ class OpenFiles
 	/* static members */
 public:
 	static constexpr int NOFILES = 15;	/* 进程允许打开的最大文件数 */
-
-public:
-	OpenFiles();
-
-	constexpr OpenFiles(const OpenFiles& other) noexcept
-		: impl(OpenFiles_clone(other.impl)) {  }
-
-	constexpr OpenFiles(OpenFiles&& other) noexcept
-		: impl(exchange(other.impl, nullptr)) { }
-
-	OpenFiles& operator=(const OpenFiles& other) noexcept {
-		exchange(*this, OpenFiles(other));
-		return *this;
-	}
-
-	OpenFiles& operator=(OpenFiles&& other) noexcept {
-		this->impl = exchange(other.impl, nullptr);
-		return *this;
-	}
-
-	~OpenFiles();
-
-	/* Functions */
-public:
-	/*
-	 * @comment 进程请求打开文件时，在打开文件描述符表中分配一个空闲表项
-	 */
-	int AllocFreeSlot();
-
-	/*
-	 * @comment 根据用户系统调用提供的文件描述符参数fd，
-	 * 找到对应的打开文件控制块File结构
-	 */
-	File* GetF(int fd);
-	/*
-	 * @comment 为已分配到的空闲描述符fd和已分配的打开文件表中
-	 * 空闲File对象建立勾连关系
-	 */
-	void SetF(int fd, File* pFile);
-
-	open_files* impl;
 };
 
 /*

@@ -626,9 +626,10 @@ impl FileManager {
     }
 }
 
+#[repr(C)]
 pub struct DirectoryEntry {
     pub m_ino: i32,
-    pub m_name: [u8; Self::DIRSIZ],
+    pub m_name: [u8; 28],
 }
 
 #[derive(Debug, Clone)]
@@ -657,6 +658,8 @@ impl From<&Inode> for FileStat {
         }
     }
 }
+
+pub const DIRSIZ: usize = 28;
 
 impl DirectoryEntry {
     pub const DIRSIZ: usize = 28;

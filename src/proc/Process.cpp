@@ -203,10 +203,10 @@ void Process::Exit()
 	for ( i = 0; i < OpenFiles::NOFILES; i++ )
 	{
 		File* pFile = NULL;
-		if ( (pFile = u.u_ofiles.GetF(i)) != NULL )
+		if ( (pFile = OpenFiles_get_file(i)) != NULL )
 		{
                         f_close(Kernel::Instance().GetFileManager().m_OpenFileTable, pFile);
-			u.u_ofiles.SetF(i, NULL);
+			OpenFiles_set_file(i, NULL);
 		}
 	}
 	/*  访问不存在的fd会产生error code，清除u.u_error避免影响后续程序执行流程 */
@@ -302,7 +302,7 @@ void Process::Clone(Process& proc)
 	for ( int i = 0; i < OpenFiles::NOFILES; i++ )
 	{
 		File* pFile;
-		if ( (pFile = u.u_ofiles.GetF(i)) != NULL )
+		if ( (pFile = OpenFiles_get_file(i)) != NULL )
 		{
 			pFile->f_count++;
 		}

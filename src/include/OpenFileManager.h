@@ -14,7 +14,7 @@ extern InodeTable g_InodeTable;
 
 struct open_file_table;
 
-File* f_alloc(struct open_file_table* oft, struct open_files* ofiles);
+File* f_alloc(struct open_file_table* oft);
 void f_close(struct open_file_table* oft, File* file);
 
 /*

@@ -528,7 +528,7 @@ int SystemCall::Sys_Stty()
 	int fd = u.u_arg[0];
 	TTy* pTTy = (TTy *)u.u_arg[1];
 
-	if ( (pFile = u.u_ofiles.GetF(fd)) == NULL )
+	if ( (pFile = OpenFiles_get_file(fd)) == NULL )
 	{
 		return 0;
 	}
@@ -553,7 +553,7 @@ int SystemCall::Sys_Gtty()
 	int fd = u.u_arg[0];
 	TTy* pTTy = (TTy *)u.u_arg[1];
 
-	if ( (pFile = u.u_ofiles.GetF(fd)) == NULL )
+	if ( (pFile = OpenFiles_get_file(fd)) == NULL )
 	{
 		return 0;
 	}
