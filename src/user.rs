@@ -68,8 +68,6 @@ pub struct Userspace {
 
     /// Userspace error code
     error: Option<PosixError>,
-    /// Is I/O in user space or kernel space
-    seg_flag: u32,
 
     uid: u16,
     gid: u16,

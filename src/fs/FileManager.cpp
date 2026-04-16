@@ -342,7 +342,6 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 
 	User_get_IOParam().m_Base = (unsigned char *)u.u_arg[1];	/* 目标缓冲区首址 */
 	User_get_IOParam().m_Count = u.u_arg[2];		/* 要求读/写的字节数 */
-	u.u_segflg = 0;		/* User Space I/O，读入的内容要送数据段或用户栈段 */
 
 	/* 管道读写 */
 	if(pFile->f_flag & File::FPIPE)
@@ -824,7 +823,6 @@ void FileManager::WriteDir( Inode* pInode )
 
 	User_get_IOParam().m_Count = DirectoryEntry::DIRSIZ + 4;
 	User_get_IOParam().m_Base = (unsigned char *)&u.u_dent;
-	u.u_segflg = 1;
 
 	/* 将目录项写入父目录文件 */
 	u.u_pdir->WriteI();

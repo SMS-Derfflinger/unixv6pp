@@ -136,7 +136,6 @@ public:
 	char u_curdir[128];						/* 当前工作目录完整路径 */
 
 	ErrorCode u_error;			/* 存放错误码 */
-	int u_segflg;				/* 表明I/O针对用户或系统空间 */
 
 	/* 进程的用户标识 */
 	short u_uid;		/* 有效用户ID */
