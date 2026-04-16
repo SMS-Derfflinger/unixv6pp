@@ -129,31 +129,13 @@ public:
 
 	ErrorCode u_error;			/* 存放错误码 */
 
-	/* 进程的用户标识 */
-	short u_uid;		/* 有效用户ID */
-	short u_gid;		/* 有效组ID */
-	short u_ruid;		/* 真实用户ID */
-	short u_rgid;		/* 真实组ID */
-
 	/* Member Functions */
 public:
-	/* 根据系统调用参数uid设置有效用户ID，真实用户ID，进程用户ID(p_uid) */
-	void Setuid();
-
-	/* 获取用户ID，低16比特为真实用户ID(u_ruid)，高16比特为有效用户ID(u_uid) */
-	void Getuid();
-
-	/* 根据系统调用参数gid设置有效组ID，真实组ID */
-	void Setgid();
-
-	/* 获取组ID, 低16比特为真实组ID(u_rgid)，高16比特为有效组ID(u_gid) */
-	void Getgid();
-
 	/* 获取当前用户工作目录 */
 	void Pwd();
 
 	/* 检查当前用户是否是超级用户 */
-	bool SUser();
+	inline bool SUser() { return true; }
 };
 
 extern "C" unsigned long (*User_get_rsav_())[2];

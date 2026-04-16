@@ -182,4 +182,8 @@ define_user_compat! {
     stime: u32 => get_stime_ := 0;
     children_utime: u32 => get_cutime_ := 0;
     children_stime: u32 => get_cstime_ := 0;
+    uid: u16 => get_uid_ := 0;
+    euid: u16 => get_ruid_ := 0;
+    gid: u16 => get_gid_ := 0;
+    egid: u16 => get_rgid_ := 0;
 }

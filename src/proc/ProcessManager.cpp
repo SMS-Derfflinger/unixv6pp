@@ -822,7 +822,7 @@ void ProcessManager::Kill()
 			continue;
 		}
 		/* 除非是超级用户，否则要求发送、接收进程u.uid相同，即不可给其它用户进程发送信号 */
-		if ( u.u_uid != 0 && u.u_uid != process[i].p_uid )
+		if ( User_get_uid() != 0 && User_get_uid() != process[i].p_uid )
 		{
 			continue;
 		}

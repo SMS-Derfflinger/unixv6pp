@@ -801,8 +801,8 @@ Inode* FileManager::MakNode( unsigned int mode )
 	pInode->i_flag |= (Inode::IACC | Inode::IUPD);
 	pInode->i_mode = mode | Inode::IALLOC;
 	pInode->i_nlink = 1;
-	pInode->i_uid = u.u_uid;
-	pInode->i_gid = u.u_gid;
+	pInode->i_uid = User_get_uid();
+	pInode->i_gid = User_get_gid();
 	/* 将目录项写入u.u_dent，随后写入目录文件 */
 	this->WriteDir(pInode);
 	return pInode;
@@ -870,7 +870,7 @@ int FileManager::Access( Inode* pInode, unsigned int mode )
 	 * 对于超级用户，读写任何文件都是允许的
 	 * 而要执行某文件时，必须在i_mode有可执行标志
 	 */
-	if ( u.u_uid == 0 )
+	if ( User_get_uid() == 0 )
 	{
 		if ( Inode::IEXEC == mode && ( pInode->i_mode & (Inode::IEXEC | (Inode::IEXEC >> 3) | (Inode::IEXEC >> 6)) ) == 0 )
 		{
@@ -879,10 +879,10 @@ int FileManager::Access( Inode* pInode, unsigned int mode )
 		}
 		return 0;	/* Permission Check Succeed! */
 	}
-	if ( u.u_uid != pInode->i_uid )
+	if ( User_get_uid() != pInode->i_uid )
 	{
 		mode = mode >> 3;
-		if ( u.u_gid != pInode->i_gid )
+		if ( User_get_gid() != pInode->i_gid )
 		{
 			mode = mode >> 3;
 		}
@@ -906,7 +906,7 @@ Inode* FileManager::Owner()
 		return NULL;
 	}
 
-	if ( u.u_uid == pInode->i_uid || u.SUser() )
+	if ( User_get_uid() == pInode->i_uid || u.SUser() )
 	{
 		return pInode;
 	}

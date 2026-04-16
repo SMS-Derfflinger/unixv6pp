@@ -445,7 +445,18 @@ int SystemCall::Sys_Sumount()
 int SystemCall::Sys_Setuid()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.Setuid();
+	short uid = u.u_arg[0];
+
+	if ( User_get_ruid() == uid || u.SUser() )
+	{
+		User_get_uid() = uid;
+		u.u_procp->p_uid = uid;
+		User_get_ruid() = uid;
+	}
+	else
+	{
+		u.u_error = User::EPERM;
+	}
 
 	return 0;	/* GCC likes it ! */
 }
@@ -454,7 +465,11 @@ int SystemCall::Sys_Setuid()
 int SystemCall::Sys_Getuid()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.Getuid();
+        unsigned int uid;
+
+	uid = (User_get_uid() << 16);
+	uid |= (User_get_ruid() & 0xFF);
+	u.u_ar0[User::EAX] = uid;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -698,7 +713,17 @@ int SystemCall::Sys_Profil()
 int SystemCall::Sys_Setgid()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.Setgid();
+	short gid = u.u_arg[0];
+
+	if ( User_get_rgid() == gid || u.SUser() )
+	{
+		User_get_gid() = gid;
+		User_get_rgid() = gid;
+	}
+	else
+	{
+		u.u_error = User::EPERM;
+	}
 
 	return 0;	/* GCC likes it ! */
 }
@@ -707,7 +732,11 @@ int SystemCall::Sys_Setgid()
 int SystemCall::Sys_Getgid()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.Getgid();
+	unsigned int gid;
+
+	gid = (User_get_gid() << 16);
+	gid |= (User_get_rgid() & 0xFF);
+	u.u_ar0[User::EAX] = gid;
 
 	return 0;	/* GCC likes it ! */
 }
