@@ -775,8 +775,8 @@ char FileManager::NextChar()
 {
 	User& u = Kernel::Instance().GetUser();
 
-	/* u.u_dirp指向pathname中的字符 */
-	return *u.u_dirp++;
+	/* User_get_dirp()指向pathname中的字符 */
+	return *User_get_dirp()++;
 }
 
 /* 由creat调用。
@@ -833,20 +833,20 @@ void FileManager::SetCurDir(char* pathname)
 {
 	User& u = Kernel::Instance().GetUser();
 
-	/* 路径不是从根目录'/'开始，则在现有u.u_curdir后面加上当前路径分量 */
+	/* 路径不是从根目录'/'开始，则在现有User_get_curdir()后面加上当前路径分量 */
 	if ( pathname[0] != '/' )
 	{
-		int length = strlen(u.u_curdir);
-		if ( u.u_curdir[length - 1] != '/' )
+		int length = strlen(User_get_curdir());
+		if ( User_get_curdir()[length - 1] != '/' )
 		{
-			u.u_curdir[length] = '/';
+			User_get_curdir()[length] = '/';
 			length++;
 		}
-		strcpy(u.u_curdir + length, pathname);
+		strcpy(User_get_curdir() + length, pathname);
 	}
 	else	/* 如果是从根目录'/'开始，则取代原有工作目录 */
 	{
-		strcpy(u.u_curdir, pathname);
+		strcpy(User_get_curdir(), pathname);
 	}
 }
 
@@ -1014,7 +1014,7 @@ void FileManager::Link()
 	/* 解锁现存文件Inode,以避免在以下搜索新文件时产生死锁 */
 	pInode->i_flag &= (~Inode::ILOCK);
 	/* 指向要创建的新路径newPathname */
-	u.u_dirp = (char *)User_get_arg()[1];
+	User_get_dirp() = (char *)User_get_arg()[1];
 	pNewInode = this->NameI(FileManager::NextChar, FileManager::CREATE);
 	/* 如果文件已存在 */
 	if ( NULL != pNewInode )

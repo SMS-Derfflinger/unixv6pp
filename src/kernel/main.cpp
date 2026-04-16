@@ -320,7 +320,6 @@ extern "C" void next()
 	us.u_cdir = g_InodeTable.IGet(DeviceManager::ROOTDEV, 1);
 	//us.u_cdir = g_InodeTable.IGet(DeviceManager::ROOTDEV, FileSystem::ROOTINO);
 	us.u_cdir->i_flag &= (~Inode::ILOCK);
-	strcpy(us.u_curdir, "/");
 
 	/* 打开TTy设备 */
 	int fd_tty = lib_open("/dev/tty1", File::FREAD);

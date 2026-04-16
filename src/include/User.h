@@ -6,6 +6,7 @@
 #include "File.h"
 #include "INode.h"
 #include "FileManager.h"
+#include "libyrosstd/string.h"
 
 /*
  * @comment 该类与Unixv6中 struct user结构对应，因此只改变
@@ -113,7 +114,6 @@ public:
 								在V6中r0存放系统调用的返回值给用户程序，
 								x86平台上使用EAX存放返回值，替代u.u_ar0[R0] */
 
-	char* u_dirp;				/* 系统调用参数(一般用于Pathname)的指针 */
 
 	/* 信号处理相关成员 */
 	unsigned long u_qsav[2];		/* 用于接收到信号时直接从Sleep()函数跳回至Trap() */
@@ -124,15 +124,11 @@ public:
 
 	DirectoryEntry u_dent;					/* 当前目录的目录项 */
 	char u_dbuf[DirectoryEntry::DIRSIZ];	/* 当前路径分量 */
-	char u_curdir[128];						/* 当前工作目录完整路径 */
 
 	ErrorCode u_error;			/* 存放错误码 */
 
 	/* Member Functions */
 public:
-	/* 获取当前用户工作目录 */
-	void Pwd();
-
 	/* 检查当前用户是否是超级用户 */
 	inline bool SUser() { return true; }
 };

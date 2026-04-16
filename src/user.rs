@@ -32,7 +32,7 @@ pub struct Userspace {
     /// Used by syscall handlers
     args: [usize; 5],
 
-    dirp: &'static mut u8,
+    dirp: *mut u8,
 
     /// User time elapsed
     utime: u32,
@@ -187,4 +187,8 @@ define_user_compat! {
     gid: u16 => get_gid_ := 0;
     egid: u16 => get_rgid_ := 0;
     args: [usize; 5] => get_arg_ := [0; 5];
+    dirp: *mut u8 => get_dirp_ := core::ptr::null_mut();
+    cwd_full: [u8; 128] => get_curdir_ := {
+        let mut arr = [0; 128]; arr[0] = b'/'; arr
+    };
 }

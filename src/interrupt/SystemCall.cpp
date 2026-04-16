@@ -175,8 +175,8 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 		User_get_arg()[i] = (int)(*syscall_arg++);
 	}
 
-	/* u.u_dirp一般用于指向系统调用的pathname参数 */
-	u.u_dirp = (char *)User_get_arg()[0];
+	/* User_get_dirp()一般用于指向系统调用的pathname参数 */
+	User_get_dirp() = (char *)User_get_arg()[0];
 
 	/* 
 	 * context指向核心栈上硬件保护现场部分，这样处理是因为Exec()系统调用
@@ -665,7 +665,7 @@ int SystemCall::Sys_Getswit()
 int SystemCall::Sys_Pwd()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.Pwd();
+	strcpy(User_get_dirp(), User_get_curdir());
 
 	return 0;	/* GCC likes it ! */
 }
