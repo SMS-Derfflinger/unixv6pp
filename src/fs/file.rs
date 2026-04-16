@@ -46,6 +46,10 @@ impl InodeRefCompat {
 
         ret
     }
+
+    pub unsafe fn deref_compat(&mut self) -> &mut Inode {
+        unsafe { self.0.as_mut() }
+    }
 }
 
 impl Deref for InodeRefCompat {

@@ -834,6 +834,10 @@ void ProcessManager::Kill()
 	}
 }
 
+extern "C" void _wakeup_all(unsigned long chan) {
+	Kernel::Instance().GetProcessManager().WakeUpAll(chan);
+}
+
 void ProcessManager::WakeUpAll(unsigned long chan)
 {
 	/* 唤醒系统中所有因chan而进入睡眠的进程 */

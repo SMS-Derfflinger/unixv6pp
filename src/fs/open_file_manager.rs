@@ -12,13 +12,13 @@ use crate::{
         FileRef, InodeRef,
     },
     println_warn,
+    proc::wakeup_all,
     sync::SpinExt,
 };
 
 extern "C" {
     fn _seterr(errno: PosixError);
     fn _set_user_retval(retval: u32);
-    fn f_close_bottom1(file: FileRefCompat);
     fn f_close_bottom2(file: FileRefCompat);
 }
 
@@ -102,21 +102,23 @@ impl OpenFileTable {
         Ok((fd, free_file.clone()))
     }
 
+    fn close_pipe(&mut self, file: &mut File) {
+        // let Some(inode) = file.f_inode else { return };
+
+        // let mut inode = inode.lock();
+        let mut inoderef = file.f_inode.expect("Pipe without inodes");
+        let inode = unsafe { inoderef.deref_compat() };
+
+        inode.i_mode &= !(INodeMode::IREAD | INodeMode::IWRITE);
+        wakeup_all(inode.channel_read());
+        wakeup_all(inode.channel_write());
+    }
+
     pub fn close_f(&mut self, fileref: &FileRef) {
         let mut file = fileref.lock();
 
         if file.f_flag.contains(FileFlags::FPIPE) {
-            unsafe {
-                f_close_bottom1(FileRefCompat::new(&file));
-            }
-            // if let Some(inode) = file.f_inode.as_ref() {
-            //     let mut inode = inode.lock();
-            //     inode.i_mode &= !(INodeMode::IREAD | INodeMode::IWRITE);
-            //     // TODO: wake up
-            //     // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 1);
-            //     // proc_mgr.wake_up_all((&*inode as *const Inode as usize) + 2);
-            //     println_warn!("TODO: wakeup pipe other ends");
-            // }
+            self.close_pipe(&mut file);
         }
 
         // if file.f_count <= 1 {

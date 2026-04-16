@@ -7,6 +7,7 @@ mod fs;
 mod dev;
 mod mm;
 mod print;
+pub mod proc;
 mod serial;
 mod tty;
 mod vesa;

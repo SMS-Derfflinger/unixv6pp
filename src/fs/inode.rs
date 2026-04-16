@@ -5,12 +5,8 @@ use crate::{
         char_device::char_device_for_dev,
     },
     fs::{
-        self,
-        file::{FileRefCompat, InodeRefCompat},
-        file_system::FileSystem,
-        FileRef, InodeRef,
-    },
-    sync::SpinExt,
+        self, FileRef, InodeRef, file::{FileRefCompat, InodeRefCompat}, file_system::FileSystem
+    }, proc::Channel, sync::SpinExt
 };
 use alloc::sync::Arc;
 use bitflags::bitflags;
@@ -581,6 +577,22 @@ impl Inode {
         self.i_gid = d_inode.d_gid;
         self.i_size = d_inode.d_size;
         self.i_addr = d_inode.d_addr;
+    }
+
+    pub fn channel_read(&self) -> impl Channel + use<'_> {
+        let ptr = self as *const Self;
+
+        unsafe {
+            &*ptr.add(2)
+        }
+    }
+
+    pub fn channel_write(&self) -> impl Channel + use<'_> {
+        let ptr = self as *const Self;
+
+        unsafe {
+            &*ptr.add(1)
+        }
     }
 }
 

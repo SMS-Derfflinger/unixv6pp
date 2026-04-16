@@ -35,17 +35,6 @@ void f_close(struct open_file_table* oft, File* file) {
         OpenFileTable_f_close(oft, file);
 }
 
-extern "C" void f_close_bottom1(File* pFile) {
-	Inode* pNode = pFile->f_inode;
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	if (!pNode)
-		return;
-
-	pNode->i_mode &= ~(Inode::IREAD | Inode::IWRITE);
-	procMgr.WakeUpAll((unsigned long)(pNode + 1));
-	procMgr.WakeUpAll((unsigned long)(pNode + 2));
-}
-
 extern "C" void f_close_bottom2(File* pFile) {
 	if (!pFile->f_inode)
 		return;
