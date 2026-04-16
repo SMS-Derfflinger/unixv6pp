@@ -1,5 +1,6 @@
 use alloc::slice;
 use bitflags::bitflags;
+use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink, UnsafeRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DevId(pub i16);
@@ -25,13 +26,11 @@ bitflags! {
 }
 
 pub struct Buf {
+    pub device_link: LinkedListAtomicLink,
+    pub free_link: LinkedListAtomicLink,
+    pub io_link: LinkedListAtomicLink,
+
     pub b_flags: BufFlag,
-
-    pub b_forw: *mut Buf,
-    pub b_back: *mut Buf,
-    pub av_forw: *mut Buf,
-    pub av_back: *mut Buf,
-
     pub b_dev: i16,             // 高8位主设备号，低8位次设备号
     pub b_wcount: i32,          // 需传送的字节数
     pub b_addr: *mut u8,        // 所管理缓冲区的首地址
@@ -42,6 +41,21 @@ pub struct Buf {
 
 impl Buf {
     pub const BLOCK_SIZE: usize = 512;
+
+    pub const fn new() -> Self {
+        Self {
+            device_link: LinkedListAtomicLink::new(),
+            free_link: LinkedListAtomicLink::new(),
+            io_link: LinkedListAtomicLink::new(),
+            b_flags: BufFlag::empty(),
+            b_dev: -1,
+            b_wcount: 0,
+            b_addr: core::ptr::null_mut(),
+            b_blkno: PhysicalBlock(0),
+            b_error: 0,
+            b_resid: 0,
+        }
+    }
 
     pub fn read_table(&self) -> &[i32; 128] {
         unsafe { &*(self.b_addr as *const [i32; 128]) }
@@ -79,3 +93,7 @@ impl Buf {
         self.b_flags.contains(BufFlag::B_DELWRI)
     }
 }
+
+intrusive_adapter!(pub BufDeviceAdapter = UnsafeRef<Buf>: Buf { device_link: LinkedListAtomicLink });
+intrusive_adapter!(pub BufFreeAdapter = UnsafeRef<Buf>: Buf { free_link: LinkedListAtomicLink });
+intrusive_adapter!(pub BufIoAdapter = UnsafeRef<Buf>: Buf { io_link: LinkedListAtomicLink });

@@ -51,7 +51,10 @@ impl ATADriver {
                 return;
             }
 
-            let bp = tab.d_actf;
+            let Some(bp) = tab.peek_io_request() else {
+                tab.d_active = 0;
+                return;
+            };
             tab.d_active = 0;
 
             if Self::is_error() || DMA::is_error() {
@@ -68,9 +71,7 @@ impl ATADriver {
             }
 
             tab.d_errcnt = 0;
-            unsafe {
-                tab.d_actf = (*bp).av_forw;
-            }
+            let _ = tab.pop_io_request();
             bp
         };
 

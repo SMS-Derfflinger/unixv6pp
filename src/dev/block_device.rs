@@ -1,23 +1,22 @@
-use core::{arch::asm, ptr};
+use core::arch::asm;
 
 use eonix_spin::{NoContext, Spin};
 use eonix_sync_base::LazyLock;
+use intrusive_collections::{LinkedList, UnsafeRef};
 
 use crate::sync::SpinExt;
 
 use super::{
     ata_driver::ATADriver,
-    buffer::{Buf, BufFlag},
+    buffer::{Buf, BufDeviceAdapter, BufFlag, BufIoAdapter},
     device_manager::major,
 };
 
 pub struct Devtab {
     pub d_active: i32,
     pub d_errcnt: i32,
-    pub b_forw: *mut Buf,
-    pub b_back: *mut Buf,
-    pub d_actf: *mut Buf,
-    pub d_actl: *mut Buf,
+    pub buffers: LinkedList<BufDeviceAdapter>,
+    pub io_queue: LinkedList<BufIoAdapter>,
 }
 
 unsafe impl Send for Devtab {}
@@ -27,17 +26,22 @@ impl Devtab {
         Self {
             d_active: 0,
             d_errcnt: 0,
-            b_forw: ptr::null_mut(),
-            b_back: ptr::null_mut(),
-            d_actf: ptr::null_mut(),
-            d_actl: ptr::null_mut(),
+            buffers: LinkedList::new(BufDeviceAdapter::NEW),
+            io_queue: LinkedList::new(BufIoAdapter::NEW),
         }
     }
 
-    fn initialize_device_queue(&mut self) {
-        let self_as_buf = self as *mut Self as *mut Buf;
-        self.b_forw = self_as_buf;
-        self.b_back = self_as_buf;
+    pub fn pop_io_request(&mut self) -> Option<*mut Buf> {
+        self.io_queue
+            .pop_front()
+            .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf)
+    }
+
+    pub fn peek_io_request(&self) -> Option<*mut Buf> {
+        self.io_queue
+            .front()
+            .clone_pointer()
+            .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf)
     }
 }
 
@@ -57,11 +61,9 @@ impl ATABlockDevice {
     pub const NSECTOR: u32 = 0x7fff_ffff;
 
     pub fn new() -> Self {
-        let device = Self {
+        Self {
             tab: Spin::new(Devtab::new()),
-        };
-        device.tab.lock().initialize_device_queue();
-        device
+        }
     }
 }
 
@@ -85,21 +87,13 @@ impl BlockDevice for ATABlockDevice {
                 // TODO: BufferManager::IODone(bp)
                 return 0;
             }
-
-            (*bp).av_forw = ptr::null_mut();
         }
 
         disable_interrupts();
         {
             let mut tab = self.tab.lock();
-            if tab.d_actf.is_null() {
-                tab.d_actf = bp;
-            } else {
-                unsafe {
-                    (*tab.d_actl).av_forw = bp;
-                }
-            }
-            tab.d_actl = bp;
+            let buf = unsafe { UnsafeRef::from_raw(bp as *const Buf) };
+            tab.io_queue.push_back(buf);
 
             if tab.d_active == 0 {
                 drop(tab);
@@ -116,10 +110,9 @@ impl BlockDevice for ATABlockDevice {
     fn start(&self) {
         let bp = {
             let mut tab = self.tab.lock_ctx::<NoContext>();
-            let bp = tab.d_actf;
-            if bp.is_null() {
+            let Some(bp) = tab.peek_io_request() else {
                 return;
-            }
+            };
             tab.d_active += 1;
             bp
         };

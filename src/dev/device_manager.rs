@@ -1,3 +1,5 @@
+use eonix_sync_base::LazyLock;
+
 use super::block_device::{block_device_for_major, BlockDevice};
 
 pub const MAX_DEVICE_NUM: usize = 10;
@@ -62,4 +64,11 @@ impl Default for DeviceManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+static GLOBAL_DEVICE_MANAGER: LazyLock<DeviceManager> =
+    LazyLock::new(DeviceManager::new);
+
+pub fn ata_block_device() -> &'static DeviceManager {
+    &GLOBAL_DEVICE_MANAGER
 }
