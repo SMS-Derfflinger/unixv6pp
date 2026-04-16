@@ -209,8 +209,8 @@ void Process::Exit()
 			OpenFiles_set_file(i, NULL);
 		}
 	}
-	/*  访问不存在的fd会产生error code，清除u.u_error避免影响后续程序执行流程 */
-	u.u_error = User::NOERROR;
+	/*  访问不存在的fd会产生error code，清除User_get_error()避免影响后续程序执行流程 */
+	User_get_error() = User::NOERROR;
 
 	/* 递减当前目录的引用计数 */
 	inodeTable.IPut(User_get_cdir());
@@ -311,7 +311,7 @@ void Process::Clone(Process& proc)
 	 * GetF()访问u.u_ofiles中的空闲项会产生出错码，
 	 * 如不清除将导致进程创建(fork)系统调用失败。
 	 */
-	u.u_error = User::NOERROR;
+	User_get_error() = User::NOERROR;
 
 	/* 增加对共享正文段的引用计数 */
 	if ( proc.p_textp != 0 )
@@ -337,7 +337,7 @@ void Process::SStack()
 	if ( false == User_get_MemoryDescriptor().EstablishUserPageTable(md.m_TextStartAddress,
 						md.m_TextSize, md.m_DataStartAddress, md.m_DataSize, md.m_StackSize) )
 	{
-		u.u_error = User::ENOMEM;
+		User_get_error() = User::ENOMEM;
 		return;
 	}
 
@@ -370,7 +370,7 @@ void Process::SBreak()
 	if ( false == User_get_MemoryDescriptor().EstablishUserPageTable(md.m_TextStartAddress, 
 						md.m_TextSize, md.m_DataStartAddress, newSize, md.m_StackSize) )
 	{
-		//系统调用出错时，不可以用这种方式返回。执行这条路径会导致 u.u_intflg == 1，u.u_error被错误修改为EINTR（4）；无论何故导致系统调用失败。
+		//系统调用出错时，不可以用这种方式返回。执行这条路径会导致 u.u_intflg == 1，User_get_error()被错误修改为EINTR（4）；无论何故导致系统调用失败。
 		//aRetU(u.u_qsav);
 		return;
 	}
@@ -464,7 +464,7 @@ void Process::PSig(struct pt_context* pContext)
 	if ( User_get_signal()[signal] != 0 )
 	{
 		/* 清除进程在收到信号之前执行系统调用期间可能产生的ErrCode */
-		u.u_error = User::NOERROR;
+		User_get_error() = User::NOERROR;
 
 		unsigned int old_eip = pContext->eip;
 
@@ -520,7 +520,7 @@ void Process::Ssig()
 	/* 这几个信号不许设置 */
 	if ( signalIndex <= 0 || signalIndex >= User::NSIG || signalIndex == User::SIGKILL )
 	{
-		u.u_error = User::EINVAL;
+		User_get_error() = User::EINVAL;
 		return;
 	}
 	/* 设置函数地址到信号处理函数数组 */

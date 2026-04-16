@@ -11,22 +11,14 @@ use crate::{
         inode::{fileref_leak, INodeFlag, INodeMode, Inode},
         FileRef, InodeRef,
     },
-    println_warn,
     proc::wakeup_all,
     sync::SpinExt,
     user::Userspace,
 };
 
 extern "C" {
-    fn _seterr(errno: PosixError);
     fn _set_user_retval(retval: u32);
     fn f_close_bottom2(file: FileRefCompat);
-}
-
-pub fn seterr(errno: PosixError) {
-    unsafe {
-        _seterr(errno);
-    }
 }
 
 pub fn set_user_retval(retval: u32) {
@@ -44,7 +36,7 @@ define_class_compat! {impl OpenFileTable {
                 Some(fileref_leak(fileref))
             }
             Err(e) => {
-                seterr(e);
+                Userspace::get().set_error(e);
                 None
             }
         }

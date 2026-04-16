@@ -62,7 +62,7 @@ void FileManager::Creat()
 	/* 没有找到相应的Inode，或NameI出错 */
 	if ( NULL == pInode )
 	{
-		if(u.u_error)
+		if(User_get_error())
 			return;
 		/* 创建Inode */
 		pInode = this->MakNode( newACCMode & (~Inode::ISVTX) );
@@ -120,12 +120,12 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 			/* 系统调用去写目录文件是不允许的 */
 			if ( (pInode->i_mode & Inode::IFMT) == Inode::IFDIR )
 			{
-				u.u_error = User::EISDIR;
+				User_get_error() = User::EISDIR;
 			}
 		}
 	}
 
-	if ( u.u_error )
+	if ( User_get_error() )
 	{
 		this->m_InodeTable->IPut(pInode);
 		return;
@@ -159,7 +159,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 	pInode->OpenI(mode & File::FWRITE);
 
 	/* 为打开或者创建文件的各种资源都已成功分配，函数返回 */
-	if ( u.u_error == 0 )
+	if ( User_get_error() == 0 )
 	{
 		return;
 	}
@@ -209,7 +209,7 @@ void FileManager::Seek()
 	/* 管道文件不允许seek */
 	if ( pFile->f_flag & File::FPIPE )
 	{
-		u.u_error = User::ESPIPE;
+		User_get_error() = User::ESPIPE;
 		return;
 	}
 
@@ -328,7 +328,7 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 	if ( NULL == pFile )
 	{
 		/* 不存在该打开文件，GetF已经设置过出错码，所以这里不需要再设置了 */
-		/*	u.u_error = User::EBADF;	*/
+		/*	User_get_error() = User::EBADF;	*/
 		return;
 	}
 
@@ -336,7 +336,7 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 	/* 读写的模式不正确 */
 	if ( (pFile->f_flag & mode) == 0 )
 	{
-		u.u_error = User::EACCES;
+		User_get_error() = User::EACCES;
 		return;
 	}
 
@@ -504,7 +504,7 @@ loop:
 	if ( pInode->i_count < 2 )
 	{
 		pInode->Prele();
-		u.u_error = User::EPIPE;
+		User_get_error() = User::EPIPE;
 		User_get_procp()->PSignal(User::SIGPIPE);
 		return;
 	}
@@ -567,7 +567,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 	/* 如果试图更改和删除当前目录文件则出错 */
 	if ( '\0' == curchar && mode != FileManager::OPEN )
 	{
-		u.u_error = User::ENOENT;
+		User_get_error() = User::ENOENT;
 		goto out;
 	}
 
@@ -575,7 +575,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 	while (true)
 	{
 		/* 如果出错则释放当前搜索到的目录文件Inode，并退出 */
-		if ( u.u_error != User::NOERROR )
+		if ( User_get_error() != User::NOERROR )
 		{
 			break;	/* goto out; */
 		}
@@ -589,14 +589,14 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 		/* 如果要进行搜索的不是目录文件，释放相关Inode资源则退出 */
 		if ( (pInode->i_mode & Inode::IFMT) != Inode::IFDIR )
 		{
-			u.u_error = User::ENOTDIR;
+			User_get_error() = User::ENOTDIR;
 			break;	/* goto out; */
 		}
 
 		/* 进行目录搜索权限检查,IEXEC在目录文件中表示搜索权限 */
 		if ( this->Access(pInode, Inode::IEXEC) )
 		{
-			u.u_error = User::EACCES;
+			User_get_error() = User::EACCES;
 			break;	/* 不具备目录搜索权限，goto out; */
 		}
 
@@ -605,7 +605,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 		 * 便于和目录项进行比较。
 		 */
 		pChar = &(User_get_dbuf()[0]);
-		while ( '/' != curchar && '\0' != curchar && u.u_error == User::NOERROR )
+		while ( '/' != curchar && '\0' != curchar && User_get_error() == User::NOERROR )
 		{
 			if ( pChar < &(User_get_dbuf()[DirectoryEntry::DIRSIZ]) )
 			{
@@ -627,7 +627,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			curchar = (*func)();
 		}
 
-		if ( u.u_error != User::NOERROR )
+		if ( User_get_error() != User::NOERROR )
 		{
 			break; /* goto out; */
 		}
@@ -654,7 +654,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 					/* 判断该目录是否可写 */
 					if ( this->Access(pInode, Inode::IWRITE) )
 					{
-						u.u_error = User::EACCES;
+						User_get_error() = User::EACCES;
 						goto out;	/* Failed */
 					}
 
@@ -675,7 +675,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 				}
 
 				/* 目录项搜索完毕而没有找到匹配项，释放相关Inode资源，并推出 */
-				u.u_error = User::ENOENT;
+				User_get_error() = User::ENOENT;
 				goto out;
 			}
 
@@ -746,7 +746,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			/* 如果对父目录没有写的权限 */
 			if ( this->Access(pInode, Inode::IWRITE) )
 			{
-				u.u_error = User::EACCES;
+				User_get_error() = User::EACCES;
 				break;	/* goto out; */
 			}
 			return pInode;
@@ -851,7 +851,7 @@ void FileManager::SetCurDir(char* pathname)
 }
 
 /*
- * 返回值是0，表示拥有打开文件的权限；1表示没有所需的访问权限。文件未能打开的原因记录在u.u_error变量中。
+ * 返回值是0，表示拥有打开文件的权限；1表示没有所需的访问权限。文件未能打开的原因记录在User_get_error()变量中。
  */
 int FileManager::Access( Inode* pInode, unsigned int mode )
 {
@@ -862,7 +862,7 @@ int FileManager::Access( Inode* pInode, unsigned int mode )
 	{
 		if( this->m_FileSystem->GetFS(pInode->i_dev)->s_ronly != 0 )
 		{
-			u.u_error = User::EROFS;
+			User_get_error() = User::EROFS;
 			return 1;
 		}
 	}
@@ -874,7 +874,7 @@ int FileManager::Access( Inode* pInode, unsigned int mode )
 	{
 		if ( Inode::IEXEC == mode && ( pInode->i_mode & (Inode::IEXEC | (Inode::IEXEC >> 3) | (Inode::IEXEC >> 6)) ) == 0 )
 		{
-			u.u_error = User::EACCES;
+			User_get_error() = User::EACCES;
 			return 1;
 		}
 		return 0;	/* Permission Check Succeed! */
@@ -892,7 +892,7 @@ int FileManager::Access( Inode* pInode, unsigned int mode )
 		return 0;
 	}
 
-	u.u_error = User::EACCES;
+	User_get_error() = User::EACCES;
 	return 1;
 }
 
@@ -967,7 +967,7 @@ void FileManager::ChDir()
 	/* 搜索到的文件不是目录文件 */
 	if ( (pInode->i_mode & Inode::IFMT) != Inode::IFDIR )
 	{
-		u.u_error = User::ENOTDIR;
+		User_get_error() = User::ENOTDIR;
 		this->m_InodeTable->IPut(pInode);
 		return;
 	}
@@ -998,7 +998,7 @@ void FileManager::Link()
 	/* 链接的数量已经最大 */
 	if ( pInode->i_nlink >= 255 )
 	{
-		u.u_error = User::EMLINK;
+		User_get_error() = User::EMLINK;
 		/* 出错，释放资源并退出 */
 		this->m_InodeTable->IPut(pInode);
 		return;
@@ -1019,10 +1019,10 @@ void FileManager::Link()
 	/* 如果文件已存在 */
 	if ( NULL != pNewInode )
 	{
-		u.u_error = User::EEXIST;
+		User_get_error() = User::EEXIST;
 		this->m_InodeTable->IPut(pNewInode);
 	}
-	if ( User::NOERROR != u.u_error )
+	if ( User::NOERROR != User_get_error() )
 	{
 		/* 出错，释放资源并退出 */
 		this->m_InodeTable->IPut(pInode);
@@ -1032,7 +1032,7 @@ void FileManager::Link()
 	if ( User_get_pdir()->i_dev != pInode->i_dev )
 	{
 		this->m_InodeTable->IPut(User_get_pdir());
-		u.u_error = User::EXDEV;
+		User_get_error() = User::EXDEV;
 		/* 出错，释放资源并退出 */
 		this->m_InodeTable->IPut(pInode);
 		return;
@@ -1097,7 +1097,7 @@ void FileManager::MkNod()
 		/* 要创建的文件已经存在,这里并不能去覆盖此文件 */
 		if ( pInode != NULL )
 		{
-			u.u_error = User::EEXIST;
+			User_get_error() = User::EEXIST;
 			this->m_InodeTable->IPut(pInode);
 			return;
 		}
@@ -1105,11 +1105,11 @@ void FileManager::MkNod()
 	else
 	{
 		/* 非root用户执行mknod()系统调用返回User::EPERM */
-		u.u_error = User::EPERM;
+		User_get_error() = User::EPERM;
 		return;
 	}
 	/* 没有通过SUser()的检查 */
-	if ( User::NOERROR != u.u_error )
+	if ( User::NOERROR != User_get_error() )
 	{
 		return;	/* 没有需要释放的资源，直接退出 */
 	}

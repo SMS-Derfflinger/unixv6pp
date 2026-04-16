@@ -72,7 +72,7 @@ void Inode::ReadI()
 	}
 
 	/* 一次一个字符块地读入所需全部数据，直至遇到文件尾 */
-	while( User::NOERROR == u.u_error && User_get_IOParam().m_Count != 0)
+	while( User::NOERROR == User_get_error() && User_get_IOParam().m_Count != 0)
 	{
 		lbn = bn = User_get_IOParam().m_Offset / Inode::BLOCK_SIZE;
 		offset = User_get_IOParam().m_Offset % Inode::BLOCK_SIZE;
@@ -165,7 +165,7 @@ void Inode::WriteI()
 		return;
 	}
 
-	while( User::NOERROR == u.u_error && User_get_IOParam().m_Count != 0 )
+	while( User::NOERROR == User_get_error() && User_get_IOParam().m_Count != 0 )
 	{
 		lbn = User_get_IOParam().m_Offset / Inode::BLOCK_SIZE;
 		offset = User_get_IOParam().m_Offset % Inode::BLOCK_SIZE;
@@ -208,7 +208,7 @@ void Inode::WriteI()
 		User_get_IOParam().m_Offset += nbytes;
 		User_get_IOParam().m_Count -= nbytes;
 
-		if( u.u_error != User::NOERROR )	/* 写过程中出错 */
+		if( User_get_error() != User::NOERROR )	/* 写过程中出错 */
 		{
 			bufMgr.Brelse(pBuf);
 		}
@@ -266,7 +266,7 @@ int Inode::Bmap(int lbn)
 
 	if(lbn >= Inode::HUGE_FILE_BLOCK)
 	{
-		u.u_error = User::EFBIG;
+		User_get_error() = User::EFBIG;
 		return 0;
 	}
 
@@ -430,7 +430,7 @@ void Inode::OpenI(int mode)
 	case Inode::IFCHR:	/* 字符设备特殊类型文件 */
 		if (major >= devMgr.GetNChrDev())
 		{
-			u.u_error = User::ENXIO;   /* no such device */
+			User_get_error() = User::ENXIO;   /* no such device */
 			return;
 		}
 		devMgr.GetCharDevice(major).Open(dev,mode);
@@ -440,7 +440,7 @@ void Inode::OpenI(int mode)
 		/* 检查设备号是否超出系统中块设备数量 */
 		if(major >= devMgr.GetNBlkDev())
 		{
-			u.u_error = User::ENXIO;    /* no such device */
+			User_get_error() = User::ENXIO;    /* no such device */
 			return;
 		}
 		/* 根据主设备号获取对应的块设备BlockDevice对象引用 */

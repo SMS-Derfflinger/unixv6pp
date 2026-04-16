@@ -458,7 +458,7 @@ void BufferManager::GetError(Buf* bp)
 
 	if (bp->b_flags & Buf::B_ERROR)
 	{
-		u.u_error = User::EIO;
+		User_get_error() = User::EIO;
 	}
 	return;
 }

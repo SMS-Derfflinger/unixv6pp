@@ -92,8 +92,8 @@ bool MemoryDescriptor::EstablishUserPageTable( unsigned long textVirtualAddress,
 	/* 如果超出允许的用户程序最大8M的地址空间限制 */
 	if ( textSize + dataSize + stackSize  + PAGE_SIZE > USER_SPACE_SIZE - textVirtualAddress)
 	{
-		u.u_error = User::ENOMEM;
-		Diagnose::Write("u.u_error = %d\n",u.u_error);
+		User_get_error() = User::ENOMEM;
+		Diagnose::Write("User_get_error() = %d\n",User_get_error());
 		return false;
 	}
 

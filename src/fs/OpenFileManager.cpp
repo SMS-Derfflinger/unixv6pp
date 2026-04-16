@@ -7,23 +7,16 @@
 /*==============================class OpenFileTable===================================*/
 extern "C" File* OpenFileTable_f_alloc(struct open_file_table*);
 extern "C" void OpenFileTable_f_close(struct open_file_table*, File*);
-extern "C" void _seterr(User::ErrorCode errno) {
-        Kernel::Instance().GetUser().u_error = errno;
-}
 
 extern "C" void _set_user_retval(int retval) {
         User_get_ar0()[User::EAX] = retval;
-}
-
-User::ErrorCode errno() {
-        return Kernel::Instance().GetUser().u_error;
 }
 
 File* f_alloc(struct open_file_table* oft) {
 	User& u = Kernel::Instance().GetUser();
         File* retval = OpenFileTable_f_alloc(oft);
 
-        if (!retval || errno()) {
+        if (!retval || User_get_error()) {
                 Diagnose::Write("No Free File Struct\n");
                 return NULL;
         }
@@ -121,7 +114,7 @@ Inode* InodeTable::IGet(short dev, int inumber)
 			if(NULL == pInode)
 			{
 				Diagnose::Write("Inode Table Overflow !\n");
-				u.u_error = User::ENFILE;
+				User_get_error() = User::ENFILE;
 				return NULL;
 			}
 			else	/* 分配空闲Inode成功，将外存Inode读入新分配的内存Inode */

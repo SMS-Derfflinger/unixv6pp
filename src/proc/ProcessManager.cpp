@@ -429,7 +429,7 @@ void ProcessManager::Wait()
 		else
 		{
 			/* 不存在需要等待结束的子进程，设置出错码，wait()返回 */
-			u.u_error = User::ECHILD;
+			User_get_error() = User::ECHILD;
 			break;	/* Get out of while loop */
 		}
 	}
@@ -452,7 +452,7 @@ void ProcessManager::Fork()
 	if ( child == NULL )
 	{
 		/* 没有空闲process表项，返回 */
-		u.u_error = User::EAGAIN;
+		User_get_error() = User::EAGAIN;
 		return;
 	}
 
@@ -549,7 +549,7 @@ void ProcessManager::Exec()
 	if ( textSize + dataSize + stackSize  + PAGE_SIZE > MemoryDescriptor::USER_SPACE_SIZE - textAddr)
 	{
 		fileMgr.m_InodeTable->IPut(pInode);
-		u.u_error = User::ENOMEM;
+		User_get_error() = User::ENOMEM;
 		return;
 	}
 
@@ -832,7 +832,7 @@ void ProcessManager::Kill()
 	}
 	if ( false == flag )
 	{
-		u.u_error = User::ESRCH;
+		User_get_error() = User::ESRCH;
 	}
 }
 

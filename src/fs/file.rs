@@ -5,7 +5,7 @@ use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak, open_file_manager::{set_user_retval, seterr}}, sync::SpinExt, user::Userspace
+    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak, open_file_manager::set_user_retval}, sync::SpinExt, user::Userspace
 };
 
 use super::inode::Inode;
@@ -184,7 +184,7 @@ define_class_compat! {impl OpenFiles {
         let retval = match this.alloc_free_slot() {
             Ok(fd) => fd as i32,
             Err(err) => {
-                seterr(err);
+                Userspace::get().set_error(err);
                 -1
             }
         };
@@ -197,12 +197,12 @@ define_class_compat! {impl OpenFiles {
         let this = &Userspace::get().open_files;
 
         if fd < 0 {
-            seterr(PosixError::EBADF);
+            Userspace::get().set_error(PosixError::EBADF);
             return None;
         }
 
         this.get_f(fd as usize)
-            .inspect_err(|&err| seterr(err)).ok().map(fileref_leak)
+            .inspect_err(|&err| Userspace::get().set_error(err)).ok().map(fileref_leak)
     }
 
     pub fn set_file(fd: i32, file: Option<FileRefCompat>) {

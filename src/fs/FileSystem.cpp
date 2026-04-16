@@ -73,7 +73,7 @@ void FileSystem::LoadSuperBlock()
 
 		bufMgr.Brelse(pBuf);
 	}
-	if (User::NOERROR != u.u_error)
+	if (User::NOERROR != User_get_error())
 	{
                 Utility::Panic("Load SuperBlock Error....!\n");
 	}
@@ -262,7 +262,7 @@ Inode* FileSystem::IAlloc(short dev)
 		if(sb->s_ninode <= 0)
 		{
 			Diagnose::Write("No Space On %d !\n", dev);
-			u.u_error = User::ENOSPC;
+			User_get_error() = User::ENOSPC;
 			return NULL;
 		}
 	}
@@ -364,7 +364,7 @@ Buf* FileSystem::Alloc(short dev)
 	{
 		sb->s_nfree = 0;
 		Diagnose::Write("No Space On %d !\n", dev);
-		u.u_error = User::ENOSPC;
+		User_get_error() = User::ENOSPC;
 		return NULL;
 	}
 	if( this->BadBlock(sb, dev, blkno) )

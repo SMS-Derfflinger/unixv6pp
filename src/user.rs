@@ -121,6 +121,14 @@ impl Userspace {
         unsafe { &mut *(RUST_USER_ADDRESS as *mut Self) }
     }
 
+    pub fn set_error(&mut self, errno: PosixError) {
+        self.error = Some(errno);
+    }
+
+    pub fn clear_error(&mut self) {
+        self.error = None;
+    }
+
     fn is_root(&mut self) -> bool {
         if self.uid == 0 {
             return true;
@@ -243,4 +251,5 @@ define_user_compat! {
     proc: *mut Process => get_procp_ := core::ptr::null_mut();
     cwd: *mut Inode => get_cdir_ := core::ptr::null_mut();
     cwd_parent: *mut Inode => get_pdir_ := core::ptr::null_mut();
+    error: Option<PosixError> => get_error_ := None;
 }

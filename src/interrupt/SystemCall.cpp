@@ -148,8 +148,8 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 	if ( User_get_procp()->IsSig() )
 	{
 		User_get_procp()->PSig(context);
-		u.u_error = User::EINTR;
-		regs->eax = -u.u_error;
+		User_get_error() = User::EINTR;
+		regs->eax = -User_get_error();
 		return;
 	}
 
@@ -159,10 +159,10 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 		regs->eax = 20;
 
 	/* 
-	 * 清空可能由于前一次系统调用失败而设置的错误码, u.u_error中如果有
+	 * 清空可能由于前一次系统调用失败而设置的错误码, User_get_error()中如果有
 	 * 出错码的话，即便后面的程序完全正确，内核也会进入错误路径 **!!!!**
 	 */
-	u.u_error = User::NOERROR;
+	User_get_error() = User::NOERROR;
 
 	SystemCallTableEntry *callp = &m_SystemEntranceTable[regs->eax];
 
@@ -193,19 +193,19 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 	 */
 	if ( User_get_intflg() != 0 )
 	{
-		u.u_error = User::EINTR;
+		User_get_error() = User::EINTR;
 	}
 
 	/* 注: Unix V6++将系统调用出错结果返回给用户程序的方式和V6(通过PSW中的EBIT)有所区别!
-	 * 如果系统调用期间出错，即u.u_error被设置，那么需要通过reg.eax返回-u.u_error，
+	 * 如果系统调用期间出错，即User_get_error()被设置，那么需要通过reg.eax返回-User_get_error()，
 	 * 从而和成功执行的系统调用返回>=0的值区别开来，继而出错的系统调用(即经由EAX寄存器
-	 * 返回-u.u_error)将出错码存放在用户态全局变量errno中，对于用户程序统统返回-1表示出错。
+	 * 返回-User_get_error())将出错码存放在用户态全局变量errno中，对于用户程序统统返回-1表示出错。
 	 */
 
-	if( User::NOERROR != u.u_error )
+	if( User::NOERROR != User_get_error() )
 	{
-		regs->eax = -u.u_error;
-		Diagnose::Write("regs->eax = %d , u.u_error = %d\n",regs->eax,u.u_error);
+		regs->eax = -User_get_error();
+		Diagnose::Write("regs->eax = %d , User_get_error() = %d\n",regs->eax,User_get_error());
 	}
 
 	/* 判断有无接收到信号，如接收到信号则进行响应 */
@@ -236,7 +236,7 @@ int SystemCall::Sys_Nosys()
 {
 	/* 尚未分配的系统调用表项执行此空函数 */
 	User& u = Kernel::Instance().GetUser();
-	u.u_error = User::ENOSYS;
+	User_get_error() = User::ENOSYS;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -455,7 +455,7 @@ int SystemCall::Sys_Setuid()
 	}
 	else
 	{
-		u.u_error = User::EPERM;
+		User_get_error() = User::EPERM;
 	}
 
 	return 0;	/* GCC likes it ! */
@@ -550,7 +550,7 @@ int SystemCall::Sys_Stty()
 	pInode = pFile->f_inode;
 	if ( (pInode->i_mode & Inode::IFMT) != Inode::IFCHR )
 	{
-		u.u_error = User::ENOTTY;
+		User_get_error() = User::ENOTTY;
 		return 0;
 	}
 	short dev = pInode->i_addr[0];
@@ -575,7 +575,7 @@ int SystemCall::Sys_Gtty()
 	pInode = pFile->f_inode;
 	if ( (pInode->i_mode & Inode::IFMT) != Inode::IFCHR )
 	{
-		u.u_error = User::ENOTTY;
+		User_get_error() = User::ENOTTY;
 		return 0;
 	}
 	short dev = pInode->i_addr[0];
@@ -722,7 +722,7 @@ int SystemCall::Sys_Setgid()
 	}
 	else
 	{
-		u.u_error = User::EPERM;
+		User_get_error() = User::EPERM;
 	}
 
 	return 0;	/* GCC likes it ! */
