@@ -1,6 +1,9 @@
 use eonix_sync_base::LazyLock;
 
-use super::block_device::{block_device_for_major, BlockDevice};
+use super::{
+    block_device::{block_device_for_major, BlockDevice},
+    char_device::{char_device_for_major, CharDevice},
+};
 
 pub const MAX_DEVICE_NUM: usize = 10;
 pub const NODEV: i16 = -1;
@@ -57,7 +60,13 @@ impl DeviceManager {
         self.nchrdev
     }
 
-    // TODO: CharDevice/ConsoleDevice will be wired after TTy is translated.
+    pub fn get_char_device(&self, major: i16) -> &'static dyn CharDevice {
+        if major < 0 || major as usize >= self.nchrdev {
+            panic!("Char Device Doesn't Exist!");
+        }
+
+        char_device_for_major(major).expect("Char Device Doesn't Exist!")
+    }
 }
 
 impl Default for DeviceManager {
@@ -69,6 +78,6 @@ impl Default for DeviceManager {
 static GLOBAL_DEVICE_MANAGER: LazyLock<DeviceManager> =
     LazyLock::new(DeviceManager::new);
 
-pub fn ata_block_device() -> &'static DeviceManager {
+pub fn global_device_manager() -> &'static DeviceManager {
     &GLOBAL_DEVICE_MANAGER
 }

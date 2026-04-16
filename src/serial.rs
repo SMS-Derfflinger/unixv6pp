@@ -160,7 +160,14 @@ impl Serial {
     }
 
     fn write(&self, ch: u8) {
+        while !self.line_status().contains(LineStatus::TX_READY) {}
         self.ioregs.tx_rx().write(ch);
+    }
+
+    fn try_read(&self) -> Option<u8> {
+        self.line_status()
+            .contains(LineStatus::RX_READY)
+            .then(|| self.ioregs.tx_rx().read())
     }
 }
 
@@ -203,6 +210,11 @@ pub fn serial_write_bytes(byte_iter: impl Iterator<Item = u8>) {
 
 pub fn serial_write(string: &str) {
     serial_write_bytes(string.bytes());
+}
+
+pub fn serial_try_read_byte() -> Option<u8> {
+    let serial = unsafe { SERIAL.assume_init_ref() };
+    serial.try_read()
 }
 
 macro_rules! exported {

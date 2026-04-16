@@ -1,5 +1,9 @@
 use crate::{
-    dev::buffer::{Buf, DevId, LogicalBlock, PhysicalBlock},
+    dev::{
+        block_device::block_device_for_dev,
+        buffer::{Buf, DevId, LogicalBlock, PhysicalBlock},
+        char_device::char_device_for_dev,
+    },
     fs::{self, file_system::FileSystem, InodeRef},
     sync::SpinExt,
 };
@@ -168,7 +172,6 @@ impl Inode {
         // char dev
         if (self.i_mode & INodeMode::IFMT) == INodeMode::IFCHR {
             let dev = self.i_addr[0].0 as i16;
-            let major = (dev >> 8) as u8;
             // TODO: dev manager
             //kernel::get_device_manager()
             //    .get_char_device(major)
@@ -234,7 +237,6 @@ impl Inode {
         // char device
         if (self.i_mode & INodeMode::IFMT) == INodeMode::IFCHR {
             let dev = self.i_addr[0].0 as i16;
-            let major = (dev >> 8) as u8;
             // TODO: dev manager
             // kernel::get_device_manager().get_char_device(major).write(dev);
             return Ok(());
@@ -360,24 +362,17 @@ impl Inode {
 
     pub fn open_i(&self, mode: u32) -> Result<(), OpenError> {
         let dev = self.i_addr[0].0 as i16;
-        let major = (dev >> 8) as u8;
-        // TODO: dev manager
-        //let dev_mgr = kernel::get_device_manager();
 
         match self.i_mode & INodeMode::IFMT {
             INodeMode::IFCHR => {
-                // TODO: dev manager
-                /*if major as usize >= dev_mgr.n_chr_dev() {
-                    return Err(OpenError::NoSuchDevice);
-                }
-                dev_mgr.get_char_device(major).open(dev, mode);*/
+                let device = char_device_for_dev(dev).ok_or(OpenError::NoSuchDevice)?;
+                device.open(dev, mode as i32).map_err(|_| OpenError::NoSuchDevice)?;
             }
             INodeMode::IFBLK => {
-                // TODO: dev manager
-                /*if major as usize >= dev_mgr.n_blk_dev() {
+                let device = block_device_for_dev(dev).ok_or(OpenError::NoSuchDevice)?;
+                if device.open(dev, mode as i32) < 0 {
                     return Err(OpenError::NoSuchDevice);
                 }
-                dev_mgr.get_block_device(major).open(dev, mode);*/
             }
             _ => {}
         }
@@ -391,16 +386,17 @@ impl Inode {
         }
 
         let dev = self.i_addr[0].0 as i16;
-        let major = (dev >> 8) as u8;
-        // TODO: dev manager
-        //let dev_mgr = kernel::get_device_manager();
 
         match self.i_mode & INodeMode::IFMT {
             INodeMode::IFCHR => {
-                //dev_mgr.get_char_device(major).close(dev, mode);
+                if let Some(device) = char_device_for_dev(dev) {
+                    let _ = device.close(dev, mode as i32);
+                }
             }
             INodeMode::IFBLK => {
-                //dev_mgr.get_block_device(major).close(dev, mode);
+                if let Some(device) = block_device_for_dev(dev) {
+                    let _ = device.close(dev, mode as i32);
+                }
             }
             _ => {}
         }
