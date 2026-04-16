@@ -171,55 +171,53 @@ impl OpenFiles {
     }
 }
 
-define_class_compat! {
-    impl OpenFiles {
-        pub fn new() -> *mut OpenFiles {
-            Box::into_raw(Box::new(OpenFiles::new()))
+define_class_compat! {impl OpenFiles {
+    pub fn new() -> *mut OpenFiles {
+        Box::into_raw(Box::new(OpenFiles::new()))
+    }
+
+    pub fn free(&mut self) {
+        unsafe {
+            Box::from_raw(this);
         }
+    }
 
-        pub fn free(&mut self) {
-            unsafe {
-                Box::from_raw(this);
-            }
-        }
+    pub fn clone(&self) -> *const OpenFiles {
+        Box::into_raw(Box::new(this.clone()))
+    }
 
-        pub fn clone(&self) -> *const OpenFiles {
-            Box::into_raw(Box::new(this.clone()))
-        }
-
-        pub fn alloc_free_slot(&mut self) -> i32 {
-            match this.alloc_free_slot() {
-                Ok(fd) => fd as i32,
-                Err(err) => {
-                    seterr(err);
-                    -1
-                }
-            }
-        }
-
-        pub fn get_file(&self, fd: i32) -> Option<FileRefCompat> {
-            if fd < 0 {
-                seterr(PosixError::EBADF);
-                return None;
-            }
-
-            this.get_f(fd as usize)
-                .inspect_err(|&err| seterr(err)).ok().map(fileref_leak)
-        }
-
-        pub fn set_file(&mut self, fd: i32, file: Option<FileRefCompat>) {
-            if fd < 0 {
-                return;
-            }
-
-            if let Some(file) = file {
-                this.set_f(fd as _, file.own());
-            } else {
-                this.clear_f(fd as _);
+    pub fn alloc_free_slot(&mut self) -> i32 {
+        match this.alloc_free_slot() {
+            Ok(fd) => fd as i32,
+            Err(err) => {
+                seterr(err);
+                -1
             }
         }
     }
-}
+
+    pub fn get_file(&self, fd: i32) -> Option<FileRefCompat> {
+        if fd < 0 {
+            seterr(PosixError::EBADF);
+            return None;
+        }
+
+        this.get_f(fd as usize)
+            .inspect_err(|&err| seterr(err)).ok().map(fileref_leak)
+    }
+
+    pub fn set_file(&mut self, fd: i32, file: Option<FileRefCompat>) {
+        if fd < 0 {
+            return;
+        }
+
+        if let Some(file) = file {
+            this.set_f(fd as _, file.own());
+        } else {
+            this.clear_f(fd as _);
+        }
+    }
+}}
 
 pub struct IOParameter {
     pub m_base: usize,   // 用户目标区首地址
