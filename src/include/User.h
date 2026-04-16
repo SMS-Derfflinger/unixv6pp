@@ -105,8 +105,6 @@ public:
 	 * u_dsize
 	 * u_ssize
 	 */
-	MemoryDescriptor u_MemoryDescriptor;
-
 
 	/* 系统调用相关成员 */
 	unsigned int	*u_ar0;		/* 指向核心栈现场保护区中EAX寄存器

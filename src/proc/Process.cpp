@@ -179,7 +179,7 @@ void Process::Expand(unsigned int newSize)
 	RetU();
 	X86Assembly::STI();
 
-	u.u_MemoryDescriptor.MapToPageTable();
+	User_get_MemoryDescriptor().MapToPageTable();
 }
 
 void Process::Exit()
@@ -236,7 +236,7 @@ void Process::Exit()
 	bufMgr.Bwrite(pBuf);
 
 	/* 释放内存资源 */
-	u.u_MemoryDescriptor.Release();
+	User_get_MemoryDescriptor().Release();
 	Process* current = u.u_procp;
 	UserPageManager& userPageMgr = Kernel::Instance().GetUserPageManager();
 	userPageMgr.FreeMemory(current->p_size, current->p_addr);
@@ -328,13 +328,13 @@ void Process::Clone(Process& proc)
 void Process::SStack()
 {
 	User& u = Kernel::Instance().GetUser();
-	MemoryDescriptor& md = u.u_MemoryDescriptor;
+	MemoryDescriptor& md = User_get_MemoryDescriptor();
 	unsigned int change = 4096;
 	//unsigned int change = 0;
 	md.m_StackSize += change;
 	unsigned int newSize = ProcessManager::USIZE + md.m_DataSize + md.m_StackSize;
 
-	if ( false == u.u_MemoryDescriptor.EstablishUserPageTable(md.m_TextStartAddress,
+	if ( false == User_get_MemoryDescriptor().EstablishUserPageTable(md.m_TextStartAddress,
 						md.m_TextSize, md.m_DataStartAddress, md.m_DataSize, md.m_StackSize) )
 	{
 		u.u_error = User::ENOMEM;
@@ -350,7 +350,7 @@ void Process::SStack()
 		Utility::CopySeg(dst - change, dst);
 	}
 
-	u.u_MemoryDescriptor.MapToPageTable();
+	User_get_MemoryDescriptor().MapToPageTable();
 }
 
 
@@ -358,7 +358,7 @@ void Process::SBreak()
 {
 	User& u = Kernel::Instance().GetUser();
 	unsigned int newEnd = User_get_arg()[0];
-	MemoryDescriptor& md = u.u_MemoryDescriptor;
+	MemoryDescriptor& md = User_get_MemoryDescriptor();
 	unsigned int newSize = newEnd - md.m_DataStartAddress;
 
 	if (newEnd == 0)
@@ -367,7 +367,7 @@ void Process::SBreak()
 		return;
 	}
 
-	if ( false == u.u_MemoryDescriptor.EstablishUserPageTable(md.m_TextStartAddress, 
+	if ( false == User_get_MemoryDescriptor().EstablishUserPageTable(md.m_TextStartAddress, 
 						md.m_TextSize, md.m_DataStartAddress, newSize, md.m_StackSize) )
 	{
 		//系统调用出错时，不可以用这种方式返回。执行这条路径会导致 u.u_intflg == 1，u.u_error被错误修改为EINTR（4）；无论何故导致系统调用失败。

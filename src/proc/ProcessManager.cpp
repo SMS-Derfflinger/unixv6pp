@@ -51,13 +51,13 @@ void ProcessManager::SetupProcessZero()
 
 	User& u = Kernel::Instance().GetUser();
 	u.u_procp = pProcZero;
-	u.u_MemoryDescriptor.m_TextStartAddress = 0;
-	u.u_MemoryDescriptor.m_TextSize = 0;
-	u.u_MemoryDescriptor.m_DataStartAddress = 0;
-	u.u_MemoryDescriptor.m_DataSize = 0;
-	u.u_MemoryDescriptor.m_StackSize = 0;
-	u.u_MemoryDescriptor.m_UserPageTableArray = NULL;
-//	u.u_MemoryDescriptor.Initialize();
+	User_get_MemoryDescriptor().m_TextStartAddress = 0;
+	User_get_MemoryDescriptor().m_TextSize = 0;
+	User_get_MemoryDescriptor().m_DataStartAddress = 0;
+	User_get_MemoryDescriptor().m_DataSize = 0;
+	User_get_MemoryDescriptor().m_StackSize = 0;
+	User_get_MemoryDescriptor().m_UserPageTableArray = NULL;
+//	User_get_MemoryDescriptor().Initialize();
 }
 
 unsigned int ProcessManager::NextUniquePid()
@@ -95,13 +95,13 @@ int ProcessManager::NewProc()
 	SaveU(u.u_rsav);
 
 	/* 将父进程的用户态页表指针m_UserPageTableArray备份至pgTable */
-	PageTable* pgTable = u.u_MemoryDescriptor.m_UserPageTableArray;
-	u.u_MemoryDescriptor.Initialize();
+	PageTable* pgTable = User_get_MemoryDescriptor().m_UserPageTableArray;
+	User_get_MemoryDescriptor().Initialize();
 	/* 父进程的相对地址映照表拷贝给子进程，共两张页表的大小 */
 	if ( NULL != pgTable )
 	{
-		u.u_MemoryDescriptor.Initialize();
-		Utility::MemCopy((unsigned long)pgTable, (unsigned long)u.u_MemoryDescriptor.m_UserPageTableArray, sizeof(PageTable) * MemoryDescriptor::USER_SPACE_PAGE_TABLE_CNT);
+		User_get_MemoryDescriptor().Initialize();
+		Utility::MemCopy((unsigned long)pgTable, (unsigned long)User_get_MemoryDescriptor().m_UserPageTableArray, sizeof(PageTable) * MemoryDescriptor::USER_SPACE_PAGE_TABLE_CNT);
 	}
 
 	//将先运行进程的u区的u_procp指向new process
@@ -145,7 +145,7 @@ int ProcessManager::NewProc()
 	 * 拷贝进程图像期间，父进程的m_UserPageTableArray指向子进程的相对地址映照表；
 	 * 复制完成后才能恢复为先前备份的pgTable。
 	 */
-	u.u_MemoryDescriptor.m_UserPageTableArray = pgTable;
+	User_get_MemoryDescriptor().m_UserPageTableArray = pgTable;
 	//Diagnose::Write("End NewProc()\n");
 	return 0;
 }
@@ -192,8 +192,7 @@ int ProcessManager::Swtch()
 	X86Assembly::STI();
 
 	User& newu = Kernel::Instance().GetUser();
-
-	newu.u_MemoryDescriptor.MapToPageTable();
+	User_get_MemoryDescriptor().MapToPageTable();
 	
 	/*
 	 * If the new process paused because it was
@@ -531,21 +530,21 @@ void ProcessManager::Exec()
 
  	/* 获取分析PE头结构得到正文段的起始地址、长度 */
 	auto textAddr = isPE ? peParser.TextAddress : elfParser.textAddr;
-	u.u_MemoryDescriptor.m_TextStartAddress = textAddr;
+	User_get_MemoryDescriptor().m_TextStartAddress = textAddr;
 
 	auto textSize = isPE ? peParser.TextSize : elfParser.textSize;
-	u.u_MemoryDescriptor.m_TextSize = textSize;
+	User_get_MemoryDescriptor().m_TextSize = textSize;
 
 	/* 数据段的起始地址、长度 */
 	auto dataAddr = isPE ? peParser.DataAddress : elfParser.dataAddr;
-	u.u_MemoryDescriptor.m_DataStartAddress = dataAddr;
+	User_get_MemoryDescriptor().m_DataStartAddress = dataAddr;
 
 	auto dataSize = isPE ? peParser.DataSize : elfParser.dataSize;
-	u.u_MemoryDescriptor.m_DataSize = dataSize;
+	User_get_MemoryDescriptor().m_DataSize = dataSize;
 
 	/* 堆栈段初始化长度 */
 	auto stackSize = isPE ? peParser.StackSize : elfParser.stackSize;
-	u.u_MemoryDescriptor.m_StackSize = stackSize;
+	User_get_MemoryDescriptor().m_StackSize = stackSize;
 	
 	if ( textSize + dataSize + stackSize  + PAGE_SIZE > MemoryDescriptor::USER_SPACE_SIZE - textAddr)
 	{
@@ -665,7 +664,7 @@ void ProcessManager::Exec()
 		pText->x_ccount = 1;
 		pText->x_count = 1;
 		pText->x_iptr = pInode;
-		pText->x_size = u.u_MemoryDescriptor.m_TextSize;
+		pText->x_size = User_get_MemoryDescriptor().m_TextSize;
 		/* 为正文段分配内存，而具体正文段内容的读入需要等到建立页表映射之后，再从mapAddress地址起始的exe文件中读入 */
 		pText->x_caddr = userPgMgr.AllocMemory(pText->x_size);
 		pText->x_daddr = Kernel::Instance().GetSwapperManager().AllocSwap(pText->x_size);
@@ -678,12 +677,12 @@ void ProcessManager::Exec()
 		sharedText = true;
 	}
 
-	unsigned int newSize = ProcessManager::USIZE + u.u_MemoryDescriptor.m_DataSize + u.u_MemoryDescriptor.m_StackSize;
+	unsigned int newSize = ProcessManager::USIZE + User_get_MemoryDescriptor().m_DataSize + User_get_MemoryDescriptor().m_StackSize;
 	/* 将进程图像由USIZE扩充为USIZE + dataSize + stackSize */
 	u.u_procp->Expand(newSize);
 
 	/* 根据正文段、数据段、堆栈段长度建立相对地址映照表，并加载到页表中 */
-	u.u_MemoryDescriptor.EstablishUserPageTable(textAddr, textSize, dataAddr, dataSize, stackSize);
+	User_get_MemoryDescriptor().EstablishUserPageTable(textAddr, textSize, dataAddr, dataSize, stackSize);
 
 	/* 从exe文件中依次读入.text段、.data段、.rdata段、.bss段 */
 	if (isPE) {

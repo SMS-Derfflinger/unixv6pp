@@ -253,7 +253,7 @@ void Exception::PageFault(struct pt_regs* regs, struct pte_context* context)
 
 	User& u = Kernel::Instance().GetUser();
 	Process* current = u.u_procp;
-	MemoryDescriptor& md = u.u_MemoryDescriptor;
+	MemoryDescriptor& md = User_get_MemoryDescriptor();
 
 	unsigned int cr2;
 	__asm__ __volatile__(" mov %%cr2, %0":"=r"(cr2) );

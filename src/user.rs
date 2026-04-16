@@ -13,6 +13,7 @@ pub struct Process {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct MemoryDescriptor {
     /// Opaque for now...
     data: [usize; 6],
@@ -125,6 +126,12 @@ impl Userspace {
     }
 }
 
+impl MemoryDescriptor {
+    pub const fn new() -> Self {
+        Self { data: [0; 6] }
+    }
+}
+
 macro_rules! define_user_compat {
 { $( $rust_ident:ident: $type:ty => $c_ident:ident := $init:expr; )* } => {
     struct SaveHandle {
@@ -193,4 +200,5 @@ define_user_compat! {
     };
     dentry: DirectoryEntry => get_dent_ := DirectoryEntry::new();
     cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
+    mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
 }

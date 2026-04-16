@@ -119,7 +119,7 @@ bool MemoryDescriptor::EstablishUserPageTable( unsigned long textVirtualAddress,
 void MemoryDescriptor::ClearUserPageTable()
 {
 	User& u = Kernel::Instance().GetUser();
-	PageTable* pUserPageTable = u.u_MemoryDescriptor.m_UserPageTableArray;
+	PageTable* pUserPageTable = User_get_MemoryDescriptor().m_UserPageTableArray;
 
 	unsigned int i ;
 	unsigned int j ;
@@ -141,7 +141,7 @@ void MemoryDescriptor::MapToPageTable()
 {
 	User& u = Kernel::Instance().GetUser();
 
-	if(u.u_MemoryDescriptor.m_UserPageTableArray == NULL)
+	if(User_get_MemoryDescriptor().m_UserPageTableArray == NULL)
 		return;
 
 	PageTable* pUserPageTable = Machine::Instance().GetUserPageTableArray();
