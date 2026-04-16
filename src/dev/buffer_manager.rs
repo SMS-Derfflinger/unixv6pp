@@ -1,11 +1,10 @@
 use alloc::boxed::Box;
-use eonix_spin::{NoContext, Spin, SpinGuard};
-use core::{array, cell::UnsafeCell};
+use core::array;
 
 use eonix_sync_base::LazyLock;
 use intrusive_collections::{LinkedList, UnsafeRef};
 
-use crate::sync::SpinExt;
+use crate::sync::SuperCell;
 
 use super::{
     block_device::block_device_for_dev,
@@ -427,20 +426,21 @@ impl BufferManager {
         }
 
         let device = block_device_for_dev(dev.0)?;
-        let devtab = device.devtab().lock();
-        let mut cursor = devtab.buffers.front();
+        device.devtab().with(|devtab| {
+            let mut cursor = devtab.buffers.front();
 
-        while let Some(bp) = cursor.get() {
-            if bp.b_dev == dev.0 && bp.b_blkno == blkno {
-                return cursor
-                    .clone_pointer()
-                    .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf);
+            while let Some(bp) = cursor.get() {
+                if bp.b_dev == dev.0 && bp.b_blkno == blkno {
+                    return cursor
+                        .clone_pointer()
+                        .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf);
+                }
+
+                cursor.move_next();
             }
 
-            cursor.move_next();
-        }
-
-        None
+            None
+        })
     }
 
     fn validate_device(&self, dev: DevId) -> BufferResult<()> {
@@ -493,11 +493,9 @@ impl BufferManager {
         }
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
-        let mut devtab = device.devtab().lock();
-
-        unsafe {
+        device.devtab().with_mut(|devtab| unsafe {
             devtab.buffers.push_front(Self::buf_ref(bp));
-        }
+        });
 
         Ok(())
     }
@@ -512,9 +510,10 @@ impl BufferManager {
             return;
         };
 
-        let mut devtab = device.devtab().lock();
-        let mut cursor = devtab.buffers.cursor_mut_from_ptr(bp as *const Buf);
-        cursor.remove();
+        device.devtab().with_mut(|devtab| {
+            let mut cursor = devtab.buffers.cursor_mut_from_ptr(bp as *const Buf);
+            cursor.remove();
+        });
     }
 
     unsafe fn buf_ref(bp: *mut Buf) -> UnsafeRef<Buf> {
@@ -528,9 +527,9 @@ impl Default for BufferManager {
     }
 }
 
-static GLOBAL_BUFFER_MANAGER: LazyLock<Spin<BufferManager>> =
-    LazyLock::new(|| Spin::new(BufferManager::new()));
+static GLOBAL_BUFFER_MANAGER: LazyLock<SuperCell<BufferManager>> =
+    LazyLock::new(|| SuperCell::new(BufferManager::new()));
 
-pub(crate) fn global_buffer_manager() -> SpinGuard<'static, BufferManager, NoContext> {
-    GLOBAL_BUFFER_MANAGER.lock()
+pub(crate) fn global_buffer_manager() -> &'static mut BufferManager {
+    SuperCell::get_mut(&*GLOBAL_BUFFER_MANAGER)
 }

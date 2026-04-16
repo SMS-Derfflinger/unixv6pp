@@ -1,7 +1,6 @@
-use eonix_spin::Spin;
 use eonix_sync_base::LazyLock;
 
-use crate::sync::SpinExt;
+use crate::sync::SuperCell;
 
 use super::{
     block_device::{ata_block_device, BlockDevice},
@@ -44,25 +43,28 @@ impl ATADriver {
     pub const PIC_EOI: u8 = 0x20;
 
     pub fn ata_handler() {
+        enum HandlerAction {
+            Ignore,
+            Retry,
+            Complete(*mut Buf),
+        }
+
         let bdev = ata_block_device();
-        let bp = {
-            let mut tab = bdev.devtab().lock();
+        let action = bdev.devtab().with_mut(|tab| {
             if tab.d_active == 0 {
-                return;
+                return HandlerAction::Ignore;
             }
 
             let Some(bp) = tab.peek_io_request() else {
                 tab.d_active = 0;
-                return;
+                return HandlerAction::Ignore;
             };
             tab.d_active = 0;
 
             if Self::is_error() || DMA::is_error() {
                 tab.d_errcnt += 1;
                 if tab.d_errcnt <= 10 {
-                    drop(tab);
-                    bdev.start();
-                    return;
+                    return HandlerAction::Retry;
                 }
 
                 unsafe {
@@ -72,11 +74,21 @@ impl ATADriver {
 
             tab.d_errcnt = 0;
             let _ = tab.pop_io_request();
-            bp
-        };
+            HandlerAction::Complete(bp)
+        });
 
-        // TODO: BufferManager::IODone(bp)
-        let _ = bp;
+        match action {
+            HandlerAction::Ignore => return,
+            HandlerAction::Retry => {
+                bdev.start();
+                return;
+            }
+            HandlerAction::Complete(bp) => {
+                // TODO: BufferManager::IODone(bp)
+                let _ = bp;
+            }
+        }
+
         bdev.start();
 
         unsafe {
@@ -103,9 +115,10 @@ impl ATADriver {
         prd.set_base_address((bp_ref.b_addr as usize & !0xc000_0000) as u32);
         prd.set_byte_count(bp_ref.b_wcount as u16);
 
-        let mut table = PRD_TABLE.lock();
-        table.set_physical_region_descriptor(0, prd, true);
-        let table_base = table.prd_table_base_address();
+        let table_base = PRD_TABLE.with_mut(|table| {
+            table.set_physical_region_descriptor(0, prd, true);
+            table.prd_table_base_address()
+        });
 
         DMA::reset();
 
@@ -148,4 +161,5 @@ impl ATADriver {
     }
 }
 
-static PRD_TABLE: LazyLock<Spin<PRDTable>> = LazyLock::new(|| Spin::new(PRDTable::new()));
+static PRD_TABLE: LazyLock<SuperCell<PRDTable>> =
+    LazyLock::new(|| SuperCell::new(PRDTable::new()));

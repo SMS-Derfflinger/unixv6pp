@@ -1,10 +1,9 @@
 use core::arch::asm;
 
-use eonix_spin::{NoContext, Spin};
 use eonix_sync_base::LazyLock;
 use intrusive_collections::{LinkedList, UnsafeRef};
 
-use crate::sync::SpinExt;
+use crate::sync::SuperCell;
 
 use super::{
     ata_driver::ATADriver,
@@ -50,11 +49,11 @@ pub trait BlockDevice: Sync {
     fn close(&self, dev: i16, mode: i32) -> i32;
     fn strategy(&self, bp: *mut Buf) -> i32;
     fn start(&self);
-    fn devtab(&self) -> &Spin<Devtab>;
+    fn devtab(&self) -> &SuperCell<Devtab>;
 }
 
 pub struct ATABlockDevice {
-    tab: Spin<Devtab>,
+    tab: SuperCell<Devtab>,
 }
 
 impl ATABlockDevice {
@@ -62,7 +61,7 @@ impl ATABlockDevice {
 
     pub fn new() -> Self {
         Self {
-            tab: Spin::new(Devtab::new()),
+            tab: SuperCell::new(Devtab::new()),
         }
     }
 }
@@ -90,37 +89,41 @@ impl BlockDevice for ATABlockDevice {
         }
 
         disable_interrupts();
-        {
-            let mut tab = self.tab.lock();
+        let should_start = self.tab.with_mut(|tab| {
             let buf = unsafe { UnsafeRef::from_raw(bp as *const Buf) };
             tab.io_queue.push_back(buf);
 
-            if tab.d_active == 0 {
-                drop(tab);
-                self.start();
-                enable_interrupts();
-                return 0;
-            }
+            tab.d_active == 0
+        });
+
+        if should_start {
+            self.start();
+            enable_interrupts();
+            return 0;
         }
+
         enable_interrupts();
 
         0
     }
 
     fn start(&self) {
-        let bp = {
-            let mut tab = self.tab.lock_ctx::<NoContext>();
+        let bp = self.tab.with_mut(|tab| {
             let Some(bp) = tab.peek_io_request() else {
-                return;
+                return None;
             };
             tab.d_active += 1;
-            bp
+            Some(bp)
+        });
+
+        let Some(bp) = bp else {
+            return;
         };
 
         ATADriver::dev_start(bp);
     }
 
-    fn devtab(&self) -> &Spin<Devtab> {
+    fn devtab(&self) -> &SuperCell<Devtab> {
         &self.tab
     }
 }
