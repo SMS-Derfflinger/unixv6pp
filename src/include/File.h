@@ -21,12 +21,6 @@ public:
 
 	/* Functions */
 public:
-	/* Constructors */
-	File();
-	/* Destructors */
-	~File();
-
-
 	/* Member */
 	unsigned int f_flag;		/* 对打开文件的读、写操作要求 */
 	int		f_count;			/* 当前引用该文件控制块的进程数量 */
@@ -38,35 +32,6 @@ extern "C" int OpenFiles_alloc_free_slot();
 extern "C" File* OpenFiles_get_file(int fd);
 extern "C" void OpenFiles_set_file(int fd, File*);
 
-template <typename T>
-struct remove_reference { using type = T; };
-template <typename T>
-struct remove_reference<T&> { using type = T; };
-template <typename T>
-struct remove_reference<T&&> { using type = T; };
-
-template <typename T>
-constexpr typename remove_reference<T>::type&& move(T&& val) noexcept {
-	return (typename remove_reference<T>::type&&)val;
-}
-
-template <typename T>
-constexpr T&& forward(typename remove_reference<T>::type&& val) noexcept {
-	return (T&&)val;
-}
-
-template <typename T>
-constexpr T&& forward(typename remove_reference<T>::type& val) noexcept {
-	return (T&&)val;
-}
-
-template <typename T, typename U>
-constexpr T exchange(T& val, U&& new_val) noexcept {
-	T ret_val = move(val);
-	val = forward<U>(new_val);
-	return ret_val;
-}
-
 /*
  * 进程打开文件描述符表(OpenFiles)的定义
  * 进程的u结构中包含OpenFiles类的一个对象，
@@ -74,7 +39,6 @@ constexpr T exchange(T& val, U&& new_val) noexcept {
  */
 class OpenFiles
 {
-	/* static members */
 public:
 	static constexpr int NOFILES = 15;	/* 进程允许打开的最大文件数 */
 };
@@ -84,17 +48,8 @@ public:
  * 对文件读、写时需用到的读、写偏移量、
  * 字节数以及目标区域首地址参数。
  */
-class IOParameter
+struct IOParameter
 {
-	/* Functions */
-public:
-	/* Constructors */
-	IOParameter();
-	/* Destructors */
-	~IOParameter();
-
-	/* Members */
-public:
 	unsigned char* m_Base;	/* 当前读、写用户目标区域的首地址 */
 	int m_Offset;	/* 当前读、写文件的字节偏移量 */
 	int m_Count;	/* 当前还剩余的读、写字节数量 */
