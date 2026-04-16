@@ -43,7 +43,7 @@ pub static USER_PAGE_MANAGER: Spin<BuddyAllocator<MemoryZone, PageList>> =
 
 #[no_mangle]
 pub extern "C" fn init_page_managers() {
-    let krange = PRange::new(PAddr::from_val(0x204000), PAddr::from_val(0x400000));
+    let krange = PRange::new(PAddr::from_val(0x204000), PAddr::from_val(0x3ff000));
     let urange = PRange::new(PAddr::from_val(0x400000), PAddr::from_val(MEM_SIZE));
 
     init_zone();
