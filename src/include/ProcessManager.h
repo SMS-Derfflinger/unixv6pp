@@ -25,7 +25,7 @@
 							movl (%%eax), %%esp;		\
 							movl 0x4(%%eax), %%ebp;"	\
 							:							\
-							: "i" (0xc03ff200) );
+							: "i" (0xc03ff000) );
 
 #define aRetU(u_sav) \
 	__asm__ __volatile__("	movl %0, %%esp;			\
