@@ -144,9 +144,6 @@ public:
 	short u_ruid;		/* 真实用户ID */
 	short u_rgid;		/* 真实组ID */
 
-	/* 文件I/O操作 */
-	IOParameter u_IOParam;	/* 记录当前读、写文件的偏移量，用户目标区域和剩余字节数参数 */
-
 	/* Member Functions */
 public:
 	/* 根据系统调用参数uid设置有效用户ID，真实用户ID，进程用户ID(p_uid) */

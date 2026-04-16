@@ -54,7 +54,7 @@ void Inode::ReadI()
 	BufferManager& bufMgr = Kernel::Instance().GetBufferManager();
 	DeviceManager& devMgr = Kernel::Instance().GetDeviceManager();
 
-	if( 0 == u.u_IOParam.m_Count )
+	if( 0 == User_get_IOParam().m_Count )
 	{
 		/* 需要读字节数为零，则返回 */
 		return;
@@ -72,17 +72,17 @@ void Inode::ReadI()
 	}
 
 	/* 一次一个字符块地读入所需全部数据，直至遇到文件尾 */
-	while( User::NOERROR == u.u_error && u.u_IOParam.m_Count != 0)
+	while( User::NOERROR == u.u_error && User_get_IOParam().m_Count != 0)
 	{
-		lbn = bn = u.u_IOParam.m_Offset / Inode::BLOCK_SIZE;
-		offset = u.u_IOParam.m_Offset % Inode::BLOCK_SIZE;
+		lbn = bn = User_get_IOParam().m_Offset / Inode::BLOCK_SIZE;
+		offset = User_get_IOParam().m_Offset % Inode::BLOCK_SIZE;
 		/* 传送到用户区的字节数量，取读请求的剩余字节数与当前字符块内有效字节数较小值 */
-		nbytes = Utility::Min(Inode::BLOCK_SIZE - offset /* 块内有效字节数 */, u.u_IOParam.m_Count);
+		nbytes = Utility::Min(Inode::BLOCK_SIZE - offset /* 块内有效字节数 */, User_get_IOParam().m_Count);
 
 		if( (this->i_mode & Inode::IFMT) != Inode::IFBLK )
 		{	/* 如果不是特殊块设备文件 */
 		
-			int remain = this->i_size - u.u_IOParam.m_Offset;
+			int remain = this->i_size - User_get_IOParam().m_Offset;
 			/* 如果已读到超过文件结尾 */
 			if( remain <= 0)
 			{
@@ -124,12 +124,12 @@ void Inode::ReadI()
 		/* 读操作: 从缓冲区拷贝到用户目标区
 		 * i386芯片用同一张页表映射用户空间和内核空间，这一点硬件上的差异 使得i386上实现 iomove操作
 		 * 比PDP-11要容易许多*/
-		Utility::IOMove(start, u.u_IOParam.m_Base, nbytes);
+		Utility::IOMove(start, User_get_IOParam().m_Base, nbytes);
 
 		/* 用传送字节数nbytes更新读写位置 */
-		u.u_IOParam.m_Base += nbytes;
-		u.u_IOParam.m_Offset += nbytes;
-		u.u_IOParam.m_Count -= nbytes;
+		User_get_IOParam().m_Base += nbytes;
+		User_get_IOParam().m_Offset += nbytes;
+		User_get_IOParam().m_Count -= nbytes;
 
 		bufMgr.Brelse(pBuf);	/* 使用完缓存，释放该资源 */
 	}
@@ -159,17 +159,17 @@ void Inode::WriteI()
 		return;
 	}
 
-	if( 0 == u.u_IOParam.m_Count)
+	if( 0 == User_get_IOParam().m_Count)
 	{
 		/* 需要读字节数为零，则返回 */
 		return;
 	}
 
-	while( User::NOERROR == u.u_error && u.u_IOParam.m_Count != 0 )
+	while( User::NOERROR == u.u_error && User_get_IOParam().m_Count != 0 )
 	{
-		lbn = u.u_IOParam.m_Offset / Inode::BLOCK_SIZE;
-		offset = u.u_IOParam.m_Offset % Inode::BLOCK_SIZE;
-		nbytes = Utility::Min(Inode::BLOCK_SIZE - offset, u.u_IOParam.m_Count);
+		lbn = User_get_IOParam().m_Offset / Inode::BLOCK_SIZE;
+		offset = User_get_IOParam().m_Offset % Inode::BLOCK_SIZE;
+		nbytes = Utility::Min(Inode::BLOCK_SIZE - offset, User_get_IOParam().m_Count);
 
 		if( (this->i_mode & Inode::IFMT) != Inode::IFBLK )
 		{	/* 普通文件 */
@@ -201,18 +201,18 @@ void Inode::WriteI()
 		unsigned char* start = pBuf->b_addr + offset;
 
 		/* 写操作: 从用户目标区拷贝数据到缓冲区 */
-		Utility::IOMove(u.u_IOParam.m_Base, start, nbytes);
+		Utility::IOMove(User_get_IOParam().m_Base, start, nbytes);
 
 		/* 用传送字节数nbytes更新读写位置 */
-		u.u_IOParam.m_Base += nbytes;
-		u.u_IOParam.m_Offset += nbytes;
-		u.u_IOParam.m_Count -= nbytes;
+		User_get_IOParam().m_Base += nbytes;
+		User_get_IOParam().m_Offset += nbytes;
+		User_get_IOParam().m_Count -= nbytes;
 
 		if( u.u_error != User::NOERROR )	/* 写过程中出错 */
 		{
 			bufMgr.Brelse(pBuf);
 		}
-		else if( (u.u_IOParam.m_Offset % Inode::BLOCK_SIZE) == 0 )	/* 如果写满一个字符块 */
+		else if( (User_get_IOParam().m_Offset % Inode::BLOCK_SIZE) == 0 )	/* 如果写满一个字符块 */
 		{
 			/* 以异步方式将字符块写入磁盘，进程不需等待I/O操作结束，可以继续往下执行 */
 			bufMgr.Bawrite(pBuf);
@@ -224,9 +224,9 @@ void Inode::WriteI()
 		}
 
 		/* 普通文件长度增加 */
-		if( (this->i_size < u.u_IOParam.m_Offset) && (this->i_mode & (Inode::IFBLK & Inode::IFCHR)) == 0 )
+		if( (this->i_size < User_get_IOParam().m_Offset) && (this->i_mode & (Inode::IFBLK & Inode::IFCHR)) == 0 )
 		{
-			this->i_size = u.u_IOParam.m_Offset;
+			this->i_size = User_get_IOParam().m_Offset;
 		}
 
 		/* 

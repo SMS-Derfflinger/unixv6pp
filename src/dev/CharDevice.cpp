@@ -82,13 +82,13 @@ void ConsoleDevice::Read(short dev) {
     int result;
 
     if (0 == minor) {
-        result = char_device_read(dev, u.u_IOParam.m_Base, u.u_IOParam.m_Count);
+        result = char_device_read(dev, User_get_IOParam().m_Base, User_get_IOParam().m_Count);
         if (result < 0) {
             u.u_error = (User::ErrorCode)(-result);
             return;
         }
-        u.u_IOParam.m_Base += result;
-        u.u_IOParam.m_Count -= result;
+        User_get_IOParam().m_Base += result;
+        User_get_IOParam().m_Count -= result;
     }
 }
 
@@ -98,13 +98,13 @@ void ConsoleDevice::Write(short dev) {
     int result;
 
     if (0 == minor) {
-        result = char_device_write(dev, u.u_IOParam.m_Base, u.u_IOParam.m_Count);
+        result = char_device_write(dev, User_get_IOParam().m_Base, User_get_IOParam().m_Count);
         if (result < 0) {
             u.u_error = (User::ErrorCode)(-result);
             return;
         }
-        u.u_IOParam.m_Base += result;
-        u.u_IOParam.m_Count -= result;
+        User_get_IOParam().m_Base += result;
+        User_get_IOParam().m_Count -= result;
     }
 }
 

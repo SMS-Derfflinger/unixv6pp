@@ -105,9 +105,9 @@ unsigned int PEParser::Relocate(Inode* p_inode, bool sharedText)
 		desAddress =
 			this->ntHeader.OptionalHeader.ImageBase + sectionHeader->VirtualAddress;
 
-	    u.u_IOParam.m_Base = (unsigned char*)desAddress;
-	    u.u_IOParam.m_Offset = srcAddress;
-	    u.u_IOParam.m_Count = sectionHeader->Misc.VirtualSize;
+	    User_get_IOParam().m_Base = (unsigned char*)desAddress;
+	    User_get_IOParam().m_Offset = srcAddress;
+	    User_get_IOParam().m_Count = sectionHeader->Misc.VirtualSize;
 
 	    p_inode->ReadI();
 
@@ -137,16 +137,16 @@ bool PEParser::HeaderLoad(Inode* p_inode)
     KernelPageManager& kpm = Kernel::Instance().GetKernelPageManager();
 
     /*读取dos header*/
-    u.u_IOParam.m_Base = (unsigned char*)&dos_header;
-    u.u_IOParam.m_Offset = 0;
-    u.u_IOParam.m_Count = 0x40;
+    User_get_IOParam().m_Base = (unsigned char*)&dos_header;
+    User_get_IOParam().m_Offset = 0;
+    User_get_IOParam().m_Count = 0x40;
     p_inode->ReadI();       //文件IO不会因为多次ReadI而增加。有缓存的！
 
     /*读取nt_Header*/
     //ntHeader = (ImageNTHeader*)(kpm.AllocMemory(ntHeader_size)+0xC0000000);
-    u.u_IOParam.m_Base = (unsigned char*)(&this->ntHeader);
-    u.u_IOParam.m_Offset = dos_header.e_lfanew;
-    u.u_IOParam.m_Count = ntHeader_size;
+    User_get_IOParam().m_Base = (unsigned char*)(&this->ntHeader);
+    User_get_IOParam().m_Offset = dos_header.e_lfanew;
+    User_get_IOParam().m_Count = ntHeader_size;
     p_inode->ReadI();
 
     if ( ntHeader.Signature!=0x00004550 )
@@ -162,9 +162,9 @@ bool PEParser::HeaderLoad(Inode* p_inode)
      * */
     //sectionHeaders = (ImageSectionHeader*)(kpm.AllocMemory(section_size * ntHeader.FileHeader.NumberOfSections)+0xC0000000);
     sectionHeaders = (ImageSectionHeader*)(kpm.AllocMemory(PAGE_SIZE * 2) + 0xC0000000);
-    u.u_IOParam.m_Base = (unsigned char*)sectionHeaders;
-    u.u_IOParam.m_Offset = dos_header.e_lfanew + ntHeader_size;
-    u.u_IOParam.m_Count = section_size * ntHeader.FileHeader.NumberOfSections;
+    User_get_IOParam().m_Base = (unsigned char*)sectionHeaders;
+    User_get_IOParam().m_Offset = dos_header.e_lfanew + ntHeader_size;
+    User_get_IOParam().m_Count = section_size * ntHeader.FileHeader.NumberOfSections;
     p_inode->ReadI();
 
     /*

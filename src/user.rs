@@ -129,35 +129,41 @@ impl Userspace {
 
 struct SaveHandle {
     open_files: OpenFiles,
+    ioparam: IOParameter,
 }
 
 define_class_compat! {impl Userspace {
     pub fn before_fork() -> Box<SaveHandle> {
         let user = Userspace::get();
-
         crate::println_info!("Userspace::before_fork()");
 
         Box::new(SaveHandle {
             open_files: user.open_files.clone(),
+            ioparam: user.ioparam.clone(),
         })
     }
 
     pub fn after_fork(handle: Box<SaveHandle>) {
         let user = Userspace::get();
-
         crate::println_info!("Userspace::after_fork()");
 
         user.open_files = handle.open_files;
+        user.ioparam = handle.ioparam;
     }
 
     pub fn init() {
         let user = Userspace::get();
-        let open_files_ptr = &raw mut user.open_files;
-
         crate::println_info!("Userspace::init()");
 
         unsafe {
-            open_files_ptr.write(OpenFiles::new());
+            (&raw mut user.open_files).write(OpenFiles::new());
+            (&raw mut user.ioparam).write(IOParameter::new());
         }
+    }
+}}
+
+define_class_compat! {impl User {
+    pub fn get_IOParam_() -> *mut IOParameter {
+        &raw mut Userspace::get().ioparam
     }
 }}

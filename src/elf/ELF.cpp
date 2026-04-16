@@ -66,9 +66,9 @@ int Parser::load(Inode* inode) {
     KernelPageManager& kpm = Kernel::Instance().GetKernelPageManager();
 
     // read elf header
-    u.u_IOParam.m_Base = (unsigned char*) &this->elfHeader32;
-    u.u_IOParam.m_Offset = 0;
-    u.u_IOParam.m_Count = sizeof(this->elfHeader32);  // read 52 bytes for 32-bit elf header.
+    User_get_IOParam().m_Base = (unsigned char*) &this->elfHeader32;
+    User_get_IOParam().m_Offset = 0;
+    User_get_IOParam().m_Count = sizeof(this->elfHeader32);  // read 52 bytes for 32-bit elf header.
 
     inode->ReadI();
 
@@ -114,9 +114,9 @@ int Parser::load(Inode* inode) {
         }
 
         this->programHeaders = (ProgramHeader32*) alloc;
-        u.u_IOParam.m_Base = (unsigned char*) this->programHeaders;
-        u.u_IOParam.m_Offset = elfHeader32.phoff;
-        u.u_IOParam.m_Count = elfHeader32.phentsize * elfHeader32.phnum;
+        User_get_IOParam().m_Base = (unsigned char*) this->programHeaders;
+        User_get_IOParam().m_Offset = elfHeader32.phoff;
+        User_get_IOParam().m_Count = elfHeader32.phentsize * elfHeader32.phnum;
         inode->ReadI();
     }
 
@@ -135,9 +135,9 @@ int Parser::load(Inode* inode) {
         }
 
         this->sectionHeaders = (SectionHeader32*) alloc;
-        u.u_IOParam.m_Base = (unsigned char*) this->sectionHeaders;
-        u.u_IOParam.m_Offset = elfHeader32.shoff;
-        u.u_IOParam.m_Count = elfHeader32.shentsize * elfHeader32.shnum;
+        User_get_IOParam().m_Base = (unsigned char*) this->sectionHeaders;
+        User_get_IOParam().m_Offset = elfHeader32.shoff;
+        User_get_IOParam().m_Count = elfHeader32.shentsize * elfHeader32.shnum;
         inode->ReadI();
     }
 
@@ -157,9 +157,9 @@ int Parser::load(Inode* inode) {
 
         this->strtabData = buf;
         
-        u.u_IOParam.m_Base = (unsigned char*) buf;
-        u.u_IOParam.m_Offset = off;
-        u.u_IOParam.m_Count = sizeReal;
+        User_get_IOParam().m_Base = (unsigned char*) buf;
+        User_get_IOParam().m_Offset = off;
+        User_get_IOParam().m_Count = sizeReal;
         inode->ReadI();
 
     }
@@ -268,9 +268,9 @@ int Parser::relocate(Inode* inode, bool sharedText) {
         }
 
         if (ent.fileSize) {
-            u.u_IOParam.m_Base = (unsigned char*) ent.vaddr;
-            u.u_IOParam.m_Offset = ent.offset;
-            u.u_IOParam.m_Count = ent.fileSize;
+            User_get_IOParam().m_Base = (unsigned char*) ent.vaddr;
+            User_get_IOParam().m_Offset = ent.offset;
+            User_get_IOParam().m_Count = ent.fileSize;
 
             inode->ReadI();
         }

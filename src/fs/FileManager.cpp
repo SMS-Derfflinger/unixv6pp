@@ -340,8 +340,8 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 		return;
 	}
 
-	u.u_IOParam.m_Base = (unsigned char *)u.u_arg[1];	/* 目标缓冲区首址 */
-	u.u_IOParam.m_Count = u.u_arg[2];		/* 要求读/写的字节数 */
+	User_get_IOParam().m_Base = (unsigned char *)u.u_arg[1];	/* 目标缓冲区首址 */
+	User_get_IOParam().m_Count = u.u_arg[2];		/* 要求读/写的字节数 */
 	u.u_segflg = 0;		/* User Space I/O，读入的内容要送数据段或用户栈段 */
 
 	/* 管道读写 */
@@ -363,7 +363,7 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 	{
 		pFile->f_inode->NFlock();
 		/* 设置文件起始读位置 */
-		u.u_IOParam.m_Offset = pFile->f_offset;
+		User_get_IOParam().m_Offset = pFile->f_offset;
 		if ( File::FREAD == mode )
 		{
 			pFile->f_inode->ReadI();
@@ -374,12 +374,12 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 		}
 
 		/* 根据读写字数，移动文件读写偏移指针 */
-		pFile->f_offset += (u.u_arg[2] - u.u_IOParam.m_Count);
+		pFile->f_offset += (u.u_arg[2] - User_get_IOParam().m_Count);
 		pFile->f_inode->NFrele();
 	}
 
 	/* 返回实际读写的字节数，修改存放系统调用返回值的核心栈单元 */
-	u.u_ar0[User::EAX] = u.u_arg[2] - u.u_IOParam.m_Count;
+	u.u_ar0[User::EAX] = u.u_arg[2] - User_get_IOParam().m_Count;
 }
 
 void FileManager::Pipe()
@@ -477,9 +477,9 @@ loop:
 	}
 
 	/* 管道中有有可读取的数据 */
-	u.u_IOParam.m_Offset = pFile->f_offset;
+	User_get_IOParam().m_Offset = pFile->f_offset;
 	pInode->ReadI();
-	pFile->f_offset = u.u_IOParam.m_Offset;
+	pFile->f_offset = User_get_IOParam().m_Offset;
 	pInode->Prele();
 }
 
@@ -488,7 +488,7 @@ void FileManager::WriteP(File* pFile)
 	Inode* pInode = pFile->f_inode;
 	User& u = Kernel::Instance().GetUser();
 
-	int count = u.u_IOParam.m_Count;
+	int count = User_get_IOParam().m_Count;
 
 loop:
 	pInode->Plock();
@@ -497,7 +497,7 @@ loop:
 	if ( 0 == count )
 	{
 		pInode->Prele();
-		u.u_IOParam.m_Count = 0;
+		User_get_IOParam().m_Count = 0;
 		return;
 	}
 
@@ -520,9 +520,9 @@ loop:
 	}
 
 	/* 将待写入数据尽可能多地写入管道 */
-	u.u_IOParam.m_Offset = pInode->i_size;
-	u.u_IOParam.m_Count = Utility::Min(count, Inode::PIPSIZ - u.u_IOParam.m_Offset);
-	count -= u.u_IOParam.m_Count;
+	User_get_IOParam().m_Offset = pInode->i_size;
+	User_get_IOParam().m_Count = Utility::Min(count, Inode::PIPSIZ - User_get_IOParam().m_Offset);
+	count -= User_get_IOParam().m_Count;
 	pInode->WriteI();
 	pInode->Prele();
 
@@ -634,16 +634,16 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 		}
 
 		/* 内层循环部分对于u.u_dbuf[]中的路径名分量，逐个搜寻匹配的目录项 */
-		u.u_IOParam.m_Offset = 0;
+		User_get_IOParam().m_Offset = 0;
 		/* 设置为目录项个数 ，含空白的目录项*/
-		u.u_IOParam.m_Count = pInode->i_size / (DirectoryEntry::DIRSIZ + 4);
+		User_get_IOParam().m_Count = pInode->i_size / (DirectoryEntry::DIRSIZ + 4);
 		freeEntryOffset = 0;
 		pBuf = NULL;
 
 		while (true)
 		{
 			/* 对目录项已经搜索完毕 */
-			if ( 0 == u.u_IOParam.m_Count )
+			if ( 0 == User_get_IOParam().m_Count )
 			{
 				if ( NULL != pBuf )
 				{
@@ -665,7 +665,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 					if ( freeEntryOffset )	/* 此变量存放了空闲目录项位于目录文件中的偏移量 */
 					{
 						/* 将空闲目录项偏移量存入u区中，写目录项WriteDir()会用到 */
-						u.u_IOParam.m_Offset = freeEntryOffset - (DirectoryEntry::DIRSIZ + 4);
+						User_get_IOParam().m_Offset = freeEntryOffset - (DirectoryEntry::DIRSIZ + 4);
 					}
 					else  /*问题：为何if分支没有置IUPD标志？  这是因为文件的长度没有变呀*/
 					{
@@ -681,30 +681,30 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			}
 
 			/* 已读完目录文件的当前盘块，需要读入下一目录项数据盘块 */
-			if ( 0 == u.u_IOParam.m_Offset % Inode::BLOCK_SIZE )
+			if ( 0 == User_get_IOParam().m_Offset % Inode::BLOCK_SIZE )
 			{
 				if ( NULL != pBuf )
 				{
 					bufMgr.Brelse(pBuf);
 				}
 				/* 计算要读的物理盘块号 */
-				int phyBlkno = pInode->Bmap(u.u_IOParam.m_Offset / Inode::BLOCK_SIZE );
+				int phyBlkno = pInode->Bmap(User_get_IOParam().m_Offset / Inode::BLOCK_SIZE );
 				pBuf = bufMgr.Bread(pInode->i_dev, phyBlkno );
 			}
 
 			/* 没有读完当前目录项盘块，则读取下一目录项至u.u_dent */
-			int* src = (int *)(pBuf->b_addr + (u.u_IOParam.m_Offset % Inode::BLOCK_SIZE));
+			int* src = (int *)(pBuf->b_addr + (User_get_IOParam().m_Offset % Inode::BLOCK_SIZE));
 			Utility::DWordCopy( src, (int *)&u.u_dent, sizeof(DirectoryEntry)/sizeof(int) );
 
-			u.u_IOParam.m_Offset += (DirectoryEntry::DIRSIZ + 4);
-			u.u_IOParam.m_Count--;
+			User_get_IOParam().m_Offset += (DirectoryEntry::DIRSIZ + 4);
+			User_get_IOParam().m_Count--;
 
 			/* 如果是空闲目录项，记录该项位于目录文件中偏移量 */
 			if ( 0 == u.u_dent.m_ino )
 			{
 				if ( 0 == freeEntryOffset )
 				{
-					freeEntryOffset = u.u_IOParam.m_Offset;
+					freeEntryOffset = User_get_IOParam().m_Offset;
 				}
 				/* 跳过空闲目录项，继续比较下一目录项 */
 				continue;
@@ -822,8 +822,8 @@ void FileManager::WriteDir( Inode* pInode )
 		u.u_dent.m_name[i] = u.u_dbuf[i];
 	}
 
-	u.u_IOParam.m_Count = DirectoryEntry::DIRSIZ + 4;
-	u.u_IOParam.m_Base = (unsigned char *)&u.u_dent;
+	User_get_IOParam().m_Count = DirectoryEntry::DIRSIZ + 4;
+	User_get_IOParam().m_Base = (unsigned char *)&u.u_dent;
 	u.u_segflg = 1;
 
 	/* 将目录项写入父目录文件 */
@@ -1072,9 +1072,9 @@ void FileManager::UnLink()
 		return;
 	}
 	/* 写入清零后的目录项 */
-	u.u_IOParam.m_Offset -= (DirectoryEntry::DIRSIZ + 4);
-	u.u_IOParam.m_Base = (unsigned char *)&u.u_dent;
-	u.u_IOParam.m_Count = DirectoryEntry::DIRSIZ + 4;
+	User_get_IOParam().m_Offset -= (DirectoryEntry::DIRSIZ + 4);
+	User_get_IOParam().m_Base = (unsigned char *)&u.u_dent;
+	User_get_IOParam().m_Count = DirectoryEntry::DIRSIZ + 4;
 
 	u.u_dent.m_ino = 0;
 	pDeleteInode->WriteI();
