@@ -407,9 +407,10 @@ void ProcessManager::Wait()
 					// User_get_cstime() += pUser->u_cstime +	pUser->u_stime;
 					// User_get_cutime() += pUser->u_cutime + pUser->u_utime;
 
-					int* pInt = (int *)u.u_arg[0];
+					int* pInt = (int *)User_get_arg()[0];
 					/* 获取子进程exit(int status)的返回值 */
-					*pInt = pUser->u_arg[0];
+                                        // greatbridf: this is the same
+					// *pInt = pUser->u_arg[0];
 
 					/* 如果此处没有Brelse()系统会发生什么-_- */
 					bufMgr.Brelse(pBuf);
@@ -562,8 +563,8 @@ void ProcessManager::Exec()
 	int allocLength = (stackSize + PAGE_SIZE * 2 - 1) >> 13 << 13;
 	unsigned long fakeStack = kernelPgMgr.AllocMemory(allocLength);
 
-	int argc = u.u_arg[1];
-	char** argv = (char **)u.u_arg[2];
+	int argc = User_get_arg()[1];
+	char** argv = (char **)User_get_arg()[2];
 
 	/* esp定位到栈底 */
 	unsigned int esp = MemoryDescriptor::USER_SPACE_SIZE;
@@ -742,7 +743,7 @@ void ProcessManager::Exec()
 	u.u_ar0[User::EAX] = isPE ? peParser.EntryPointAddress : elfParser.entryPointAddr;
 	
 	/* 构造出Exec()系统调用的退出环境，使之退出到ring3时，开始执行user code */
-	struct pt_context* pContext = (struct pt_context *)u.u_arg[4];
+	struct pt_context* pContext = (struct pt_context *)User_get_arg()[4];
 	pContext->eip = 0x00000000;	/* 退出到ring3特权级下从线性地址0x00000000处runtime()开始执行 */
 	//pContext->eip = parser.EntryPointAddress;
 	pContext->xcs = Machine::USER_CODE_SEGMENT_SELECTOR;
@@ -800,8 +801,8 @@ Process* ProcessManager::Select ()
 void ProcessManager::Kill()
 {
 	User& u = Kernel::Instance().GetUser();
-	int pid = u.u_arg[0];
-	int signal = u.u_arg[1];
+	int pid = User_get_arg()[0];
+	int signal = User_get_arg()[1];
 	bool flag = false;
 
 	for ( int i = 0; i < ProcessManager::NPROC; i++ )

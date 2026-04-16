@@ -44,7 +44,7 @@ void FileManager::Open()
 	{
 		return;
 	}
-	this->Open1(pInode, u.u_arg[1], 0);
+	this->Open1(pInode, User_get_arg()[1], 0);
 }
 
 /*
@@ -55,7 +55,7 @@ void FileManager::Creat()
 {
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
-	unsigned int newACCMode = u.u_arg[1] & (Inode::IRWXU|Inode::IRWXG|Inode::IRWXO);
+	unsigned int newACCMode = User_get_arg()[1] & (Inode::IRWXU|Inode::IRWXG|Inode::IRWXO);
 
 	/* 搜索目录的模式为1，表示创建；若父目录不可写，出错返回 */
 	pInode = this->NameI(NextChar, FileManager::CREATE);
@@ -180,7 +180,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 void FileManager::Close()
 {
 	User& u = Kernel::Instance().GetUser();
-	int fd = u.u_arg[0];
+	int fd = User_get_arg()[0];
 
 	/* 获取打开文件控制块File结构 */
 	File* pFile = OpenFiles_get_file(fd);
@@ -198,7 +198,7 @@ void FileManager::Seek()
 {
 	File* pFile;
 	User& u = Kernel::Instance().GetUser();
-	int fd = u.u_arg[0];
+	int fd = User_get_arg()[0];
 
 	pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
@@ -213,16 +213,16 @@ void FileManager::Seek()
 		return;
 	}
 
-	int offset = u.u_arg[1];
+	int offset = User_get_arg()[1];
 
-	/* 如果u.u_arg[2]在3 ~ 5之间，那么长度单位由字节变为512字节 */
-	if ( u.u_arg[2] > 2 )
+	/* 如果User_get_arg()[2]在3 ~ 5之间，那么长度单位由字节变为512字节 */
+	if ( User_get_arg()[2] > 2 )
 	{
 		offset = offset << 9;
-		u.u_arg[2] -= 3;
+		User_get_arg()[2] -= 3;
 	}
 
-	switch ( u.u_arg[2] )
+	switch ( User_get_arg()[2] )
 	{
 		/* 读写位置设置为offset */
 		case 0:
@@ -243,7 +243,7 @@ void FileManager::Dup()
 {
 	File* pFile;
 	User& u = Kernel::Instance().GetUser();
-	int fd = u.u_arg[0];
+	int fd = User_get_arg()[0];
 
 	pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
@@ -265,7 +265,7 @@ void FileManager::FStat()
 {
 	File* pFile;
 	User& u = Kernel::Instance().GetUser();
-	int fd = u.u_arg[0];
+	int fd = User_get_arg()[0];
 
 	pFile = OpenFiles_get_file(fd);
 	if ( NULL == pFile )
@@ -273,8 +273,8 @@ void FileManager::FStat()
 		return;
 	}
 
-	/* u.u_arg[1] = pStatBuf */
-	this->Stat1(pFile->f_inode, u.u_arg[1]);
+	/* User_get_arg()[1] = pStatBuf */
+	this->Stat1(pFile->f_inode, User_get_arg()[1]);
 }
 
 void FileManager::Stat()
@@ -287,7 +287,7 @@ void FileManager::Stat()
 	{
 		return;
 	}
-	this->Stat1(pInode, u.u_arg[1]);
+	this->Stat1(pInode, User_get_arg()[1]);
 	this->m_InodeTable->IPut(pInode);
 }
 
@@ -324,7 +324,7 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 	User& u = Kernel::Instance().GetUser();
 
 	/* 根据Read()/Write()的系统调用参数fd获取打开文件控制块结构 */
-	pFile = OpenFiles_get_file(u.u_arg[0]); /* fd */
+	pFile = OpenFiles_get_file(User_get_arg()[0]); /* fd */
 	if ( NULL == pFile )
 	{
 		/* 不存在该打开文件，GetF已经设置过出错码，所以这里不需要再设置了 */
@@ -340,8 +340,8 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 		return;
 	}
 
-	User_get_IOParam().m_Base = (unsigned char *)u.u_arg[1];	/* 目标缓冲区首址 */
-	User_get_IOParam().m_Count = u.u_arg[2];		/* 要求读/写的字节数 */
+	User_get_IOParam().m_Base = (unsigned char *)User_get_arg()[1];	/* 目标缓冲区首址 */
+	User_get_IOParam().m_Count = User_get_arg()[2];		/* 要求读/写的字节数 */
 
 	/* 管道读写 */
 	if(pFile->f_flag & File::FPIPE)
@@ -373,12 +373,12 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 		}
 
 		/* 根据读写字数，移动文件读写偏移指针 */
-		pFile->f_offset += (u.u_arg[2] - User_get_IOParam().m_Count);
+		pFile->f_offset += (User_get_arg()[2] - User_get_IOParam().m_Count);
 		pFile->f_inode->NFrele();
 	}
 
 	/* 返回实际读写的字节数，修改存放系统调用返回值的核心栈单元 */
-	u.u_ar0[User::EAX] = u.u_arg[2] - User_get_IOParam().m_Count;
+	u.u_ar0[User::EAX] = User_get_arg()[2] - User_get_IOParam().m_Count;
 }
 
 void FileManager::Pipe()
@@ -419,8 +419,8 @@ void FileManager::Pipe()
 	/* 写管道的打开文件描述符 */
 	fd[1] = u.u_ar0[User::EAX];
 
-	/* Pipe(int* fd)的参数在u.u_arg[0]中，将分配成功的2个fd返回给用户态程序 */
-	int* pFdarr = (int *)u.u_arg[0];
+	/* Pipe(int* fd)的参数在User_get_arg()[0]中，将分配成功的2个fd返回给用户态程序 */
+	int* pFdarr = (int *)User_get_arg()[0];
 	pFdarr[0] = fd[0];
 	pFdarr[1] = fd[1];
 
@@ -919,7 +919,7 @@ void FileManager::ChMod()
 {
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
-	unsigned int mode = u.u_arg[1];
+	unsigned int mode = User_get_arg()[1];
 
 	if ( (pInode = this->Owner()) == NULL )
 	{
@@ -939,8 +939,8 @@ void FileManager::ChOwn()
 {
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
-	short uid = u.u_arg[1];
-	short gid = u.u_arg[2];
+	short uid = User_get_arg()[1];
+	short gid = User_get_arg()[2];
 
 	/* 不是超级用户或者不是文件主则返回 */
 	if ( !u.SUser() || (pInode = this->Owner()) == NULL )
@@ -980,7 +980,7 @@ void FileManager::ChDir()
 	u.u_cdir = pInode;
 	pInode->Prele();
 
-	this->SetCurDir((char *)u.u_arg[0] /* pathname */);
+	this->SetCurDir((char *)User_get_arg()[0] /* pathname */);
 }
 
 void FileManager::Link()
@@ -1014,7 +1014,7 @@ void FileManager::Link()
 	/* 解锁现存文件Inode,以避免在以下搜索新文件时产生死锁 */
 	pInode->i_flag &= (~Inode::ILOCK);
 	/* 指向要创建的新路径newPathname */
-	u.u_dirp = (char *)u.u_arg[1];
+	u.u_dirp = (char *)User_get_arg()[1];
 	pNewInode = this->NameI(FileManager::NextChar, FileManager::CREATE);
 	/* 如果文件已存在 */
 	if ( NULL != pNewInode )
@@ -1113,7 +1113,7 @@ void FileManager::MkNod()
 	{
 		return;	/* 没有需要释放的资源，直接退出 */
 	}
-	pInode = this->MakNode(u.u_arg[1]);
+	pInode = this->MakNode(User_get_arg()[1]);
 	if ( NULL == pInode )
 	{
 		return;
@@ -1121,7 +1121,7 @@ void FileManager::MkNod()
 	/* 所建立是设备文件 */
 	if ( (pInode->i_mode & (Inode::IFBLK | Inode::IFCHR)) != 0 )
 	{
-		pInode->i_addr[0] = u.u_arg[2];
+		pInode->i_addr[0] = User_get_arg()[2];
 	}
 	this->m_InodeTable->IPut(pInode);
 }

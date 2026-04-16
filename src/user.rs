@@ -186,4 +186,5 @@ define_user_compat! {
     euid: u16 => get_ruid_ := 0;
     gid: u16 => get_gid_ := 0;
     egid: u16 => get_rgid_ := 0;
+    args: [usize; 5] => get_arg_ := [0; 5];
 }

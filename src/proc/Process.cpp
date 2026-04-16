@@ -357,7 +357,7 @@ void Process::SStack()
 void Process::SBreak()
 {
 	User& u = Kernel::Instance().GetUser();
-	unsigned int newEnd = u.u_arg[0];
+	unsigned int newEnd = User_get_arg()[0];
 	MemoryDescriptor& md = u.u_MemoryDescriptor;
 	unsigned int newSize = newEnd - md.m_DataStartAddress;
 
@@ -496,7 +496,7 @@ void Process::PSig(struct pt_context* pContext)
 void Process::Nice()
 {
 	User& u = Kernel::Instance().GetUser();
-	int niceValue = u.u_arg[0];
+	int niceValue = User_get_arg()[0];
 
 	if (niceValue > 20)
 	{
@@ -514,8 +514,8 @@ void Process::Ssig()
 {
 	User& u = Kernel::Instance().GetUser();
 
-	int signalIndex = u.u_arg[0];
-	unsigned long func = u.u_arg[1];
+	int signalIndex = User_get_arg()[0];
+	unsigned long func = User_get_arg()[1];
 
 	/* 这几个信号不许设置 */
 	if ( signalIndex <= 0 || signalIndex >= User::NSIG || signalIndex == User::SIGKILL )

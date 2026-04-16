@@ -168,22 +168,22 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 
 	//Diagnose::Write("eax = %d, callp: count = %d, address = %x\n", regs->eax, callp->count, callp->call);
 
-	/* 根据callp->count将系统调用的传入参数从寄存器放入u.u_arg[5] */
+	/* 根据callp->count将系统调用的传入参数从寄存器放入User_get_arg()[5] */
 	unsigned int * syscall_arg = (unsigned int *)&regs->ebx;
 	for( unsigned int i = 0; i < callp->count; i++ )
 	{
-		u.u_arg[i] = (int)(*syscall_arg++);
+		User_get_arg()[i] = (int)(*syscall_arg++);
 	}
 
 	/* u.u_dirp一般用于指向系统调用的pathname参数 */
-	u.u_dirp = (char *)u.u_arg[0];
+	u.u_dirp = (char *)User_get_arg()[0];
 
 	/* 
 	 * context指向核心栈上硬件保护现场部分，这样处理是因为Exec()系统调用
 	 * 需要Fake一个退出环境，使之退出到ring3时，开始执行user code。目前所有
-	 * 系统调用都是不会用到u.u_arg[4]的。
+	 * 系统调用都是不会用到User_get_arg()[4]的。
 	 */
-	u.u_arg[4] = (int)context;
+	User_get_arg()[4] = (int)context;
 	
 	Trap1(callp->call);		/* 系统调用处理子程序，如fork(), read()等等 */
 
@@ -445,7 +445,7 @@ int SystemCall::Sys_Sumount()
 int SystemCall::Sys_Setuid()
 {
 	User& u = Kernel::Instance().GetUser();
-	short uid = u.u_arg[0];
+	short uid = User_get_arg()[0];
 
 	if ( User_get_ruid() == uid || u.SUser() )
 	{
@@ -509,7 +509,7 @@ int SystemCall::Sys_Trace()
 
 	if (Diagnose::ROWS == 0) /* if Diagnose not enabled */
 	{
-		Diagnose::ROWS = u.u_arg[0];	/* Diagnose类调试输出的总行数 */
+		Diagnose::ROWS = User_get_arg()[0];	/* Diagnose类调试输出的总行数 */
 
 		/* 定位当前输出坐标 */
 		Diagnose::m_Row = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
@@ -540,8 +540,8 @@ int SystemCall::Sys_Stty()
 	File* pFile;
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
-	int fd = u.u_arg[0];
-	TTy* pTTy = (TTy *)u.u_arg[1];
+	int fd = User_get_arg()[0];
+	TTy* pTTy = (TTy *)User_get_arg()[1];
 
 	if ( (pFile = OpenFiles_get_file(fd)) == NULL )
 	{
@@ -565,8 +565,8 @@ int SystemCall::Sys_Gtty()
 	File* pFile;
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
-	int fd = u.u_arg[0];
-	TTy* pTTy = (TTy *)u.u_arg[1];
+	int fd = User_get_arg()[0];
+	TTy* pTTy = (TTy *)User_get_arg()[1];
 
 	if ( (pFile = OpenFiles_get_file(fd)) == NULL )
 	{
@@ -600,7 +600,7 @@ int SystemCall::Sys_Sslep()
 
 	X86Assembly::CLI();
 
-	unsigned int wakeTime = Time::time + u.u_arg[0];	/* sleep(second) */
+	unsigned int wakeTime = Time::time + User_get_arg()[0];	/* sleep(second) */
 
 	/*
 	 * 对   if ( Time::tout <= Time::time || Time::tout > wakeTime )  中判断条件的解释：
@@ -693,7 +693,7 @@ int SystemCall::Sys_Times()
 {
 	User& u = Kernel::Instance().GetUser();
 
-	struct tms* ptms = (struct tms *)u.u_arg[0];
+	struct tms* ptms = (struct tms *)User_get_arg()[0];
 	
 	ptms->utime = User_get_utime();
 	ptms->stime = User_get_stime();
@@ -713,7 +713,7 @@ int SystemCall::Sys_Profil()
 int SystemCall::Sys_Setgid()
 {
 	User& u = Kernel::Instance().GetUser();
-	short gid = u.u_arg[0];
+	short gid = User_get_arg()[0];
 
 	if ( User_get_rgid() == gid || u.SUser() )
 	{

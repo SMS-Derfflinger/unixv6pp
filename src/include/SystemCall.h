@@ -28,7 +28,7 @@ struct SystemCallTableEntry
  * ebx开始存放用户态程序提供的系统调用第一个参数，ecx第二参数，以此类推
  * ebp存放最后的参数；最多可以有6个参数。其实UNIX V6的系统调用参数最多只有4个。
  *　
- * 随后会将传入参数转存到u.u_arg[5]中。
+ * 随后会将传入参数转存到User_get_arg()[5]中。
  */
 class SystemCall
 {
