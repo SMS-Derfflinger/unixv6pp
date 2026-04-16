@@ -45,7 +45,7 @@ pub struct Userspace {
     children_stime: u32,
 
     /// Pending signals
-    signals: [usize; 32],
+    signals: [usize; SIGMAX],
 
     /// Used to jump back to Trap() on signal received
     qsav: [Pointer; 2],
