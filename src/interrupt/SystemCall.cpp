@@ -226,7 +226,7 @@ void SystemCall::Trap1(int (*func)())
 /*	int pid = User_get_procp()->p_pid;
 	int text = User_get_MemoryDescriptor().m_TextSize;
 	int data =  User_get_MemoryDescriptor().m_DataSize;*/
-	SaveU(u.u_qsav);
+	SaveU(User_get_qsav());
 	func();
 	User_get_intflg() = 0;
 }

@@ -92,7 +92,7 @@ int ProcessManager::NewProc()
 
 	/* 这里必须先要调用SaveU()保存现场到u区，因为有些进程并不一定
 	设置过 */
-	SaveU(u.u_rsav);
+	SaveU(User_get_rsav());
 
 	/* 将父进程的用户态页表指针m_UserPageTableArray备份至pgTable */
 	PageTable* pgTable = User_get_MemoryDescriptor().m_UserPageTableArray;
@@ -123,7 +123,7 @@ int ProcessManager::NewProc()
 		current->p_stat = Process::SIDL;
 		/* 子进程p_addr指向父进程图像，因为子进程换出至交换区需要以父进程图像为蓝本 */
 		child->p_addr = current->p_addr;
-		SaveU(u.u_ssav);
+		SaveU(User_get_ssav());
 		this->XSwap(child, false, 0);
 		child->p_flag |= Process::SSWAP;
 		current->p_stat = Process::SRUN;
@@ -155,7 +155,7 @@ int ProcessManager::Swtch()
 {	
 	//Diagnose::Write("Start Swtch()\n");
 	User& u = Kernel::Instance().GetUser();
-	SaveU(u.u_rsav);
+	SaveU(User_get_rsav());
 
 	/* 0#进程上台*/
 	Process* procZero = &process[0];
@@ -191,7 +191,6 @@ int ProcessManager::Swtch()
 	RetU();
 	X86Assembly::STI();
 
-	User& newu = Kernel::Instance().GetUser();
 	User_get_MemoryDescriptor().MapToPageTable();
 	
 	/*
@@ -207,7 +206,7 @@ int ProcessManager::Swtch()
 	if ( User_get_procp()->p_flag & Process::SSWAP )
 	{
 		User_get_procp()->p_flag &= ~Process::SSWAP;
-		aRetU(newu.u_ssav);
+		aRetU(User_get_ssav());
 	}
 	
 	/* 

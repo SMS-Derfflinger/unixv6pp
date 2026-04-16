@@ -6,6 +6,7 @@ use crate::{
     fs::{DirectoryEntry, IOParameter, Inode, InodeRef, OpenFiles},
 };
 
+#[derive(Clone, Copy)]
 pub struct Pointer(usize);
 
 pub struct Text;
@@ -53,6 +54,7 @@ pub struct MemoryDescriptor {
     data: [usize; 6],
 }
 
+#[repr(C)]
 pub struct Userspace {
     /// Save esp and ebp
     rsav: [Pointer; 2],
@@ -258,4 +260,7 @@ define_user_compat! {
     cwd: *mut Inode => get_cdir_ := core::ptr::null_mut();
     cwd_parent: *mut Inode => get_pdir_ := core::ptr::null_mut();
     error: Option<PosixError> => get_error_ := None;
+    rsav: [Pointer; 2] => get_rsav_ := [Pointer(0); 2];
+    ssav: [Pointer; 2] => get_ssav_ := [Pointer(0); 2];
+    qsav: [Pointer; 2] => get_qsav_ := [Pointer(0); 2];
 }

@@ -95,19 +95,6 @@ public:
 	static const int SIGSYS = 31; /* invalid sys call */
 
 public:
-	unsigned long u_rsav[2];	/* 用于保存esp与ebp指针 */
-	unsigned long u_ssav[2];	/* 用于对esp和ebp指针的二次保护 */
-	/* 新添加变量，用于替代原有的变量
-	 * int u_uisa[16]
-	 * int u_uisd[16]
-	 * u_tsize
-	 * u_dsize
-	 * u_ssize
-	 */
-
-	/* 信号处理相关成员 */
-	unsigned long u_qsav[2];		/* 用于接收到信号时直接从Sleep()函数跳回至Trap() */
-
 	/* Member Functions */
 public:
 	/* 检查当前用户是否是超级用户 */

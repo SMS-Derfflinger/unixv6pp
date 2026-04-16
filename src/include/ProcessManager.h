@@ -4,28 +4,14 @@
 #include "Process.h"
 #include "Assembly.h"
 
-/* 
- * 保存esp与ebp到u结构的宏，由于需要保存的是NewProc()和Swtch()函数的
- * 环境，因此只能使用宏。否则，返回地址变成了SaveU()时的地址。这样就
- * 跳回到SaveU()函数的下一句执行。该结果是不正确的
- */
- /*
-#define SaveU(u) \
-	__asm__ __volatile__(	\
-		"movl %%esp, %0\n\t \
-		 movl %%ebp, %1\n\t" \
-		:"+m"((u).u_rsav[0]),"+m"((u).u_rsav[1]) \
-		); 
-*/
-
 #define SaveU(u_sav) \
 	__asm__ __volatile__(	\
 		"movl %%esp, %0\n\t \
 		 movl %%ebp, %1\n\t" \
 		:"+m"(u_sav[0]),"+m"(u_sav[1]) \
-		); 
-		
-/* 
+		);
+
+/*
  * 刷新内核页表第1023项的宏，在进程调度时，指向指定进程的u区地址，使
  * 得GetUser()函数返回当前进程的u结构
  */
@@ -34,32 +20,19 @@
 		= (p)->p_addr / PAGE_SIZE; \
 	FlushPageDirectory();
 
-/* 
- * 恢复esp与ebp到u结构的宏，使用宏的理由同SaveU()
- */
-/* #define RetU(u) \
-	__asm__ __volatile__( \
-		"movl %0, %%ebp\n\t \
-		 movl %1, %%esp\n\t" \
-		: \
-		:"m"((u).u_rsav[1]),"m"((u).u_rsav[0]) \
-		);	\
-	FlushPageDirectory(); 
- */
-
 #define RetU()	\
 	__asm__ __volatile__("	movl %0, %%eax;				\
 							movl (%%eax), %%esp;		\
 							movl 0x4(%%eax), %%ebp;"	\
 							:							\
-							: "i" (0xc03ff000) );
+							: "i" (0xc03ff200) );
 
 #define aRetU(u_sav) \
 	__asm__ __volatile__("	movl %0, %%esp;			\
 							movl %1, %%ebp;"		\
 							:						\
 							:"m"(u_sav[0]), "m"(u_sav[1]) );
-	
+
 class ProcessManager
 {
 	/* static consts */
@@ -73,7 +46,7 @@ public:
 
 	static const unsigned int USIZE = 0x1000;	/* ppda区大小，字节为单位 */
 
-	/* 
+	/*
 	 * 进程进入睡眠状态时，内核根据其睡眠原因设置其醒来后的优先数；
 	 * 优先数小于零为高优先权睡眠，优先数大于零为低优先权睡眠。
 	 */
@@ -116,7 +89,7 @@ public:
 
 	int Swtch();
 
-	/* 
+	/*
 	 * 进程图像内存和交换区之间的传送。如果有进程想要换入内存，而内存
 	 * 中无法找到能够容纳该进程的连续内存区，则依次将低优先权睡眠状态(SWAIT)-->
 	 * 暂停状态(SSTOP)-->高优先权睡眠状态(SSLEEP)-->就绪状态(SRUN)进程换出，
@@ -124,22 +97,22 @@ public:
 	 */
 	void Sched();
 
-	/* 
+	/*
 	 * 父进程等待子进程结束的Wait()系统调用
 	 */
 	void Wait();
 
-	/* 
+	/*
 	* 进程创建Fork()系统调用
 	*/
 	void Fork();
 
-	/* 
+	/*
 	 * @comment Exec()系统调用，进程图像改换
 	 */
 	void Exec();
 
-	/* 
+	/*
 	 * 终止进程Kill()系统调用
 	 */
 	void Kill();

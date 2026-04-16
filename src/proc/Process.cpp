@@ -81,7 +81,7 @@ void Process::Sleep(unsigned long chan, int pri)
 		if ( this->IsSig() )
 		{
 			/* return确保aRetU()跳回到SystemCall::Trap1()之后立刻执行ret返回指令 */
-			aRetU(u.u_qsav);
+			aRetU(User_get_qsav());
 			return;
 		}
 		/* 
@@ -108,7 +108,7 @@ void Process::Sleep(unsigned long chan, int pri)
 		if ( this->IsSig() )
 		{
 			/* return确保aRetU()跳回到SystemCall::Trap1()之后立刻执行ret返回指令 */
-			aRetU(u.u_qsav);
+			aRetU(User_get_qsav());
 			return;
 		}
 	}
@@ -148,12 +148,12 @@ void Process::Expand(unsigned int newSize)
 	// }
 
 	/* 进程图像扩大，需要寻找一块大小newSize的连续内存区 */
-	SaveU(u.u_rsav);
+	SaveU(User_get_rsav());
 	newAddress = userPgMgr.AllocMemory(newSize);
 	/* 分配内存失败，将进程暂时换出到交换区上 */
 	if ( NULL == newAddress )
 	{
-		SaveU(u.u_ssav);
+		SaveU(User_get_ssav());
 		procMgr.XSwap(pProcess, true, oldSize);
 		pProcess->p_flag |= Process::SSWAP;
 		procMgr.Swtch();
@@ -371,7 +371,7 @@ void Process::SBreak()
 						md.m_TextSize, md.m_DataStartAddress, newSize, md.m_StackSize) )
 	{
 		//系统调用出错时，不可以用这种方式返回。执行这条路径会导致 u.u_intflg == 1，User_get_error()被错误修改为EINTR（4）；无论何故导致系统调用失败。
-		//aRetU(u.u_qsav);
+		//aRetU(User_get_qsav());
 		return;
 	}
 
