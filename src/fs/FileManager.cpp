@@ -166,7 +166,7 @@ void FileManager::Open1(Inode* pInode, int mode, int trf)
 	else	/* 如果出错则释放资源 */
 	{
 		/* 释放打开文件描述符 */
-		int fd = u.u_ar0[User::EAX];
+		int fd = User_get_ar0()[User::EAX];
 		if(fd != -1)
 		{
 			OpenFiles_set_file(fd, NULL);
@@ -378,7 +378,7 @@ void FileManager::Rdwr( enum File::FileFlags mode )
 	}
 
 	/* 返回实际读写的字节数，修改存放系统调用返回值的核心栈单元 */
-	u.u_ar0[User::EAX] = User_get_arg()[2] - User_get_IOParam().m_Count;
+	User_get_ar0()[User::EAX] = User_get_arg()[2] - User_get_IOParam().m_Count;
 }
 
 void FileManager::Pipe()
@@ -404,7 +404,7 @@ void FileManager::Pipe()
 		return;
 	}
 	/* 读管道的打开文件描述符 */
-	fd[0] = u.u_ar0[User::EAX];
+	fd[0] = User_get_ar0()[User::EAX];
 
 	/* 分配写管道的File结构 */
 	pFileWrite = f_alloc(this->m_OpenFileTable);
@@ -417,7 +417,7 @@ void FileManager::Pipe()
 	}
 
 	/* 写管道的打开文件描述符 */
-	fd[1] = u.u_ar0[User::EAX];
+	fd[1] = User_get_ar0()[User::EAX];
 
 	/* Pipe(int* fd)的参数在User_get_arg()[0]中，将分配成功的2个fd返回给用户态程序 */
 	int* pFdarr = (int *)User_get_arg()[0];

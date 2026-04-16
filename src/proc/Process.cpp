@@ -363,7 +363,7 @@ void Process::SBreak()
 
 	if (newEnd == 0)
 	{
-		u.u_ar0[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
+		User_get_ar0()[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
 		return;
 	}
 
@@ -403,7 +403,7 @@ void Process::SBreak()
 			Utility::CopySeg(dst - change, dst);
 		}
 	}
-	u.u_ar0[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
+	User_get_ar0()[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
 }
 
 void Process::PSignal( int signal )
@@ -524,7 +524,7 @@ void Process::Ssig()
 		return;
 	}
 	/* 设置函数地址到信号处理函数数组 */
-	u.u_ar0[User::EAX] = User_get_signal()[signalIndex];
+	User_get_ar0()[User::EAX] = User_get_signal()[signalIndex];
 	User_get_signal()[signalIndex] = func;
 	/* 清当前信号 */
 	if ( u.u_procp->p_sig == signalIndex )

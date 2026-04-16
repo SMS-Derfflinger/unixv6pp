@@ -142,7 +142,7 @@ void SystemCall::SystemCallEntrance()
 void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 {	
 	User& u = Kernel::Instance().GetUser();
-	/* reference: u.u_ar0 = &r0 @line 2701 */
+	/* reference: User_get_ar0() = &r0 @line 2701 */
 
 	/* 新加进的代码。判断有无接收到信号，如接收到信号则进行响应 */
 	if ( u.u_procp->IsSig() )
@@ -153,7 +153,7 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 		return;
 	}
 
-	u.u_ar0 = &regs->eax;
+	User_get_ar0() = &regs->eax;
 
 	if(regs->eax == 20)
 		regs->eax = 20;
@@ -361,7 +361,7 @@ int SystemCall::Sys_ChDir()
 int SystemCall::Sys_GTime()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.u_ar0[User::EAX] = Time::time;
+	User_get_ar0()[User::EAX] = Time::time;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -424,7 +424,7 @@ int SystemCall::Sys_Seek()
 int SystemCall::Sys_Getpid()
 {
 	User& u = Kernel::Instance().GetUser();
-	u.u_ar0[User::EAX] = u.u_procp->p_pid;
+	User_get_ar0()[User::EAX] = u.u_procp->p_pid;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -469,7 +469,7 @@ int SystemCall::Sys_Getuid()
 
 	uid = (User_get_uid() << 16);
 	uid |= (User_get_ruid() & 0xFF);
-	u.u_ar0[User::EAX] = uid;
+	User_get_ar0()[User::EAX] = uid;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -482,7 +482,7 @@ int SystemCall::Sys_Stime()
 	/* 仅超级用户才具有设置系统时间的权限 */
 	if (u.SUser())
 	{
-		Time::time = u.u_ar0[User::EAX];
+		Time::time = User_get_ar0()[User::EAX];
 	}
 
 	return 0;	/* GCC likes it ! */
@@ -529,7 +529,7 @@ int SystemCall::Sys_Trace()
 		/* 字符设备输出使用整个屏幕所有行 */
 		//CRT::ROWS = Diagnose::SCREEN_ROWS;
 	}
-	u.u_ar0[User::EAX] = Diagnose::ROWS;
+	User_get_ar0()[User::EAX] = Diagnose::ROWS;
 
 	return 0;	/* GCC likes it ! */
 }
@@ -657,7 +657,7 @@ int SystemCall::Sys_Getswit()
 	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
 	User& u = Kernel::Instance().GetUser();
 
-	u.u_ar0[User::EAX] = procMgr.SwtchNum;
+	User_get_ar0()[User::EAX] = procMgr.SwtchNum;
 	return 0;	/* GCC likes it ! */
 }
 
@@ -736,7 +736,7 @@ int SystemCall::Sys_Getgid()
 
 	gid = (User_get_gid() << 16);
 	gid |= (User_get_rgid() & 0xFF);
-	u.u_ar0[User::EAX] = gid;
+	User_get_ar0()[User::EAX] = gid;
 
 	return 0;	/* GCC likes it ! */
 }

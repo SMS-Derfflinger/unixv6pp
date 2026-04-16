@@ -15,7 +15,7 @@
 class User
 {
 public:
-	static const int EAX = 0;	/* u.u_ar0[EAX]；访问现场保护区中EAX寄存器的偏移量 */
+	static const int EAX = 0;	/* User_get_ar0()[EAX]；访问现场保护区中EAX寄存器的偏移量 */
 
 	/* u_error's Error Code */
 	/* 1~32 来自linux 的内核代码中的/usr/include/asm/errno.h, 其余for V6++ */
@@ -105,13 +105,6 @@ public:
 	 * u_dsize
 	 * u_ssize
 	 */
-
-	/* 系统调用相关成员 */
-	unsigned int	*u_ar0;		/* 指向核心栈现场保护区中EAX寄存器
-								存放的栈单元，本字段存放该栈单元的地址。
-								在V6中r0存放系统调用的返回值给用户程序，
-								x86平台上使用EAX存放返回值，替代u.u_ar0[R0] */
-
 
 	/* 信号处理相关成员 */
 	unsigned long u_qsav[2];		/* 用于接收到信号时直接从Sleep()函数跳回至Trap() */

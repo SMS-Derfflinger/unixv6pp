@@ -12,7 +12,7 @@ extern "C" void _seterr(User::ErrorCode errno) {
 }
 
 extern "C" void _set_user_retval(int retval) {
-        Kernel::Instance().GetUser().u_ar0[User::EAX] = retval;
+        User_get_ar0()[User::EAX] = retval;
 }
 
 User::ErrorCode errno() {

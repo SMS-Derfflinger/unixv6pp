@@ -387,7 +387,7 @@ void ProcessManager::Wait()
 				if( Process::SZOMB == process[i].p_stat )
 				{
 					/* wait()系统调用返回子进程的pid */
-					u.u_ar0[User::EAX] = process[i].p_pid;
+					User_get_ar0()[User::EAX] = process[i].p_pid;
 
 					process[i].p_stat = Process::SNULL;
 					process[i].p_pid = 0;
@@ -459,7 +459,7 @@ void ProcessManager::Fork()
 	if ( this->NewProc() )	/* 子进程返回1，父进程返回0 */
 	{
 		/* 子进程fork()系统调用返回0 */
-		u.u_ar0[User::EAX] = 0;
+		User_get_ar0()[User::EAX] = 0;
 		User_get_cstime() = 0;
 		User_get_stime() = 0;
 		User_get_cutime() = 0;
@@ -468,7 +468,7 @@ void ProcessManager::Fork()
 	else
 	{
 		/* 父进程进程fork()系统调用返回子进程PID */
-		u.u_ar0[User::EAX] = child->p_pid;
+		User_get_ar0()[User::EAX] = child->p_pid;
 	}
 
 	return;
@@ -735,11 +735,11 @@ void ProcessManager::Exec()
 	/* 清0所有通用寄存器  */
 	for (int i = User::EAX - 4; i < User::EAX - 4*7 ; i = i - 4)
 	{
-		u.u_ar0[i] = 0;     /* 下标写成  User::EAX + i 可读性要强一些，但是运算速度慢了。就小抠，追求速度吧 */
+		User_get_ar0()[i] = 0;     /* 下标写成  User::EAX + i 可读性要强一些，但是运算速度慢了。就小抠，追求速度吧 */
 	}
 
 	/* 将exe程序的入口地址放入核心栈现场保护区中的EAX作为系统调用返回值，这个是runtime要用  */
-	u.u_ar0[User::EAX] = isPE ? peParser.EntryPointAddress : elfParser.entryPointAddr;
+	User_get_ar0()[User::EAX] = isPE ? peParser.EntryPointAddress : elfParser.entryPointAddr;
 	
 	/* 构造出Exec()系统调用的退出环境，使之退出到ring3时，开始执行user code */
 	struct pt_context* pContext = (struct pt_context *)User_get_arg()[4];

@@ -28,7 +28,7 @@ pub struct Userspace {
     proc: &'static mut Process,
     mem: MemoryDescriptor,
 
-    ar0: &'static mut u32,
+    ar0: *mut u32,
 
     /// Used by syscall handlers
     args: [usize; 5],
@@ -201,4 +201,5 @@ define_user_compat! {
     dentry: DirectoryEntry => get_dent_ := DirectoryEntry::new();
     cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
     mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
+    ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
 }
