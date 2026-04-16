@@ -727,7 +727,7 @@ void ProcessManager::Exec()
 	/* 用默认的方式处理信号  */
 	for (int i = 0; i < u.NSIG ; i++)
 	{
-		u.u_signal[i] = 0;
+		User_get_signal()[i] = 0;
 	}
 
 	/* 清0所有通用寄存器  */

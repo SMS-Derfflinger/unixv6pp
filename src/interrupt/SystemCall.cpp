@@ -189,9 +189,9 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 
 	/* 
 	 * 如果系统调用期间受到信号打断，那么将不会执行Trap1()函数
-	 * 中u.u_intflg = 0，而直接返回至Trap()函数当前位置
+	 * 中User_get_intflg() = 0，而直接返回至Trap()函数当前位置
 	 */
-	if ( u.u_intflg != 0 )
+	if ( User_get_intflg() != 0 )
 	{
 		u.u_error = User::EINTR;
 	}
@@ -222,13 +222,13 @@ void SystemCall::Trap1(int (*func)())
 {
 	User& u = Kernel::Instance().GetUser();
 
-	u.u_intflg = 1;
+	User_get_intflg() = 1;
 /*	int pid = u.u_procp->p_pid;
 	int text = u.u_MemoryDescriptor.m_TextSize;
 	int data =  u.u_MemoryDescriptor.m_DataSize;*/
 	SaveU(u.u_qsav);
 	func();
-	u.u_intflg = 0;
+	User_get_intflg() = 0;
 }
 
 /*	27, 49 - 63 = nosys		count = 0	*/

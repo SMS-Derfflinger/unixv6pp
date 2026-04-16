@@ -126,6 +126,8 @@ impl Userspace {
 }
 
 struct SaveHandle {
+    signal_pending: bool,
+    signals: [usize; SIGMAX],
     open_files: OpenFiles,
     ioparam: IOParameter,
 }
@@ -136,6 +138,8 @@ define_class_compat! {impl Userspace {
         crate::println_info!("Userspace::before_fork()");
 
         Box::new(SaveHandle {
+            signal_pending: user.signal_pending,
+            signals: user.signals.clone(),
             open_files: user.open_files.clone(),
             ioparam: user.ioparam.clone(),
         })
@@ -145,6 +149,8 @@ define_class_compat! {impl Userspace {
         let user = Userspace::get();
         crate::println_info!("Userspace::after_fork()");
 
+        user.signal_pending = handle.signal_pending;
+        user.signals = handle.signals;
         user.open_files = handle.open_files;
         user.ioparam = handle.ioparam;
     }
@@ -154,6 +160,8 @@ define_class_compat! {impl Userspace {
         crate::println_info!("Userspace::init()");
 
         unsafe {
+            (&raw mut user.signal_pending).write(false);
+            (&raw mut user.signals).write([0; SIGMAX]);
             (&raw mut user.open_files).write(OpenFiles::new());
             (&raw mut user.ioparam).write(IOParameter::new());
         }
@@ -161,6 +169,14 @@ define_class_compat! {impl Userspace {
 }}
 
 define_class_compat! {impl User {
+    pub fn get_intflg_() -> *mut bool {
+        &raw mut Userspace::get().signal_pending
+    }
+
+    pub fn get_signal_() -> *mut [usize; SIGMAX] {
+        &raw mut Userspace::get().signals
+    }
+
     pub fn get_IOParam_() -> *mut IOParameter {
         &raw mut Userspace::get().ioparam
     }

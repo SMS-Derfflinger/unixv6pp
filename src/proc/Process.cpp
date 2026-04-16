@@ -196,7 +196,7 @@ void Process::Exit()
 	/* 清除进程的信号处理函数，设置为1表示不对该信号作任何处理 */
 	for ( i = 0; i < User::NSIG; i++ )
 	{
-		u.u_signal[i] = 1;
+		User_get_signal()[i] = 1;
 	}
 
 	/* 关闭进程打开文件 */
@@ -441,8 +441,8 @@ int Process::IsSig()
 	{
 		return 0;
 	}
-	/* u.u_signal[n]为偶数才表示对信号进程处理 */
-	else if ( (u.u_signal[this->p_sig] & 1) == 0 )
+	/* User_get_signal()[n]为偶数才表示对信号进程处理 */
+	else if ( (User_get_signal()[this->p_sig] & 1) == 0 )
 	{
 		return this->p_sig;
 	}
@@ -461,7 +461,7 @@ void Process::PSig(struct pt_context* pContext)
 	/* 清除已进入处理流程的信号 */
 	this->p_sig = 0;
 
-	if ( u.u_signal[signal] != 0 )
+	if ( User_get_signal()[signal] != 0 )
 	{
 		/* 清除进程在收到信号之前执行系统调用期间可能产生的ErrCode */
 		u.u_error = User::NOERROR;
@@ -472,9 +472,9 @@ void Process::PSig(struct pt_context* pContext)
 		/*pContext->eip = ((unsigned long)SignalHandler - (unsigned long)runtime);
 		pContext->esp -= 8;
 		int* pInt = (int *)pContext->esp;
-		*pInt = u.u_signal[signal];
+		*pInt = User_get_signal()[signal];
 		*(pInt + 1) = old_eip;*/
-		pContext->eip = u.u_signal[signal];
+		pContext->eip = User_get_signal()[signal];
 		pContext->esp -= 4;
 		int* pInt = (int *)pContext->esp;
 		*pInt = old_eip;
@@ -483,13 +483,13 @@ void Process::PSig(struct pt_context* pContext)
 		 * 当前信号处理函数在响应完本次信号之后，需要重置为默认
 		 * 的信号处理函数，设为0表示对信号的处理方式为终止本进程。
 		 */
-		u.u_signal[signal] = 0;
+		User_get_signal()[signal] = 0;
 		return;
 	}
 
 	serial_write_cstr("signal?");
 
-	/* u.u_signal[n]为0，则对信号的处理方式是终止本进程 */
+	/* User_get_signal()[n]为0，则对信号的处理方式是终止本进程 */
 	u.u_procp->Exit();
 }
 
@@ -524,8 +524,8 @@ void Process::Ssig()
 		return;
 	}
 	/* 设置函数地址到信号处理函数数组 */
-	u.u_ar0[User::EAX] = u.u_signal[signalIndex];
-	u.u_signal[signalIndex] = func;
+	u.u_ar0[User::EAX] = User_get_signal()[signalIndex];
+	User_get_signal()[signalIndex] = func;
 	/* 清当前信号 */
 	if ( u.u_procp->p_sig == signalIndex )
 	{
