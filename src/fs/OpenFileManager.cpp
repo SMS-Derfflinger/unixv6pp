@@ -36,22 +36,6 @@ extern "C" void f_close_bottom2(File* pFile) {
 /*  定义内存Inode表的实例 */
 InodeTable g_InodeTable;
 
-InodeTable::InodeTable()
-{
-	//nothing to do here
-}
-
-InodeTable::~InodeTable()
-{
-	//nothing to do here
-}
-
-void InodeTable::Initialize()
-{
-	/* 获取对g_FileSystem的引用 */
-	this->m_FileSystem = &Kernel::Instance().GetFileSystem();
-}
-
 Inode* InodeTable::IGet(short dev, int inumber)
 {
 	Inode* pInode;
@@ -79,7 +63,7 @@ Inode* InodeTable::IGet(short dev, int inumber)
 			/* 如果该内存Inode用于连接子文件系统，查找该Inode对应的Mount装配块 */
 			if( pInode->i_flag & Inode::IMOUNT )
 			{
-				Mount* pMount = this->m_FileSystem->GetMount(pInode);
+				Mount* pMount = Kernel::Instance().GetFileSystem().GetMount(pInode);
 				if(NULL == pMount)
 				{
 					/* 没有找到 */
@@ -172,7 +156,7 @@ void InodeTable::IPut(Inode *pNode)
 			pNode->ITrunc();
 			pNode->i_mode = 0;
 			/* 释放对应的外存Inode */
-			this->m_FileSystem->IFree(pNode->i_dev, pNode->i_number);
+                        Kernel::Instance().GetFileSystem().IFree(pNode->i_dev, pNode->i_number);
 		}
 
 		/* 更新外存Inode信息 */

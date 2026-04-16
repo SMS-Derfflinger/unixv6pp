@@ -29,15 +29,6 @@ public:
 
 	/* Functions */
 public:
-	/* Constructors */
-	InodeTable();
-	/* Destructors */
-	~InodeTable();
-
-	/*
-	 * @comment 初始化对g_FileSystem对象的引用
-	 */
-	void Initialize();
 	/*
 	 * @comment 根据指定设备号dev，外存Inode编号获取对应
 	 * Inode。如果该Inode已经在内存中，对其上锁并返回该内存Inode，
@@ -68,8 +59,6 @@ public:
 	/* Members */
 public:
 	Inode m_Inode[NINODE];		/* 内存Inode数组，每个打开文件都会占用一个内存Inode */
-
-	FileSystem* m_FileSystem;	/* 对全局对象g_FileSystem的引用 */
 };
 
 #endif

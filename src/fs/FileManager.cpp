@@ -25,8 +25,6 @@ void FileManager::Initialize()
 
 	this->m_InodeTable = &g_InodeTable;
 	this->m_OpenFileTable = OpenFileTable_alloc();
-
-	this->m_InodeTable->Initialize();
 }
 
 /*
