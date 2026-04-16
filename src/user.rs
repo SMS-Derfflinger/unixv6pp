@@ -191,4 +191,6 @@ define_user_compat! {
     cwd_full: [u8; 128] => get_curdir_ := {
         let mut arr = [0; 128]; arr[0] = b'/'; arr
     };
+    dentry: DirectoryEntry => get_dent_ := DirectoryEntry::new();
+    cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
 }

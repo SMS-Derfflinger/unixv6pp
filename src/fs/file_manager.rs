@@ -627,6 +627,7 @@ impl FileManager {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct DirectoryEntry {
     pub m_ino: i32,
     pub m_name: [u8; 28],
@@ -664,7 +665,7 @@ pub const DIRSIZ: usize = 28;
 impl DirectoryEntry {
     pub const DIRSIZ: usize = 28;
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             m_ino: 0,
             m_name: [0; Self::DIRSIZ],

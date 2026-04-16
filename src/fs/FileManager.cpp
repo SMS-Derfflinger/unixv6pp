@@ -601,13 +601,13 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 		}
 
 		/*
-		 * 将Pathname中当前准备进行匹配的路径分量拷贝到u.u_dbuf[]中，
+		 * 将Pathname中当前准备进行匹配的路径分量拷贝到User_get_dbuf()[]中，
 		 * 便于和目录项进行比较。
 		 */
-		pChar = &(u.u_dbuf[0]);
+		pChar = &(User_get_dbuf()[0]);
 		while ( '/' != curchar && '\0' != curchar && u.u_error == User::NOERROR )
 		{
-			if ( pChar < &(u.u_dbuf[DirectoryEntry::DIRSIZ]) )
+			if ( pChar < &(User_get_dbuf()[DirectoryEntry::DIRSIZ]) )
 			{
 				*pChar = curchar;
 				pChar++;
@@ -615,7 +615,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			curchar = (*func)();
 		}
 		/* 将u_dbuf剩余的部分填充为'\0' */
-		while ( pChar < &(u.u_dbuf[DirectoryEntry::DIRSIZ]) )
+		while ( pChar < &(User_get_dbuf()[DirectoryEntry::DIRSIZ]) )
 		{
 			*pChar = '\0';
 			pChar++;
@@ -632,7 +632,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			break; /* goto out; */
 		}
 
-		/* 内层循环部分对于u.u_dbuf[]中的路径名分量，逐个搜寻匹配的目录项 */
+		/* 内层循环部分对于User_get_dbuf()[]中的路径名分量，逐个搜寻匹配的目录项 */
 		User_get_IOParam().m_Offset = 0;
 		/* 设置为目录项个数 ，含空白的目录项*/
 		User_get_IOParam().m_Count = pInode->i_size / (DirectoryEntry::DIRSIZ + 4);
@@ -691,15 +691,15 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 				pBuf = bufMgr.Bread(pInode->i_dev, phyBlkno );
 			}
 
-			/* 没有读完当前目录项盘块，则读取下一目录项至u.u_dent */
+			/* 没有读完当前目录项盘块，则读取下一目录项至User_get_dent() */
 			int* src = (int *)(pBuf->b_addr + (User_get_IOParam().m_Offset % Inode::BLOCK_SIZE));
-			Utility::DWordCopy( src, (int *)&u.u_dent, sizeof(DirectoryEntry)/sizeof(int) );
+			Utility::DWordCopy( src, (int *)&User_get_dent(), sizeof(DirectoryEntry)/sizeof(int) );
 
 			User_get_IOParam().m_Offset += (DirectoryEntry::DIRSIZ + 4);
 			User_get_IOParam().m_Count--;
 
 			/* 如果是空闲目录项，记录该项位于目录文件中偏移量 */
-			if ( 0 == u.u_dent.m_ino )
+			if ( 0 == User_get_dent().m_ino )
 			{
 				if ( 0 == freeEntryOffset )
 				{
@@ -712,7 +712,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			int i;
 			for ( i = 0; i < DirectoryEntry::DIRSIZ; i++ )
 			{
-				if ( u.u_dbuf[i] != u.u_dent.m_name[i] )
+				if ( User_get_dbuf()[i] != User_get_dent().m_name[i] )
 				{
 					break;	/* 匹配至某一字符不符，跳出for循环 */
 				}
@@ -740,7 +740,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 			bufMgr.Brelse(pBuf);
 		}
 
-		/* 如果是删除操作，则返回父目录Inode，而要删除文件的Inode号在u.u_dent.m_ino中 */
+		/* 如果是删除操作，则返回父目录Inode，而要删除文件的Inode号在User_get_dent().m_ino中 */
 		if ( FileManager::DELETE == mode && '\0' == curchar )
 		{
 			/* 如果对父目录没有写的权限 */
@@ -758,7 +758,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 		 */
 		short dev = pInode->i_dev;
 		this->m_InodeTable->IPut(pInode);
-		pInode = this->m_InodeTable->IGet(dev, u.u_dent.m_ino);
+		pInode = this->m_InodeTable->IGet(dev, User_get_dent().m_ino);
 		/* 回到外层While(true)循环，继续匹配Pathname中下一路径分量 */
 
 		if ( NULL == pInode )	/* 获取失败 */
@@ -803,7 +803,7 @@ Inode* FileManager::MakNode( unsigned int mode )
 	pInode->i_nlink = 1;
 	pInode->i_uid = User_get_uid();
 	pInode->i_gid = User_get_gid();
-	/* 将目录项写入u.u_dent，随后写入目录文件 */
+	/* 将目录项写入User_get_dent()，随后写入目录文件 */
 	this->WriteDir(pInode);
 	return pInode;
 }
@@ -813,16 +813,16 @@ void FileManager::WriteDir( Inode* pInode )
 	User& u = Kernel::Instance().GetUser();
 
 	/* 设置目录项中Inode编号部分 */
-	u.u_dent.m_ino = pInode->i_number;
+	User_get_dent().m_ino = pInode->i_number;
 
 	/* 设置目录项中pathname分量部分 */
 	for ( int i = 0; i < DirectoryEntry::DIRSIZ; i++ )
 	{
-		u.u_dent.m_name[i] = u.u_dbuf[i];
+		User_get_dent().m_name[i] = User_get_dbuf()[i];
 	}
 
 	User_get_IOParam().m_Count = DirectoryEntry::DIRSIZ + 4;
-	User_get_IOParam().m_Base = (unsigned char *)&u.u_dent;
+	User_get_IOParam().m_Base = (unsigned char *)&User_get_dent();
 
 	/* 将目录项写入父目录文件 */
 	u.u_pdir->WriteI();
@@ -1057,7 +1057,7 @@ void FileManager::UnLink()
 	}
 	pDeleteInode->Prele();
 
-	pInode = this->m_InodeTable->IGet(pDeleteInode->i_dev, u.u_dent.m_ino);
+	pInode = this->m_InodeTable->IGet(pDeleteInode->i_dev, User_get_dent().m_ino);
 	if ( NULL == pInode )
 	{
 		Utility::Panic("unlink -- iget");
@@ -1071,10 +1071,10 @@ void FileManager::UnLink()
 	}
 	/* 写入清零后的目录项 */
 	User_get_IOParam().m_Offset -= (DirectoryEntry::DIRSIZ + 4);
-	User_get_IOParam().m_Base = (unsigned char *)&u.u_dent;
+	User_get_IOParam().m_Base = (unsigned char *)&User_get_dent();
 	User_get_IOParam().m_Count = DirectoryEntry::DIRSIZ + 4;
 
-	u.u_dent.m_ino = 0;
+	User_get_dent().m_ino = 0;
 	pDeleteInode->WriteI();
 
 	/* 修改inode项 */

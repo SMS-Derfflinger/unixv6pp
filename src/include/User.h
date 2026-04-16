@@ -122,9 +122,6 @@ public:
 	Inode* u_cdir;		/* 指向当前目录的Inode指针 */
 	Inode* u_pdir;		/* 指向父目录的Inode指针 */
 
-	DirectoryEntry u_dent;					/* 当前目录的目录项 */
-	char u_dbuf[DirectoryEntry::DIRSIZ];	/* 当前路径分量 */
-
 	ErrorCode u_error;			/* 存放错误码 */
 
 	/* Member Functions */
