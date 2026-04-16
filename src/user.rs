@@ -3,7 +3,7 @@ use kernel_macros::define_class_compat;
 
 use crate::{
     constants::{PosixError, SIGMAX},
-    fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
+    fs::{DirectoryEntry, IOParameter, Inode, InodeRef, OpenFiles},
 };
 
 pub struct Pointer(usize);
@@ -89,9 +89,11 @@ pub struct Userspace {
     signal_pending: bool,
 
     /// Inode of our working directory
-    cwd: InodeRef,
+    cwd: *mut Inode,
+    // cwd: InodeRef,
     /// Inode of our pwd's parent
-    cwd_parent: InodeRef,
+    cwd_parent: *mut Inode,
+    // cwd_parent: InodeRef,
 
     /// Dentry of our pwd
     dentry: DirectoryEntry,
@@ -239,4 +241,6 @@ define_user_compat! {
     mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
     ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
     proc: *mut Process => get_procp_ := core::ptr::null_mut();
+    cwd: *mut Inode => get_cdir_ := core::ptr::null_mut();
+    cwd_parent: *mut Inode => get_pdir_ := core::ptr::null_mut();
 }

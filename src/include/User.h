@@ -108,10 +108,6 @@ public:
 	/* 信号处理相关成员 */
 	unsigned long u_qsav[2];		/* 用于接收到信号时直接从Sleep()函数跳回至Trap() */
 
-	/* 文件系统相关成员 */
-	Inode* u_cdir;		/* 指向当前目录的Inode指针 */
-	Inode* u_pdir;		/* 指向父目录的Inode指针 */
-
 	ErrorCode u_error;			/* 存放错误码 */
 
 	/* Member Functions */

@@ -317,9 +317,9 @@ extern "C" void next()
 	fileMgr.rootDirInode->i_flag &= (~Inode::ILOCK);
 
 	User& us = Kernel::Instance().GetUser();
-	us.u_cdir = g_InodeTable.IGet(DeviceManager::ROOTDEV, 1);
+	User_get_cdir() = g_InodeTable.IGet(DeviceManager::ROOTDEV, 1);
 	//us.u_cdir = g_InodeTable.IGet(DeviceManager::ROOTDEV, FileSystem::ROOTINO);
-	us.u_cdir->i_flag &= (~Inode::ILOCK);
+	User_get_cdir()->i_flag &= (~Inode::ILOCK);
 
 	/* 打开TTy设备 */
 	int fd_tty = lib_open("/dev/tty1", File::FREAD);

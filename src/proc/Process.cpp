@@ -213,7 +213,7 @@ void Process::Exit()
 	u.u_error = User::NOERROR;
 
 	/* 递减当前目录的引用计数 */
-	inodeTable.IPut(u.u_cdir);
+	inodeTable.IPut(User_get_cdir());
 
 	/* 释放该进程对共享正文段的引用 */
 	if ( User_get_procp()->p_textp != NULL )
@@ -321,7 +321,7 @@ void Process::Clone(Process& proc)
 	}
 
 	/* 增加对当前工作目录的引用计数 */
-	u.u_cdir->i_count++;
+	User_get_cdir()->i_count++;
 }
 
 //用于堆栈溢出时，自动扩展堆栈

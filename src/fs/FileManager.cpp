@@ -550,7 +550,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 	 * 如果该路径是'/'开头的，从根目录开始搜索，
 	 * 否则从进程当前工作目录开始搜索。
 	 */
-	pInode = u.u_cdir;
+	pInode = User_get_cdir();
 	if ( '/' == (curchar = (*func)()) )
 	{
 		pInode = this->rootDirInode;
@@ -659,7 +659,7 @@ Inode* FileManager::NameI( char (*func)(), enum DirectorySearchMode mode )
 					}
 
 					/* 将父目录Inode指针保存起来，以后写目录项WriteDir()函数会用到 */
-					u.u_pdir = pInode;
+					User_get_pdir() = pInode;
 
 					if ( freeEntryOffset )	/* 此变量存放了空闲目录项位于目录文件中的偏移量 */
 					{
@@ -792,7 +792,7 @@ Inode* FileManager::MakNode( unsigned int mode )
 	User& u = Kernel::Instance().GetUser();
 
 	/* 分配一个空闲DiskInode，里面内容已全部清空 */
-	pInode = this->m_FileSystem->IAlloc(u.u_pdir->i_dev);
+	pInode = this->m_FileSystem->IAlloc(User_get_pdir()->i_dev);
 	if( NULL ==	pInode )
 	{
 		return NULL;
@@ -825,8 +825,8 @@ void FileManager::WriteDir( Inode* pInode )
 	User_get_IOParam().m_Base = (unsigned char *)&User_get_dent();
 
 	/* 将目录项写入父目录文件 */
-	u.u_pdir->WriteI();
-	this->m_InodeTable->IPut(u.u_pdir);
+	User_get_pdir()->WriteI();
+	this->m_InodeTable->IPut(User_get_pdir());
 }
 
 void FileManager::SetCurDir(char* pathname)
@@ -976,8 +976,8 @@ void FileManager::ChDir()
 		this->m_InodeTable->IPut(pInode);
 		return;
 	}
-	this->m_InodeTable->IPut(u.u_cdir);
-	u.u_cdir = pInode;
+	this->m_InodeTable->IPut(User_get_cdir());
+	User_get_cdir() = pInode;
 	pInode->Prele();
 
 	this->SetCurDir((char *)User_get_arg()[0] /* pathname */);
@@ -1029,9 +1029,9 @@ void FileManager::Link()
 		return;
 	}
 	/* 检查目录与该文件是否在同一个设备上 */
-	if ( u.u_pdir->i_dev != pInode->i_dev )
+	if ( User_get_pdir()->i_dev != pInode->i_dev )
 	{
-		this->m_InodeTable->IPut(u.u_pdir);
+		this->m_InodeTable->IPut(User_get_pdir());
 		u.u_error = User::EXDEV;
 		/* 出错，释放资源并退出 */
 		this->m_InodeTable->IPut(pInode);
