@@ -402,8 +402,10 @@ void ProcessManager::Wait()
 					User* pUser = (User *)pBuf->b_addr;
 
 					/* 把子进程的时间加到父进程上 */
-					u.u_cstime += pUser->u_cstime +	pUser->u_stime;
-					u.u_cutime += pUser->u_cutime + pUser->u_utime;
+                                        // greatbridf: don't consider this for now.
+                                        // maybe add them back later...
+					// User_get_cstime() += pUser->u_cstime +	pUser->u_stime;
+					// User_get_cutime() += pUser->u_cutime + pUser->u_utime;
 
 					int* pInt = (int *)u.u_arg[0];
 					/* 获取子进程exit(int status)的返回值 */
@@ -458,10 +460,10 @@ void ProcessManager::Fork()
 	{
 		/* 子进程fork()系统调用返回0 */
 		u.u_ar0[User::EAX] = 0;
-		u.u_cstime = 0;
-		u.u_stime = 0;
-		u.u_cutime = 0;
-		u.u_utime = 0;
+		User_get_cstime() = 0;
+		User_get_stime() = 0;
+		User_get_cutime() = 0;
+		User_get_utime() = 0;
 	}
 	else
 	{

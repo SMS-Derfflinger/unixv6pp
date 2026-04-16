@@ -57,11 +57,11 @@ void Time::Clock( struct pt_regs* regs, struct pt_context* context )
 	/* 系统或用户时间计时，如果先前态为用户态，mode为非零 */
 	if ( (context->xcs & USER_MODE) == USER_MODE )
 	{
-		u.u_utime++;
+		User_get_utime()++;
 	}
 	else
 	{
-		u.u_stime++;
+		User_get_stime()++;
 	}
 
 	Process* current = u.u_procp;

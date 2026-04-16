@@ -178,4 +178,8 @@ define_user_compat! {
     signals: [usize; SIGMAX] => get_signal_ := [0; SIGMAX];
     open_files: OpenFiles => get_ofiles_ := OpenFiles::new();
     ioparam: IOParameter => get_IOParam_ := IOParameter::new();
+    utime: u32 => get_utime_ := 0;
+    stime: u32 => get_stime_ := 0;
+    children_utime: u32 => get_cutime_ := 0;
+    children_stime: u32 => get_cstime_ := 0;
 }

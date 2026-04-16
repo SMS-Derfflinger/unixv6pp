@@ -680,10 +680,10 @@ int SystemCall::Sys_Times()
 
 	struct tms* ptms = (struct tms *)u.u_arg[0];
 	
-	ptms->utime = u.u_utime;
-	ptms->stime = u.u_stime;
-	ptms->cutime = u.u_cutime;
-	ptms->cstime = u.u_cstime;
+	ptms->utime = User_get_utime();
+	ptms->stime = User_get_stime();
+	ptms->cutime = User_get_cutime();
+	ptms->cstime = User_get_cstime();
 
 	return 0;	/* GCC likes it ! */
 }

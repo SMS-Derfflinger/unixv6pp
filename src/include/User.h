@@ -116,12 +116,6 @@ public:
 	int u_arg[5];				/* 存放当前系统调用参数 */
 	char* u_dirp;				/* 系统调用参数(一般用于Pathname)的指针 */
 
-	/* 时间相关成员 */
-	int u_utime;		/* 进程用户态时间 */
-	int u_stime;		/* 进程核心态时间 */
-	int u_cutime;		/* 子进程用户态时间总和 */
-	int u_cstime;		/* 子进程核心态时间总和 */
-
 	/* 信号处理相关成员 */
 	unsigned long u_qsav[2];		/* 用于接收到信号时直接从Sleep()函数跳回至Trap() */
 
