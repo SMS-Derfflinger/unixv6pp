@@ -125,6 +125,12 @@ impl Userspace {
         self.error = Some(errno);
     }
 
+    pub fn set_user_retval(&mut self, retval: u32) {
+        unsafe {
+            self.ar0.write(retval);
+        }
+    }
+
     pub fn clear_error(&mut self) {
         self.error = None;
     }

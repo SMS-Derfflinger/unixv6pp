@@ -8,10 +8,6 @@
 extern "C" File* OpenFileTable_f_alloc(struct open_file_table*);
 extern "C" void OpenFileTable_f_close(struct open_file_table*, File*);
 
-extern "C" void _set_user_retval(int retval) {
-        User_get_ar0()[User::EAX] = retval;
-}
-
 File* f_alloc(struct open_file_table* oft) {
 	User& u = Kernel::Instance().GetUser();
         File* retval = OpenFileTable_f_alloc(oft);

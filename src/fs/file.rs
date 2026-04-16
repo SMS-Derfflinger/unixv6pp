@@ -5,7 +5,7 @@ use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak, open_file_manager::set_user_retval}, sync::SpinExt, user::Userspace
+    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak}, sync::SpinExt, user::Userspace
 };
 
 use super::inode::Inode;
@@ -189,7 +189,7 @@ define_class_compat! {impl OpenFiles {
             }
         };
 
-        set_user_retval(retval as _);
+        Userspace::get().set_user_retval(retval as _);
         retval
     }
 

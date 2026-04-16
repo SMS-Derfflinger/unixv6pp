@@ -17,14 +17,7 @@ use crate::{
 };
 
 extern "C" {
-    fn _set_user_retval(retval: u32);
     fn f_close_bottom2(file: FileRefCompat);
-}
-
-pub fn set_user_retval(retval: u32) {
-    unsafe {
-        _set_user_retval(retval);
-    }
 }
 
 define_class_compat! {impl OpenFileTable {
@@ -32,7 +25,7 @@ define_class_compat! {impl OpenFileTable {
         let open_files = &mut Userspace::get().open_files;
         match this.f_alloc(open_files) {
             Ok((fd, fileref)) => {
-                set_user_retval(fd as u32);
+                Userspace::get().set_user_retval(fd as u32);
                 Some(fileref_leak(fileref))
             }
             Err(e) => {
