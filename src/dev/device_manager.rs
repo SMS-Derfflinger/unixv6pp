@@ -75,9 +75,33 @@ impl Default for DeviceManager {
     }
 }
 
-static GLOBAL_DEVICE_MANAGER: LazyLock<DeviceManager> =
-    LazyLock::new(DeviceManager::new);
+static GLOBAL_DEVICE_MANAGER: LazyLock<DeviceManager> = LazyLock::new(DeviceManager::new);
 
 pub fn global_device_manager() -> &'static DeviceManager {
     &GLOBAL_DEVICE_MANAGER
+}
+
+#[no_mangle]
+pub extern "C" fn device_manager_initialize() {
+    let _ = global_device_manager();
+}
+
+#[no_mangle]
+pub extern "C" fn device_manager_n_block_devices() -> i32 {
+    global_device_manager().n_block_devices() as i32
+}
+
+#[no_mangle]
+pub extern "C" fn device_manager_n_char_devices() -> i32 {
+    global_device_manager().n_char_devices() as i32
+}
+
+#[no_mangle]
+pub extern "C" fn device_manager_require_block_device(major: i16) {
+    let _ = global_device_manager().get_block_device(major);
+}
+
+#[no_mangle]
+pub extern "C" fn device_manager_require_char_device(major: i16) {
+    let _ = global_device_manager().get_char_device(major);
 }

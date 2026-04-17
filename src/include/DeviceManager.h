@@ -26,12 +26,6 @@ public:
 	int GetNChrDev();							/* 获取系统中实际字符设备数量nchrdev */
 	CharDevice& GetCharDevice(short major);		/* 根据主设备号major获取相应字符设备对象实例 */
 	
-private:
-	int nblkdev;							/* 系统中块设备的数量 @line 4631 */
-	BlockDevice *bdevsw[MAX_DEVICE_NUM];	/* 指向块设备基类的指针数组，相当于Unix V6中块设备开关表 */
-
-	int nchrdev;							/* 系统中字符设备的数量 */
-	CharDevice	*cdevsw[MAX_DEVICE_NUM];	/* 指向字符设备基类的指针数组，相当于字符设备开关表 */
 };
 
 #endif

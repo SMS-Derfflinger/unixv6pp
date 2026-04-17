@@ -3,6 +3,12 @@
 extern ATABlockDevice g_ATADevice;
 extern ConsoleDevice g_ConsoleDevice;
 
+extern "C" void device_manager_initialize();
+extern "C" int device_manager_n_block_devices();
+extern "C" int device_manager_n_char_devices();
+extern "C" void device_manager_require_block_device(short major);
+extern "C" void device_manager_require_char_device(short major);
+
 DeviceManager::DeviceManager()
 {
 }
@@ -13,37 +19,27 @@ DeviceManager::~DeviceManager()
 
 void DeviceManager::Initialize()
 {
-	this->bdevsw[0] = &g_ATADevice;
-	this->nblkdev = 1;
-
-	this->cdevsw[0] = &g_ConsoleDevice;
-	this->nchrdev = 1;
+	device_manager_initialize();
 }
 
 int DeviceManager::GetNBlkDev()
 {
-	return this->nblkdev;
+	return device_manager_n_block_devices();
 }
 
 BlockDevice& DeviceManager::GetBlockDevice(short major)
 {
-	if(major >= this->nblkdev || major < 0)
-	{
-		Utility::Panic("Block Device Doesn't Exist!");
-	}
-	return *(this->bdevsw[major]);
+	device_manager_require_block_device(major);
+	return g_ATADevice;
 }
 
 int DeviceManager::GetNChrDev()
 {
-	return this->nchrdev;
+	return device_manager_n_char_devices();
 }
 
 CharDevice& DeviceManager::GetCharDevice(short major)
 {
-	if (major >= this->nchrdev || major < 0)
-	{
-		Utility::Panic("Char Device Doesn't Exist!");
-	}
-	return *(this->cdevsw[major]);
+	device_manager_require_char_device(major);
+	return g_ConsoleDevice;
 }

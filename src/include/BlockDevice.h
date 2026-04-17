@@ -4,22 +4,6 @@
 #include "Buf.h"
 #include "Utility.h"
 
-/* 块设备表devtab定义 */
-class Devtab
-{
-public:
-	Devtab();
-	~Devtab();
-	
-public:
-	int	d_active;
-	int	d_errcnt;
-	Buf* b_forw;
-	Buf* b_back;
-	Buf* d_actf;
-	Buf* d_actl;
-};
-
 /*
  * 块设备基类，各类块设备都从此基类继承。
  * 派生类override基类中的Open(), Close(), Strategy()函数，
@@ -30,10 +14,8 @@ class BlockDevice
 {
 public:
 	
-	
 	BlockDevice();
 	virtual ~BlockDevice();
-	BlockDevice(Devtab* tab);
 	
 	/* 
 	 * 定义为虚函数，由派生类进行override实现设备
@@ -43,9 +25,6 @@ public:
 	virtual int Close(short dev, int mode) = 0;
 	virtual int Strategy(Buf* bp) = 0;
 	virtual void Start() = 0;
-	
-public:
-	Devtab*	d_tab;		/* 指向块设备表的指针 */
 };
 
 
@@ -53,10 +32,7 @@ public:
 class ATABlockDevice : public BlockDevice
 {
 public:
-	static int NSECTOR;		/* ATA磁盘扇区数 */
-
-public:
-	ATABlockDevice(Devtab* tab);
+	ATABlockDevice();
 	virtual ~ATABlockDevice();
 	/* 
 	 * Override基类BlockDevice中的虚函数，实现

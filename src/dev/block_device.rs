@@ -2,7 +2,10 @@ use core::arch::asm;
 
 use eonix_sync_base::LazyLock;
 
-use crate::{dev::buffer_manager::global_buffer_manager, sync::SuperCell};
+use crate::{
+    constants::PosixError, dev::buffer_manager::global_buffer_manager, sync::SuperCell,
+    user::Userspace,
+};
 
 use super::{
     ata_driver::ATADriver,
@@ -189,6 +192,60 @@ pub fn block_device_for_major(major: i16) -> Option<&'static dyn BlockDevice> {
 
 pub fn block_device_for_dev(dev: i16) -> Option<&'static dyn BlockDevice> {
     block_device_for_major(major(dev))
+}
+
+fn errno(err: PosixError) -> i32 {
+    -(err as i32)
+}
+
+fn set_block_error(err: PosixError) -> i32 {
+    Userspace::get().set_error(err);
+    errno(err)
+}
+
+#[no_mangle]
+pub extern "C" fn block_device_open(dev: i16, mode: i32) -> i32 {
+    match block_device_for_dev(dev) {
+        Some(device) => device.open(dev, mode),
+        None => set_block_error(PosixError::ENXIO),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn block_device_close(dev: i16, mode: i32) -> i32 {
+    match block_device_for_dev(dev) {
+        Some(device) => device.close(dev, mode),
+        None => set_block_error(PosixError::ENXIO),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn block_device_strategy(bp: *mut Buf) -> i32 {
+    if bp.is_null() {
+        return set_block_error(PosixError::EINVAL);
+    }
+
+    let dev = unsafe { (*bp).b_dev };
+    match block_device_for_dev(dev) {
+        Some(device) => device.strategy(bp),
+        None => {
+            unsafe {
+                (*bp).b_flags.insert(BufFlag::B_ERROR);
+            }
+            global_buffer_manager().io_done(bp);
+            set_block_error(PosixError::ENXIO)
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn block_device_start(major: i16) {
+    match block_device_for_major(major) {
+        Some(device) => device.start(),
+        None => {
+            set_block_error(PosixError::ENXIO);
+        }
+    }
 }
 
 // TODO: only for x86
