@@ -96,7 +96,6 @@ pub struct Userspace {
     /// Inode of our pwd's parent
     cwd_parent: *mut Inode,
     // cwd_parent: InodeRef,
-
     /// Dentry of our pwd
     dentry: DirectoryEntry,
 
@@ -135,6 +134,10 @@ impl Userspace {
 
     pub fn clear_error(&mut self) {
         self.error = None;
+    }
+
+    pub fn io_param_mut(&mut self) -> &mut IOParameter {
+        &mut self.ioparam
     }
 
     fn is_root(&mut self) -> bool {

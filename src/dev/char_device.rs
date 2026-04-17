@@ -6,6 +6,7 @@ use crate::{
     constants::PosixError,
     sync::SuperCell,
     tty::{console_tty, sleep_on_input_channel},
+    user::Userspace,
 };
 
 use super::device_manager::minor;
@@ -54,6 +55,9 @@ impl CharDevice for ConsoleDevice {
         self.state.with_mut(|state| {
             state.is_open = true;
         });
+        unsafe {
+            char_device_fuck_tty();
+        }
         console_tty().with_mut(|tty| tty.open());
         Ok(())
     }
@@ -115,56 +119,87 @@ pub fn char_device_for_dev(dev: i16) -> Option<&'static dyn CharDevice> {
     char_device_for_major(super::device_manager::major(dev))
 }
 
-fn errno(err: PosixError) -> i32 {
-    -(err as i32)
+fn set_char_error(err: PosixError) {
+    Userspace::get().set_error(err);
 }
 
-#[no_mangle]
-pub extern "C" fn char_device_open(dev: i16, mode: i32) -> i32 {
-    match char_device_for_dev(dev) {
-        Some(device) => device.open(dev, mode).map_or_else(errno, |_| 0),
-        None => errno(PosixError::ENXIO),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn char_device_close(dev: i16, mode: i32) -> i32 {
-    match char_device_for_dev(dev) {
-        Some(device) => device.close(dev, mode).map_or_else(errno, |_| 0),
-        None => errno(PosixError::ENXIO),
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn char_device_read(dev: i16, out: *mut u8, count: i32) -> i32 {
-    if count <= 0 {
-        return 0;
-    }
-
-    let Some(out) = out.as_mut() else {
-        return errno(PosixError::EFAULT);
+fn char_device_result(dev: i16, f: impl FnOnce(&dyn CharDevice) -> Result<(), PosixError>) {
+    let result = match char_device_for_dev(dev) {
+        Some(device) => f(device),
+        None => Err(PosixError::ENXIO),
     };
 
-    let out = core::slice::from_raw_parts_mut(out, count as usize);
-    match char_device_for_dev(dev) {
-        Some(device) => device.read(dev, out).map_or_else(errno, |n| n as i32),
-        None => errno(PosixError::ENXIO),
+    if let Err(err) = result {
+        set_char_error(err);
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn char_device_write(dev: i16, data: *const u8, count: i32) -> i32 {
-    if count <= 0 {
-        return 0;
+pub extern "C" fn char_device_open(dev: i16, mode: i32) {
+    char_device_result(dev, |device| device.open(dev, mode));
+}
+
+#[no_mangle]
+pub extern "C" fn char_device_close(dev: i16, mode: i32) {
+    char_device_result(dev, |device| device.close(dev, mode));
+}
+
+#[no_mangle]
+pub extern "C" fn char_device_read(dev: i16) {
+    let ioparam = Userspace::get().io_param_mut();
+    if ioparam.m_count == 0 {
+        return;
     }
 
-    let Some(data) = data.as_ref() else {
-        return errno(PosixError::EFAULT);
+    let out = ioparam.m_base as *mut u8;
+    if out.is_null() {
+        set_char_error(PosixError::EFAULT);
+        return;
+    }
+
+    let out = unsafe { core::slice::from_raw_parts_mut(out, ioparam.m_count) };
+    let result = match char_device_for_dev(dev) {
+        Some(device) => device.read(dev, out),
+        None => Err(PosixError::ENXIO),
     };
 
-    let data = core::slice::from_raw_parts(data, count as usize);
-    match char_device_for_dev(dev) {
-        Some(device) => device.write(dev, data).map_or_else(errno, |n| n as i32),
-        None => errno(PosixError::ENXIO),
+    match result {
+        Ok(nread) => {
+            ioparam.m_base += nread;
+            ioparam.m_count -= nread;
+        }
+        Err(err) => set_char_error(err),
     }
+}
+
+#[no_mangle]
+pub extern "C" fn char_device_write(dev: i16) {
+    let ioparam = Userspace::get().io_param_mut();
+    if ioparam.m_count == 0 {
+        return;
+    }
+
+    let data = ioparam.m_base as *const u8;
+    if data.is_null() {
+        set_char_error(PosixError::EFAULT);
+        return;
+    }
+
+    let data = unsafe { core::slice::from_raw_parts(data, ioparam.m_count) };
+    let result = match char_device_for_dev(dev) {
+        Some(device) => device.write(dev, data),
+        None => Err(PosixError::ENXIO),
+    };
+
+    match result {
+        Ok(nwritten) => {
+            ioparam.m_base += nwritten;
+            ioparam.m_count -= nwritten;
+        }
+        Err(err) => set_char_error(err),
+    }
+}
+
+unsafe extern "C" {
+    fn char_device_fuck_tty();
 }

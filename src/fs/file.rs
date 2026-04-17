@@ -1,11 +1,14 @@
-use alloc::{sync::Arc};
+use alloc::sync::Arc;
 use bitflags::bitflags;
 use core::{array, ops::Deref, ptr::NonNull};
 use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::PosixError, fs::{FileRef, InodeRef, inode::fileref_leak}, sync::SpinExt, user::Userspace
+    constants::PosixError,
+    fs::{inode::fileref_leak, FileRef, InodeRef},
+    sync::SpinExt,
+    user::Userspace,
 };
 
 use super::inode::Inode;
@@ -220,6 +223,7 @@ define_class_compat! {impl OpenFiles {
     }
 }}
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct IOParameter {
     pub m_base: usize,   // 用户目标区首地址

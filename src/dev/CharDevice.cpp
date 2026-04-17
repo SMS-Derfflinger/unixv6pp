@@ -10,6 +10,15 @@ extern "C" void rust_process_wakeup_all(unsigned long chan) {
     Kernel::Instance().GetProcessManager().WakeUpAll(chan);
 }
 
+// fuck
+extern TTy g_TTy;
+
+extern "C" void char_device_fuck_tty() {
+    if (NULL == User_get_procp()->p_ttyp) {
+        User_get_procp()->p_ttyp = &g_TTy;
+    }
+}
+
 /*==============================class CharDevice===============================*/
 CharDevice::CharDevice() {
 }
@@ -51,61 +60,19 @@ ConsoleDevice::~ConsoleDevice() {
 }
 
 void ConsoleDevice::Open(short dev, int mode) {
-    short minor = Utility::GetMinor(dev);
-    User &u = Kernel::Instance().GetUser();
-    int result;
-
-    if (minor != 0) {
-        return;
-    }
-
-    if (NULL == User_get_procp()->p_ttyp) {
-        User_get_procp()->p_ttyp = &g_TTy;
-    }
-
-    result = char_device_open(dev, mode);
-    if (result < 0) {
-        User_get_error() = (User::ErrorCode)(-result);
-    }
+    char_device_open(dev, mode);
 }
 
 void ConsoleDevice::Close(short dev, int mode) {
-    int result = char_device_close(dev, mode);
-    if (result < 0) {
-        User_get_error() = (User::ErrorCode)(-result);
-    }
+    char_device_close(dev, mode);
 }
 
 void ConsoleDevice::Read(short dev) {
-    short minor = Utility::GetMinor(dev);
-    User &u = Kernel::Instance().GetUser();
-    int result;
-
-    if (0 == minor) {
-        result = char_device_read(dev, User_get_IOParam().m_Base, User_get_IOParam().m_Count);
-        if (result < 0) {
-            User_get_error() = (User::ErrorCode)(-result);
-            return;
-        }
-        User_get_IOParam().m_Base += result;
-        User_get_IOParam().m_Count -= result;
-    }
+    char_device_read(dev);
 }
 
 void ConsoleDevice::Write(short dev) {
-    short minor = Utility::GetMinor(dev);
-    User &u = Kernel::Instance().GetUser();
-    int result;
-
-    if (0 == minor) {
-        result = char_device_write(dev, User_get_IOParam().m_Base, User_get_IOParam().m_Count);
-        if (result < 0) {
-            User_get_error() = (User::ErrorCode)(-result);
-            return;
-        }
-        User_get_IOParam().m_Base += result;
-        User_get_IOParam().m_Count -= result;
-    }
+    char_device_write(dev);
 }
 
 void ConsoleDevice::SgTTy(short dev, TTy *pTTy) {

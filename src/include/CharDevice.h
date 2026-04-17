@@ -7,10 +7,10 @@
 extern "C" {
 #endif
 
-int char_device_open(short dev, int mode);
-int char_device_close(short dev, int mode);
-int char_device_read(short dev, unsigned char* out, int count);
-int char_device_write(short dev, const unsigned char* data, int count);
+void char_device_open(short dev, int mode);
+void char_device_close(short dev, int mode);
+void char_device_read(short dev);
+void char_device_write(short dev);
 void rust_tty_input_byte(unsigned char ch);
 void rust_tty_flush();
 
@@ -23,10 +23,7 @@ class CharDevice
 public:
 	CharDevice();
 	virtual ~CharDevice();
-	/* 
-	 * 定义为虚函数，由派生类进行override实现设备
-	 * 特定操作。正常情况下，基类中函数不应被调用到。
-	 */
+
 	virtual void Open(short dev, int mode) = 0;
 	virtual void Close(short dev, int mode) = 0;
 	virtual void Read(short dev) = 0;
@@ -40,10 +37,7 @@ class ConsoleDevice : public CharDevice
 public:
 	ConsoleDevice();
 	virtual ~ConsoleDevice();
-	/* 
-	 * Override基类CharDevice中的虚函数，实现
-	 * 派生类ConsoleDevice特定的设备操作逻辑。
-	 */
+
 	void Open(short dev, int mode);
 	void Close(short dev, int mode);
 	void Read(short dev);
