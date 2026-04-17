@@ -8,6 +8,8 @@ mod dev;
 mod mm;
 mod print;
 mod serial;
+mod tty;
+mod vesa;
 pub mod sync;
 mod user;
 

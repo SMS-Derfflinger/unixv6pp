@@ -3,6 +3,21 @@
 
 #include "TTy.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int char_device_open(short dev, int mode);
+int char_device_close(short dev, int mode);
+int char_device_read(short dev, unsigned char* out, int count);
+int char_device_write(short dev, const unsigned char* data, int count);
+void rust_tty_input_byte(unsigned char ch);
+void rust_tty_flush();
+
+#ifdef __cplusplus
+}
+#endif
+
 class CharDevice
 {
 public:
@@ -17,9 +32,6 @@ public:
 	virtual void Read(short dev) = 0;
 	virtual void Write(short dev) = 0;
 	virtual void SgTTy(short dev, TTy* pTTy) = 0;
-
-public:
-	TTy* m_TTy;		/* 指向字符设备TTy结构的指针 */
 };
 
 

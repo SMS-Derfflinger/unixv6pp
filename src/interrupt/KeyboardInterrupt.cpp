@@ -5,13 +5,15 @@
 #include "IOPort.h"
 #include "Chip8259A.h"
 
+extern "C" void keyboard_handle_interrupt();
+
 void KeyboardInterrupt::KeyboardInterruptEntrance()
 {
 	SaveContext();			/* 保存中断现场 */
 
 	SwitchToKernel();		/* 进入核心态 */
 
-	CallHandler(Keyboard, KeyboardHandler);		/* 调用键盘中断设备处理子程序 */
+	keyboard_handle_interrupt();
 
 	/* 对主8259A中断控制芯片发送EOI命令。 */
 	IOPort::OutByte(Chip8259A::MASTER_IO_PORT_1, Chip8259A::EOI);

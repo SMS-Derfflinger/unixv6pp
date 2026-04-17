@@ -1,9 +1,11 @@
 use eonix_sync_base::LazyLock;
 
+use core::arch::asm;
+
 use crate::{
     constants::PosixError,
-    serial::{serial_try_read_byte, serial_write_bytes},
     sync::SuperCell,
+    tty::{console_tty, sleep_on_input_channel},
 };
 
 use super::device_manager::minor;
@@ -52,6 +54,7 @@ impl CharDevice for ConsoleDevice {
         self.state.with_mut(|state| {
             state.is_open = true;
         });
+        console_tty().with_mut(|tty| tty.open());
         Ok(())
     }
 
@@ -61,29 +64,38 @@ impl CharDevice for ConsoleDevice {
 
     fn read(&self, dev: i16, out: &mut [u8]) -> Result<usize, PosixError> {
         Self::validate(dev)?;
+        loop {
+            unsafe {
+                disable_interrupts();
+            }
 
-        let mut nread = 0;
-        for slot in out {
-            let Some(byte) = serial_try_read_byte() else {
-                break;
-            };
+            if let Some(nread) = console_tty().with_mut(|tty| tty.read_available(out)) {
+                unsafe {
+                    enable_interrupts();
+                }
+                return Ok(nread);
+            }
 
-            *slot = byte;
-            nread += 1;
-
-            if byte == b'\n' || byte == b'\r' {
-                break;
+            let chan = console_tty().with(|tty| tty.read_wait_channel());
+            sleep_on_input_channel(chan);
+            unsafe {
+                enable_interrupts();
             }
         }
-
-        Ok(nread)
     }
 
     fn write(&self, dev: i16, data: &[u8]) -> Result<usize, PosixError> {
         Self::validate(dev)?;
-        serial_write_bytes(data.iter().copied());
-        Ok(data.len())
+        Ok(console_tty().with_mut(|tty| tty.write(data)))
     }
+}
+
+unsafe fn disable_interrupts() {
+    asm!("cli", options(nomem, nostack));
+}
+
+unsafe fn enable_interrupts() {
+    asm!("sti", options(nomem, nostack));
 }
 
 static CONSOLE_DEVICE: LazyLock<ConsoleDevice> = LazyLock::new(ConsoleDevice::new);
@@ -101,4 +113,58 @@ pub fn char_device_for_major(major: i16) -> Option<&'static dyn CharDevice> {
 
 pub fn char_device_for_dev(dev: i16) -> Option<&'static dyn CharDevice> {
     char_device_for_major(super::device_manager::major(dev))
+}
+
+fn errno(err: PosixError) -> i32 {
+    -(err as i32)
+}
+
+#[no_mangle]
+pub extern "C" fn char_device_open(dev: i16, mode: i32) -> i32 {
+    match char_device_for_dev(dev) {
+        Some(device) => device.open(dev, mode).map_or_else(errno, |_| 0),
+        None => errno(PosixError::ENXIO),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn char_device_close(dev: i16, mode: i32) -> i32 {
+    match char_device_for_dev(dev) {
+        Some(device) => device.close(dev, mode).map_or_else(errno, |_| 0),
+        None => errno(PosixError::ENXIO),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn char_device_read(dev: i16, out: *mut u8, count: i32) -> i32 {
+    if count <= 0 {
+        return 0;
+    }
+
+    let Some(out) = out.as_mut() else {
+        return errno(PosixError::EFAULT);
+    };
+
+    let out = core::slice::from_raw_parts_mut(out, count as usize);
+    match char_device_for_dev(dev) {
+        Some(device) => device.read(dev, out).map_or_else(errno, |n| n as i32),
+        None => errno(PosixError::ENXIO),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn char_device_write(dev: i16, data: *const u8, count: i32) -> i32 {
+    if count <= 0 {
+        return 0;
+    }
+
+    let Some(data) = data.as_ref() else {
+        return errno(PosixError::EFAULT);
+    };
+
+    let data = core::slice::from_raw_parts(data, count as usize);
+    match char_device_for_dev(dev) {
+        Some(device) => device.write(dev, data).map_or_else(errno, |n| n as i32),
+        None => errno(PosixError::ENXIO),
+    }
 }

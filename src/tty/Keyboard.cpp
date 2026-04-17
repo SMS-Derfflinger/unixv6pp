@@ -35,6 +35,18 @@ char Keyboard::Shift_Keymap[] = {
 
 int Keyboard::Mode = 0;
 
+extern "C" void keyboard_signal_ctrl_c()
+{
+	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
+	for ( int killed = 0; killed < ProcessManager::NPROC ; killed++ )
+	{
+		if ( procMgr.process[killed].p_pid > 1 )
+		{
+			procMgr.process[killed].PSignal(User::SIGINT);
+		}
+	}
+}
+
 
 
 void Keyboard::KeyboardHandler( struct pt_regs* reg, struct pt_context* context )
@@ -200,11 +212,7 @@ void Keyboard::HandleScanCode(unsigned char scanCode, int expand)
 	}
 	if ( 0 != ch )
 	{
-		TTy* pTTy = Kernel::Instance().GetDeviceManager().GetCharDevice(DeviceManager::TTYDEV).m_TTy;
-		if ( NULL != pTTy )
-		{
-			pTTy->TTyInput(ch);
-		}
+		rust_tty_input_byte(ch);
 	}
 }
 
@@ -241,12 +249,8 @@ ScanCodeTranslate(unsigned char scanCode, int expand)
 				{
 					ch = 0;
 
-					/* FLushÖÕ¶Ë */
-					TTy* pTTy = Kernel::Instance().GetDeviceManager().GetCharDevice(DeviceManager::TTYDEV).m_TTy;
-					if ( NULL != pTTy )
-					{
-						pTTy->FlushTTy();
-					}
+					/* FLush terminal */
+					rust_tty_flush();
 
 					ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
 					for ( int killed = 0; killed < ProcessManager::NPROC ; killed ++ )

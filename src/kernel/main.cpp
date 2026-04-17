@@ -202,6 +202,8 @@ extern "C" void Delay()
 #endif
 
 
+extern "C" void rust_vesa_init(void* modeInfo);
+
 int splash();
 
 extern "C" void next()
@@ -217,6 +219,8 @@ extern "C" void next()
 			video::svga::VESA_SCREEN_VADDR,
 			video::svga::bytesPerPixel * vesaModeInfo.height * vesaModeInfo.width
 		);
+
+		rust_vesa_init(&vesaModeInfo);
 
 		video::console::init();
 		video::console::writeOutput("VESA enabled.\n", -1, 0xfeba07);
