@@ -29,7 +29,16 @@ unsigned long prd_table_base_address(PRDTable* table);
  */
 class PhysicalRegionDescriptor
 {
+private:
+	unsigned char storage[8];
+
 public:
+	PhysicalRegionDescriptor() {
+		for (int i = 0; i < 8; i++) {
+			this->storage[i] = 0;
+		}
+	}
+
 	void SetBaseAddress(unsigned long phyBaseAddr) {
         prd_set_base_address(this, phyBaseAddr);
     }
@@ -59,8 +68,17 @@ public:
  */
 class PRDTable
 {
+private:
+	unsigned char storage[80] __attribute__((aligned(4)));
+
 	/* Members */
 public:
+	PRDTable() {
+		for (int i = 0; i < 80; i++) {
+			this->storage[i] = 0;
+		}
+	}
+
 	/* 设置index相应的物理内存区描述符(PRD) */
 	void SetPhysicalRegionDescriptor(int index, PhysicalRegionDescriptor& prd, bool EOT /* End of Table */) {
         prd_table_set_physical_region_descriptor(this, index, &prd, EOT);

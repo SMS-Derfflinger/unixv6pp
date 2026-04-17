@@ -3,7 +3,7 @@ use eonix_sync_base::LazyLock;
 use crate::{dev::buffer_manager::global_buffer_manager, sync::SuperCell};
 
 use super::{
-    block_device::{ata_block_device, BlockDevice},
+    block_device::{ata_block_device, BlockDevice, Devtab},
     buffer::{Buf, BufFlag},
     device_manager::minor,
     dma::{DMAType, PRDTable, PhysicalRegionDescriptor, DMA},
@@ -97,6 +97,64 @@ impl ATADriver {
         }
     }
 
+    pub fn ata_handler_cpp_compat() {
+        enum HandlerAction {
+            Retry,
+            Complete(*mut Buf),
+        }
+
+        let atab = unsafe { ata_driver_current_devtab() };
+        if atab.is_null() {
+            return;
+        }
+
+        let action = unsafe {
+            let tab = &mut *atab;
+            if tab.d_active == 0 {
+                return;
+            }
+
+            let Some(bp) = tab.peek_io_request() else {
+                tab.d_active = 0;
+                return;
+            };
+            tab.d_active = 0;
+
+            if Self::is_error() || DMA::is_error() {
+                tab.d_errcnt += 1;
+                if tab.d_errcnt <= 10 {
+                    HandlerAction::Retry
+                } else {
+                    (*bp).b_flags.insert(BufFlag::B_ERROR);
+                    tab.d_errcnt = 0;
+                    let _ = tab.pop_io_request();
+                    HandlerAction::Complete(bp)
+                }
+            } else {
+                tab.d_errcnt = 0;
+                let _ = tab.pop_io_request();
+                HandlerAction::Complete(bp)
+            }
+        };
+
+        match action {
+            HandlerAction::Retry => {
+                unsafe {
+                    ata_driver_start_current();
+                }
+                return;
+            }
+            HandlerAction::Complete(bp) => unsafe {
+                ata_driver_io_done(bp);
+            },
+        }
+
+        unsafe {
+            ata_driver_start_current();
+            ata_driver_send_eoi();
+        }
+    }
+
     pub fn dev_start(bp: *mut Buf) {
         if bp.is_null() {
             panic!("Invalid Buf in DevStart()!");
@@ -162,3 +220,20 @@ impl ATADriver {
 }
 
 static PRD_TABLE: LazyLock<SuperCell<PRDTable>> = LazyLock::new(|| SuperCell::new(PRDTable::new()));
+
+unsafe extern "C" {
+    fn ata_driver_current_devtab() -> *mut Devtab;
+    fn ata_driver_start_current();
+    fn ata_driver_io_done(bp: *mut Buf);
+    fn ata_driver_send_eoi();
+}
+
+#[no_mangle]
+pub extern "C" fn rust_ata_handler() {
+    ATADriver::ata_handler_cpp_compat();
+}
+
+#[no_mangle]
+pub extern "C" fn rust_ata_dev_start(bp: *mut Buf) {
+    ATADriver::dev_start(bp);
+}
