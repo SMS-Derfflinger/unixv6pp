@@ -29,8 +29,8 @@
 #include "Video.h"
 #include "Kernel.h"
 
-extern "C" void rust_vesa_put_pixel(int x, int y, int color);
-extern "C" void rust_vesa_clear(int color);
+extern "C" void vesa_put_pixel(int x, int y, int color);
+extern "C" void vesa_clear(int color);
 
 
 static const char* SPLASH_BMP = "/etc/v6pp_splash.bmp";
@@ -111,7 +111,7 @@ static int drawImg(const char* filePath) {
         for (int w = 0; w < infoHeader.width; w++) {
 			auto pPixel = (int*) (imgData + (w + h * infoHeader.width) * 4);
 			int color = *pPixel;
-			rust_vesa_put_pixel(w, infoHeader.height - h, color);
+			vesa_put_pixel(w, infoHeader.height - h, color);
 		}
 	}
 
@@ -126,12 +126,12 @@ static int drawImg(const char* filePath) {
 
 
 int splash() {
-    rust_vesa_clear(0);
+    vesa_clear(0);
 
     drawImg(SPLASH_BMP);
 
     lib_sleep(1);
-    rust_vesa_clear(0);
+    vesa_clear(0);
 
     return 0;
 }

@@ -401,14 +401,14 @@ pub fn mark_input_begin() -> bool {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_vesa_clear(color: i32) {
+pub extern "C" fn vesa_clear(color: i32) {
     VESA_CONSOLE.with_mut(|console| {
         console.clear_screen(color as u32);
     });
 }
 
 #[no_mangle]
-pub extern "C" fn rust_vesa_put_pixel(x: i32, y: i32, color: i32) {
+pub extern "C" fn vesa_put_pixel(x: i32, y: i32, color: i32) {
     if x < 0 || y < 0 {
         return;
     }
@@ -419,7 +419,7 @@ pub extern "C" fn rust_vesa_put_pixel(x: i32, y: i32, color: i32) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rust_vesa_init(mode_info: *const VbeModeInfo) {
+pub unsafe extern "C" fn vesa_init(mode_info: *const VbeModeInfo) {
     if mode_info.is_null() {
         return;
     }

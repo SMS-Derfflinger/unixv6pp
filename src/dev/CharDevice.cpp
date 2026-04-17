@@ -2,11 +2,11 @@
 #include "Kernel.h"
 #include "Utility.h"
 
-extern "C" void rust_process_sleep(unsigned long chan, int pri) {
+extern "C" void cpp_process_sleep(unsigned long chan, int pri) {
     User_get_procp()->Sleep(chan, pri);
 }
 
-extern "C" void rust_process_wakeup_all(unsigned long chan) {
+extern "C" void cpp_process_wakeup_all(unsigned long chan) {
     Kernel::Instance().GetProcessManager().WakeUpAll(chan);
 }
 

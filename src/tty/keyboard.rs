@@ -3,7 +3,7 @@ use core::arch::asm;
 use eonix_sync_base::LazyLock;
 
 use crate::sync::SuperCell;
-use crate::tty::{rust_tty_flush, rust_tty_input_byte};
+use crate::tty::{tty_flush, tty_input_byte};
 
 const DATA_PORT: u16 = 0x60;
 const STATUS_PORT: u16 = 0x64;
@@ -192,7 +192,7 @@ impl KeyboardState {
         };
 
         if ch != 0 {
-            rust_tty_input_byte(ch);
+            tty_input_byte(ch);
         }
     }
 
@@ -213,7 +213,7 @@ impl KeyboardState {
 
                 if self.ctrl_down() {
                     if ch == b'c' {
-                        rust_tty_flush();
+                        tty_flush();
                         unsafe { keyboard_signal_ctrl_c() };
                         ch = 0;
                     } else {

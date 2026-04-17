@@ -26,8 +26,8 @@ const CARR_ON: u32 = 0x02;
 const TTIPRI: i32 = 10;
 
 unsafe extern "C" {
-    fn rust_process_sleep(chan: usize, pri: i32);
-    fn rust_process_wakeup_all(chan: usize);
+    fn cpp_process_sleep(chan: usize, pri: i32);
+    fn cpp_process_wakeup_all(chan: usize);
 }
 
 #[derive(Clone, Copy)]
@@ -320,7 +320,7 @@ impl Tty {
             self.rawq.put_char(0x07);
             self.delct += 1;
             unsafe {
-                rust_process_wakeup_all(self.read_wait_channel());
+                cpp_process_wakeup_all(self.read_wait_channel());
             }
         }
 
@@ -413,21 +413,21 @@ pub fn console_tty() -> &'static SuperCell<Tty> {
 
 pub fn sleep_on_input_channel(chan: usize) {
     unsafe {
-        rust_process_sleep(chan, TTIPRI);
+        cpp_process_sleep(chan, TTIPRI);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn rust_tty_input_byte(ch: u8) {
+pub extern "C" fn tty_input_byte(ch: u8) {
     console_tty().with_mut(|tty| tty.input(ch));
 }
 
 #[no_mangle]
-pub extern "C" fn rust_tty_flush() {
+pub extern "C" fn tty_flush() {
     console_tty().with_mut(Tty::flush);
 }
 
 #[no_mangle]
-pub extern "C" fn rust_clear_screan() {
+pub extern "C" fn clear_screan() {
     TEXT_CONSOLE.with_mut(TextModeConsole::clear_screen);
 }

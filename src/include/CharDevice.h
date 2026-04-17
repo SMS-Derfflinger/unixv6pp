@@ -11,8 +11,8 @@ void char_device_open(short dev, int mode);
 void char_device_close(short dev, int mode);
 void char_device_read(short dev);
 void char_device_write(short dev);
-void rust_tty_input_byte(unsigned char ch);
-void rust_tty_flush();
+void tty_input_byte(unsigned char ch);
+void tty_flush();
 
 #ifdef __cplusplus
 }

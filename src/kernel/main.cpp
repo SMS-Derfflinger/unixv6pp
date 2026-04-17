@@ -32,7 +32,7 @@ bool isInit = false;
 extern "C" {
 #endif
 
-void rust_clear_screan();
+void clear_screan();
 
 #ifdef __cplusplus
 }
@@ -208,9 +208,9 @@ extern "C" void Delay()
 #endif
 
 
-extern "C" void rust_vesa_init(void* modeInfo);
+extern "C" void vesa_init(void* modeInfo);
 
-namespace rust_vesa_compat {
+namespace vesa_compat {
 
 const uintptr_t VESA_SCREEN_VADDR = Machine::KERNEL_SPACE_START_ADDRESS + 128 * 1024 * 1024;
 
@@ -259,15 +259,15 @@ extern "C" void next()
 	
 #ifdef USE_VESA
 	    intptr_t vesaModeInfoAddr = Machine::KERNEL_SPACE_START_ADDRESS + 0x7e00;
-		auto& vesaModeInfo = * (rust_vesa_compat::VbeModeInfo*) vesaModeInfoAddr;
+		auto& vesaModeInfo = * (vesa_compat::VbeModeInfo*) vesaModeInfoAddr;
 
 		Machine::Instance().InitVESAMemoryMap(
 			vesaModeInfo.framebuffer,
-			rust_vesa_compat::VESA_SCREEN_VADDR,
+			vesa_compat::VESA_SCREEN_VADDR,
 			vesaModeInfo.pitch * vesaModeInfo.height
 		);
 
-		rust_vesa_init(&vesaModeInfo);
+		vesa_init(&vesaModeInfo);
 	
 #endif
 	
@@ -363,7 +363,7 @@ extern "C" void next()
 		FlushPageDirectory();
 
 		//CRT::ClearScreen();
-        rust_clear_screan();
+        clear_screan();
 
 		/* 1#进程回用户态，执行exec("shell.exe")系统调用*/
 		MoveToUserStack();

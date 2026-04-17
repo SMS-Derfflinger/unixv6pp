@@ -635,19 +635,19 @@ fn enable_interrupts() {
 }
 
 unsafe extern "C" {
-    fn rust_process_sleep(chan: usize, pri: i32);
-    fn rust_process_wakeup_all(chan: usize);
+    fn cpp_process_sleep(chan: usize, pri: i32);
+    fn cpp_process_wakeup_all(chan: usize);
 }
 
 pub fn process_sleep(chan: usize, pri: i32) {
     unsafe {
-        rust_process_sleep(chan, pri);
+        cpp_process_sleep(chan, pri);
     }
 }
 
 pub fn process_wakeup_all(chan: usize) {
     unsafe {
-        rust_process_wakeup_all(chan);
+        cpp_process_wakeup_all(chan);
     }
 }
 
@@ -665,12 +665,12 @@ fn set_buffer_error(err: BufferError) {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_manager_initialize() {
+pub extern "C" fn buffer_manager_initialize() {
     global_buffer_manager().initialize();
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_get_blk(dev: i16, blkno: i32) -> *mut Buf {
+pub extern "C" fn buffer_get_blk(dev: i16, blkno: i32) -> *mut Buf {
     match global_buffer_manager().get_blk(DevId(dev), PhysicalBlock(blkno as u32)) {
         Ok(bp) => bp,
         Err(error) => {
@@ -681,24 +681,24 @@ pub extern "C" fn rust_buffer_get_blk(dev: i16, blkno: i32) -> *mut Buf {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_brelse(bp: *mut Buf) {
+pub extern "C" fn buffer_brelse(bp: *mut Buf) {
     global_buffer_manager().brelse(bp);
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_io_wait(bp: *mut Buf) {
+pub extern "C" fn buffer_io_wait(bp: *mut Buf) {
     if let Err(error) = global_buffer_manager().io_wait(bp) {
         set_buffer_error(error);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_io_done(bp: *mut Buf) {
+pub extern "C" fn buffer_io_done(bp: *mut Buf) {
     global_buffer_manager().io_done(bp);
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_bread(dev: i16, blkno: i32) -> *mut Buf {
+pub extern "C" fn buffer_bread(dev: i16, blkno: i32) -> *mut Buf {
     match global_buffer_manager().bread(DevId(dev), PhysicalBlock(blkno as u32)) {
         Ok(bp) => bp,
         Err(error) => {
@@ -709,7 +709,7 @@ pub extern "C" fn rust_buffer_bread(dev: i16, blkno: i32) -> *mut Buf {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_breada(dev: i16, blkno: i32, read_ahead_blkno: i32) -> *mut Buf {
+pub extern "C" fn buffer_breada(dev: i16, blkno: i32, read_ahead_blkno: i32) -> *mut Buf {
     let read_ahead_blkno =
         (read_ahead_blkno != 0).then_some(PhysicalBlock(read_ahead_blkno as u32));
     match global_buffer_manager().breada(DevId(dev), PhysicalBlock(blkno as u32), read_ahead_blkno)
@@ -723,29 +723,29 @@ pub extern "C" fn rust_buffer_breada(dev: i16, blkno: i32, read_ahead_blkno: i32
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_bwrite(bp: *mut Buf) {
+pub extern "C" fn buffer_bwrite(bp: *mut Buf) {
     if let Err(error) = global_buffer_manager().bwrite(bp) {
         set_buffer_error(error);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_bdwrite(bp: *mut Buf) {
+pub extern "C" fn buffer_bdwrite(bp: *mut Buf) {
     global_buffer_manager().bdwrite(bp);
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_bawrite(bp: *mut Buf) {
+pub extern "C" fn buffer_bawrite(bp: *mut Buf) {
     global_buffer_manager().bawrite(bp);
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_clr_buf(bp: *mut Buf) {
+pub extern "C" fn buffer_clr_buf(bp: *mut Buf) {
     global_buffer_manager().clr_buf(bp);
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_bflush(dev: i16) {
+pub extern "C" fn buffer_bflush(dev: i16) {
     let dev = (dev >= 0).then_some(DevId(dev));
     if let Err(error) = global_buffer_manager().bflush(dev) {
         set_buffer_error(error);
@@ -753,7 +753,7 @@ pub extern "C" fn rust_buffer_bflush(dev: i16) {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_swap(blkno: i32, addr: usize, count: i32, flag: u32) -> bool {
+pub extern "C" fn buffer_swap(blkno: i32, addr: usize, count: i32, flag: u32) -> bool {
     let flag = BufFlag::from_bits_retain(flag);
     match global_buffer_manager().swap(
         PhysicalBlock(blkno as u32),
@@ -770,11 +770,11 @@ pub extern "C" fn rust_buffer_swap(blkno: i32, addr: usize, count: i32, flag: u3
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_get_swap_buf() -> *mut Buf {
+pub extern "C" fn buffer_get_swap_buf() -> *mut Buf {
     global_buffer_manager().swap_buf_mut() as *mut Buf
 }
 
 #[no_mangle]
-pub extern "C" fn rust_buffer_get_b_free_list() -> *mut Buf {
+pub extern "C" fn buffer_get_b_free_list() -> *mut Buf {
     global_buffer_manager().free_list_mut() as *mut Buf
 }

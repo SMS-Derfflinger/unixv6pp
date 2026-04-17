@@ -3,8 +3,8 @@
 
 #include "Regs.h"
 
-extern "C" void rust_ata_handler();
-extern "C" void rust_ata_dev_start(struct Buf* bp);
+extern "C" void ata_handler();
+extern "C" void ata_dev_start(struct Buf* bp);
 
 class ATADriver
 {
@@ -13,12 +13,12 @@ public:
 	static void ATAHandler(struct pt_regs* reg, struct pt_context* context) {
         (void)reg;
 	    (void)context;
-	    rust_ata_handler();
+	    ata_handler();
     }
 
 	/* ÉèÖÃ´ÅÅÌ¼Ä´æÆ÷£¬Æô¶¯´ÅÅÌ½øĞĞI/O²Ù×÷ */
 	static void DevStart(struct Buf* bp) {
-        rust_ata_dev_start(bp);
+        ata_dev_start(bp);
     }
 };
 
