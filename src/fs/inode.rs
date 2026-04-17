@@ -15,32 +15,50 @@ use eonix_spin::Spin;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct INodeFlag: u32 {
-        const ILOCK  = 0x1;   // 索引节点上锁
-        const IUPD   = 0x2;   // 内存inode被修改过，需要更新相应外存inode
-        const IACC   = 0x4;   // 内存inode被访问过，需要修改最近一次访问时间
-        const IMOUNT = 0x8;   // 内存inode用于挂载子文件系统
-        const IWANT  = 0x10;  // 有进程正在等待该内存inode被解锁
-        const ITEXT  = 0x20;  // 内存inode对应进程图像的正文段
+    pub struct InodeFlag: u32 {
+        /// 索引节点上锁
+        const ILOCK  = 0x1;
+        /// 内存 Inode 被修改过，需要更新相应外存 Inode
+        const IUPD   = 0x2;
+        /// 内存 Inode 被访问过，需要修改最近一次访问时间
+        const IACC   = 0x4;
+        /// 内存 Inode 用于挂载子文件系统
+        const IMOUNT = 0x8;
+        /// 有进程正在等待该内存 Inode 被解锁
+        const IWANT  = 0x10;
+        /// 内存 Inode 对应进程图像的正文段
+        const ITEXT  = 0x20;
     }
 }
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct INodeMode: u32 {
-        const IALLOC = 0x8000;  // 文件被使用
-        const IFMT   = 0x6000;  // 文件类型掩码
-        const IFDIR  = 0x4000;  // 文件类型：目录文件
-        const IFCHR  = 0x2000;  // 字符设备特殊类型文件
-        const IFBLK  = 0x6000;  // 块设备特殊类型文件，为0表示常规数据文件
-        const ILARG  = 0x1000;  // 文件长度类型：大型或巨型文件
-        const ISUID  = 0x800;   // 执行时将有效用户ID修改为文件所有者UID
-        const ISGID  = 0x400;   // 执行时将有效组ID修改为文件所有者GID
-        const ISVTX  = 0x200;   // 使用后仍然位于交换区上的正文段
-        const IREAD  = 0x100;   // 对文件的读权限
-        const IWRITE = 0x80;    // 对文件的写权限
-        const IEXEC  = 0x40;    // 对文件的执行权限
-        // 组合权限
+    pub struct InodeMode: u32 {
+        /// 文件被使用
+        const IALLOC = 0x8000;
+        /// 文件类型掩码
+        const IFMT   = 0x6000;
+        /// 文件类型：目录文件
+        const IFDIR  = 0x4000;
+        /// 字符设备特殊类型文件
+        const IFCHR  = 0x2000;
+        /// 块设备特殊类型文件，为0表示常规数据文件
+        const IFBLK  = 0x6000;
+        /// 文件长度类型：大型或巨型文件
+        const ILARG  = 0x1000;
+        /// 执行时将有效用户ID修改为文件所有者UID
+        const ISUID  = 0x800;
+        /// 执行时将有效组ID修改为文件所有者GID
+        const ISGID  = 0x400;
+        /// 使用后仍然位于交换区上的正文段
+        const ISVTX  = 0x200;
+        /// 对文件的读权限
+        const IREAD  = 0x100;
+        /// 对文件的写权限
+        const IWRITE = 0x80;
+        /// 对文件的执行权限
+        const IEXEC  = 0x40;
+
         const IRWXU  = Self::IREAD.bits() | Self::IWRITE.bits() | Self::IEXEC.bits();
         const IRWXG  = Self::IRWXU.bits() >> 3;
         const IRWXO  = Self::IRWXU.bits() >> 6;
@@ -51,8 +69,8 @@ const I_ADDR_SIZE: usize = 10;
 
 #[repr(C)]
 pub struct Inode {
-    pub i_flag: INodeFlag, // 状态标志位
-    pub i_mode: INodeMode, // 文件工作方式信息
+    pub i_flag: InodeFlag, // 状态标志位
+    pub i_mode: InodeMode, // 文件工作方式信息
 
     pub i_count: i32, // 引用计数
     pub i_nlink: i32, // 文件联结计数（目录树中不同路径名的数量）
@@ -165,8 +183,8 @@ impl Inode {
 
     const fn new_const() -> Self {
         Self {
-            i_flag: INodeFlag::empty(),
-            i_mode: INodeMode::empty(),
+            i_flag: InodeFlag::empty(),
+            i_mode: InodeMode::empty(),
             i_count: 0,
             i_nlink: 0,
             i_dev: DevId(-1),
@@ -191,10 +209,10 @@ impl Inode {
             return Ok(());
         }
 
-        self.i_flag |= INodeFlag::IACC;
+        self.i_flag |= InodeFlag::IACC;
 
         // char dev
-        if (self.i_mode & INodeMode::IFMT) == INodeMode::IFCHR {
+        if (self.i_mode & InodeMode::IFMT) == InodeMode::IFCHR {
             let dev = self.i_addr[0].0 as i16;
             // TODO: dev manager
             //kernel::get_device_manager()
@@ -203,7 +221,7 @@ impl Inode {
             return Ok(());
         }
 
-        let is_blk = (self.i_mode & INodeMode::IFMT) == INodeMode::IFBLK;
+        let is_blk = (self.i_mode & InodeMode::IFMT) == InodeMode::IFBLK;
 
         // TODO: user error
         while
@@ -256,10 +274,10 @@ impl Inode {
     }
 
     pub fn write_i(&mut self, m_count: usize, m_offset: usize) -> Result<(), Error> {
-        self.i_flag |= INodeFlag::IACC | INodeFlag::IUPD;
+        self.i_flag |= InodeFlag::IACC | InodeFlag::IUPD;
 
         // char device
-        if (self.i_mode & INodeMode::IFMT) == INodeMode::IFCHR {
+        if (self.i_mode & InodeMode::IFMT) == InodeMode::IFCHR {
             let dev = self.i_addr[0].0 as i16;
             // TODO: dev manager
             // kernel::get_device_manager().get_char_device(major).write(dev);
@@ -270,7 +288,7 @@ impl Inode {
             return Ok(());
         }
 
-        let is_blk = (self.i_mode & INodeMode::IFMT) == INodeMode::IFBLK;
+        let is_blk = (self.i_mode & InodeMode::IFMT) == InodeMode::IFBLK;
         let mut m_count = m_count;
         let mut m_offset = m_offset;
 
@@ -312,7 +330,7 @@ impl Inode {
                 self.i_size = m_offset as _;
             }
 
-            self.i_flag |= INodeFlag::IUPD;
+            self.i_flag |= InodeFlag::IUPD;
         }
 
         Ok(())
@@ -373,7 +391,7 @@ impl Inode {
         }
         let blkno = Self::alloc_block_from_fs(self.i_dev)?;
         self.i_addr[slot] = blkno;
-        self.i_flag |= INodeFlag::IUPD;
+        self.i_flag |= InodeFlag::IUPD;
         Ok(blkno)
     }
 
@@ -387,14 +405,14 @@ impl Inode {
     pub fn open_i(&self, mode: u32) -> Result<(), OpenError> {
         let dev = self.i_addr[0].0 as i16;
 
-        match self.i_mode & INodeMode::IFMT {
-            INodeMode::IFCHR => {
+        match self.i_mode & InodeMode::IFMT {
+            InodeMode::IFCHR => {
                 let device = char_device_for_dev(dev).ok_or(OpenError::NoSuchDevice)?;
                 device
                     .open(dev, mode as i32)
                     .map_err(|_| OpenError::NoSuchDevice)?;
             }
-            INodeMode::IFBLK => {
+            InodeMode::IFBLK => {
                 let device = block_device_for_dev(dev).ok_or(OpenError::NoSuchDevice)?;
                 if device.open(dev, mode as i32) < 0 {
                     return Err(OpenError::NoSuchDevice);
@@ -413,13 +431,13 @@ impl Inode {
 
         let dev = self.i_addr[0].0 as i16;
 
-        match self.i_mode & INodeMode::IFMT {
-            INodeMode::IFCHR => {
+        match self.i_mode & InodeMode::IFMT {
+            InodeMode::IFCHR => {
                 if let Some(device) = char_device_for_dev(dev) {
                     let _ = device.close(dev, mode as i32);
                 }
             }
-            INodeMode::IFBLK => {
+            InodeMode::IFBLK => {
                 if let Some(device) = block_device_for_dev(dev) {
                     let _ = device.close(dev, mode as i32);
                 }
@@ -429,7 +447,7 @@ impl Inode {
     }
 
     pub fn i_update(&self, time: i32) {
-        if !self.i_flag.intersects(INodeFlag::IUPD | INodeFlag::IACC) {
+        if !self.i_flag.intersects(InodeFlag::IUPD | InodeFlag::IACC) {
             return;
         }
 
@@ -452,12 +470,12 @@ impl Inode {
             d_gid: self.i_gid,
             d_size: self.i_size,
             d_addr: self.i_addr,
-            d_atime: if self.i_flag.contains(INodeFlag::IACC) {
+            d_atime: if self.i_flag.contains(InodeFlag::IACC) {
                 time
             } else {
                 0
             },
-            d_mtime: if self.i_flag.contains(INodeFlag::IUPD) {
+            d_mtime: if self.i_flag.contains(InodeFlag::IUPD) {
                 time
             } else {
                 0
@@ -480,7 +498,7 @@ impl Inode {
     }
 
     pub fn i_trunc(&mut self) {
-        if self.i_mode.intersects(INodeMode::IFCHR | INodeMode::IFBLK) {
+        if self.i_mode.intersects(InodeMode::IFCHR | InodeMode::IFBLK) {
             return;
         }
 
@@ -518,15 +536,15 @@ impl Inode {
         }
 
         self.i_size = 0;
-        self.i_flag |= INodeFlag::IUPD;
-        self.i_mode &= !(INodeMode::ILARG | INodeMode::IRWXU | INodeMode::IRWXG | INodeMode::IRWXO);
+        self.i_flag |= InodeFlag::IUPD;
+        self.i_mode &= !(InodeMode::ILARG | InodeMode::IRWXU | InodeMode::IRWXG | InodeMode::IRWXO);
         self.i_nlink = 1;
     }
 
     fn unlock_and_wake(&mut self) {
-        self.i_flag.remove(INodeFlag::ILOCK);
-        if self.i_flag.contains(INodeFlag::IWANT) {
-            self.i_flag.remove(INodeFlag::IWANT);
+        self.i_flag.remove(InodeFlag::ILOCK);
+        if self.i_flag.contains(InodeFlag::IWANT) {
+            self.i_flag.remove(InodeFlag::IWANT);
             // TODO: wake up
             //kernel::get_process_manager().wake_up_all(self as *mut _ as usize);
         }
@@ -535,11 +553,11 @@ impl Inode {
     fn lock_with_priority(&mut self, priority: i32) {
         // TODO: user args
         //let u = kernel::get_user();
-        while self.i_flag.contains(INodeFlag::ILOCK) {
-            self.i_flag.insert(INodeFlag::IWANT);
+        while self.i_flag.contains(InodeFlag::ILOCK) {
+            self.i_flag.insert(InodeFlag::IWANT);
             //u.u_procp.sleep(self as *mut _ as usize, priority);
         }
-        self.i_flag.insert(INodeFlag::ILOCK);
+        self.i_flag.insert(InodeFlag::ILOCK);
     }
 
     pub fn nf_rele(&mut self) {
@@ -559,7 +577,7 @@ impl Inode {
     }
 
     pub fn clean(&mut self) {
-        self.i_mode = INodeMode::empty();
+        self.i_mode = InodeMode::empty();
         self.i_nlink = 0;
         self.i_uid = -1;
         self.i_gid = -1;
@@ -604,7 +622,7 @@ impl Inode {
 
 #[repr(C)]
 pub struct DiskInode {
-    pub d_mode: INodeMode,
+    pub d_mode: InodeMode,
     pub d_nlink: i32,
     pub d_uid: i16,
     pub d_gid: i16,

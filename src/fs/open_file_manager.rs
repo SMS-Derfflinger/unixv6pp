@@ -8,7 +8,7 @@ use crate::{
         self,
         file::{File, FileFlags, FileRefCompat, OpenFiles},
         file_system::FileSystem,
-        inode::{fileref_leak, INodeFlag, INodeMode, Inode},
+        inode::{fileref_leak, InodeFlag, InodeMode, Inode},
         FileRef, InodeRef,
     },
     proc::wakeup_all,
@@ -96,7 +96,7 @@ impl OpenFileTable {
         let mut inoderef = file.f_inode.expect("Pipe without inodes");
         let inode = unsafe { inoderef.deref_compat() };
 
-        inode.i_mode &= !(INodeMode::IREAD | INodeMode::IWRITE);
+        inode.i_mode &= !(InodeMode::IREAD | InodeMode::IWRITE);
         wakeup_all(inode.channel_read());
         wakeup_all(inode.channel_write());
     }
@@ -150,14 +150,14 @@ impl InodeTable {
             if let Some(inode) = self.is_loaded(dev, inumber) {
                 let mut inode_ref = inode.lock();
 
-                if inode_ref.i_flag.contains(INodeFlag::ILOCK) {
+                if inode_ref.i_flag.contains(InodeFlag::ILOCK) {
                     // TODO: sleep
-                    inode_ref.i_flag |= INodeFlag::IWANT;
+                    inode_ref.i_flag |= InodeFlag::IWANT;
                     //kernel::get_process_manager()
                     //    .sleep(inode as *mut _ as usize, ProcessManager::PINOD);
                 }
 
-                if inode_ref.i_flag.contains(INodeFlag::IMOUNT) {
+                if inode_ref.i_flag.contains(InodeFlag::IMOUNT) {
                     let mount_dev = fs::global_file_system()
                         .get_mount(&inode_ref)
                         .map(|mount| mount.m_dev);
@@ -173,7 +173,7 @@ impl InodeTable {
                 }
 
                 inode_ref.i_count += 1;
-                inode_ref.i_flag |= INodeFlag::ILOCK;
+                inode_ref.i_flag |= InodeFlag::ILOCK;
                 drop(inode_ref);
                 return Ok(inode);
             }
@@ -183,7 +183,7 @@ impl InodeTable {
                 let mut inode = inode.lock();
                 inode.i_dev = dev;
                 inode.i_number = inumber;
-                inode.i_flag = INodeFlag::ILOCK;
+                inode.i_flag = InodeFlag::ILOCK;
                 inode.i_count = 1;
                 inode.i_lastr = -1;
             }
@@ -210,18 +210,18 @@ impl InodeTable {
         let mut inode = inode.lock();
 
         if inode.i_count == 1 {
-            inode.i_flag |= INodeFlag::ILOCK;
+            inode.i_flag |= InodeFlag::ILOCK;
 
             if inode.i_nlink <= 0 {
                 inode.i_trunc();
-                inode.i_mode = INodeMode::empty();
+                inode.i_mode = InodeMode::empty();
                 let _ = fs::global_file_system().i_free(inode.i_dev, inode.i_number);
             }
 
             // TODO: time
             inode.i_update(0);
             inode.prele();
-            inode.i_flag = INodeFlag::empty();
+            inode.i_flag = InodeFlag::empty();
             inode.i_number = -1;
         }
 
@@ -232,8 +232,8 @@ impl InodeTable {
     pub fn update_inode_table(&mut self) {
         for inode in &self.m_inode {
             let mut inode = inode.lock();
-            if !inode.i_flag.contains(INodeFlag::ILOCK) && inode.i_count != 0 {
-                inode.i_flag |= INodeFlag::ILOCK;
+            if !inode.i_flag.contains(InodeFlag::ILOCK) && inode.i_count != 0 {
+                inode.i_flag |= InodeFlag::ILOCK;
                 // TODO: time
                 inode.i_update(0);
                 inode.prele();

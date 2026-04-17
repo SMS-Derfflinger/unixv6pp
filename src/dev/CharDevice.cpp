@@ -65,14 +65,14 @@ void ConsoleDevice::Open(short dev, int mode) {
 
     result = char_device_open(dev, mode);
     if (result < 0) {
-        u.u_error = (User::ErrorCode)(-result);
+        User_get_error() = (User::ErrorCode)(-result);
     }
 }
 
 void ConsoleDevice::Close(short dev, int mode) {
     int result = char_device_close(dev, mode);
     if (result < 0) {
-        Kernel::Instance().GetUser().u_error = (User::ErrorCode)(-result);
+        User_get_error() = (User::ErrorCode)(-result);
     }
 }
 
@@ -84,7 +84,7 @@ void ConsoleDevice::Read(short dev) {
     if (0 == minor) {
         result = char_device_read(dev, User_get_IOParam().m_Base, User_get_IOParam().m_Count);
         if (result < 0) {
-            u.u_error = (User::ErrorCode)(-result);
+            User_get_error() = (User::ErrorCode)(-result);
             return;
         }
         User_get_IOParam().m_Base += result;
@@ -100,7 +100,7 @@ void ConsoleDevice::Write(short dev) {
     if (0 == minor) {
         result = char_device_write(dev, User_get_IOParam().m_Base, User_get_IOParam().m_Count);
         if (result < 0) {
-            u.u_error = (User::ErrorCode)(-result);
+            User_get_error() = (User::ErrorCode)(-result);
             return;
         }
         User_get_IOParam().m_Base += result;

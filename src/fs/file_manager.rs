@@ -11,7 +11,7 @@ use crate::{
     fs::{
         self,
         file::{FileFlags, OpenFiles},
-        inode::{inoderef_leak, INodeFlag, INodeMode, Inode, OpenError},
+        inode::{inoderef_leak, InodeFlag, InodeMode, Inode, OpenError},
         FileRef, InodeRef,
     },
     sync::SpinExt,
@@ -74,7 +74,7 @@ impl FileManager {
     pub fn creat(
         &mut self,
         path: &str,
-        create_mode: INodeMode,
+        create_mode: InodeMode,
         open_files: &mut OpenFiles,
     ) -> Result<(usize, FileRef), PosixError> {
         match self.name_i(path, DirSearchMode::Create)? {
@@ -86,11 +86,11 @@ impl FileManager {
                     open_files,
                 )?;
                 inode.lock().i_mode |=
-                    create_mode & (INodeMode::IRWXU | INodeMode::IRWXG | INodeMode::IRWXO);
+                    create_mode & (InodeMode::IRWXU | InodeMode::IRWXG | InodeMode::IRWXO);
                 Ok(result)
             }
             None => {
-                let inode = self.mak_node((create_mode & !INodeMode::ISVTX).bits())?;
+                let inode = self.mak_node((create_mode & !InodeMode::ISVTX).bits())?;
                 self.open1(
                     inode,
                     FileFlags::FWRITE,
@@ -112,7 +112,7 @@ impl FileManager {
             let inode_ref = inode.lock();
 
             if mode.contains(FileFlags::FWRITE)
-                && (inode_ref.i_mode & INodeMode::IFMT) == INodeMode::IFDIR
+                && (inode_ref.i_mode & InodeMode::IFMT) == InodeMode::IFDIR
             {
                 return Err(PosixError::EISDIR);
             }
@@ -337,8 +337,8 @@ impl FileManager {
         {
             let mut inode_ref = inode.lock();
             inode_ref.i_count = 2;
-            inode_ref.i_flag = INodeFlag::IACC | INodeFlag::IUPD;
-            inode_ref.i_mode = INodeMode::IALLOC;
+            inode_ref.i_flag = InodeFlag::IACC | InodeFlag::IUPD;
+            inode_ref.i_mode = InodeMode::IALLOC;
         }
 
         Ok((read_fd, write_fd))
@@ -360,7 +360,7 @@ impl FileManager {
             if file_ref.f_offset != 0 {
                 file_ref.f_offset = 0;
                 inode_ref.i_size = 0;
-                inode_ref.i_mode.remove(INodeMode::IWRITE);
+                inode_ref.i_mode.remove(InodeMode::IWRITE);
             }
             inode_ref.prele();
 
@@ -397,7 +397,7 @@ impl FileManager {
         }
 
         if inode_ref.i_size as usize == super::inode::Inode::PIPSIZ {
-            inode_ref.i_mode.insert(INodeMode::IWRITE);
+            inode_ref.i_mode.insert(InodeMode::IWRITE);
             inode_ref.prele();
             return Ok(0);
         }
@@ -467,8 +467,8 @@ impl FileManager {
 
         {
             let mut inode_ref = inode.lock();
-            inode_ref.i_flag |= INodeFlag::IACC | INodeFlag::IUPD;
-            inode_ref.i_mode = INodeMode::from_bits_truncate(mode) | INodeMode::IALLOC;
+            inode_ref.i_flag |= InodeFlag::IACC | InodeFlag::IUPD;
+            inode_ref.i_mode = InodeMode::from_bits_truncate(mode) | InodeMode::IALLOC;
             inode_ref.i_nlink = 1;
             inode_ref.i_uid = 0;
             inode_ref.i_gid = 0;
@@ -614,8 +614,8 @@ impl FileManager {
             return requested;
         }
 
-        let file_type = inode.i_mode & INodeMode::IFMT;
-        if file_type == INodeMode::IFCHR || file_type == INodeMode::IFBLK {
+        let file_type = inode.i_mode & InodeMode::IFMT;
+        if file_type == InodeMode::IFCHR || file_type == InodeMode::IFBLK {
             return requested;
         }
 
@@ -637,7 +637,7 @@ pub struct DirectoryEntry {
 pub struct FileStat {
     pub dev: DevId,
     pub ino: i32,
-    pub mode: INodeMode,
+    pub mode: InodeMode,
     pub nlink: i32,
     pub uid: i16,
     pub gid: i16,
