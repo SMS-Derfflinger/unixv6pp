@@ -1,9 +1,5 @@
-use alloc::boxed::Box;
-use core::array;
-
-use eonix_sync_base::LazyLock;
-
-use crate::{sync::SuperCell, user};
+use crate::sync::SuperCell;
+use crate::{constants::PosixError, user::Userspace};
 
 use super::{
     block_device::block_device_for_dev,
@@ -27,8 +23,8 @@ pub type BufferResult<T> = Result<T, BufferError>;
 pub struct BufferManager {
     b_free_list: Buf,
     swap_buf: Buf,
-    buffers: Box<[Buf; Self::NBUF]>,
-    data: Box<[[u8; Self::BUFFER_SIZE]; Self::NBUF]>,
+    buffers: [Buf; Self::NBUF],
+    data: [[u8; Self::BUFFER_SIZE]; Self::NBUF],
 }
 
 unsafe impl Send for BufferManager {}
@@ -38,15 +34,17 @@ impl BufferManager {
     pub const NBUF: usize = 15;
     pub const BUFFER_SIZE: usize = Buf::BLOCK_SIZE;
 
-    pub fn new() -> Self {
-        let mut manager = Self {
+    pub const fn new() -> Self {
+        Self {
             b_free_list: Buf::new(),
             swap_buf: Buf::new(),
-            buffers: Box::new(array::from_fn(|_| Buf::new())),
-            data: Box::new([[0; Self::BUFFER_SIZE]; Self::NBUF]),
-        };
-        manager.initialize_buffers();
-        manager
+            buffers: [const { Buf::new() }; Self::NBUF],
+            data: [[0; Self::BUFFER_SIZE]; Self::NBUF],
+        }
+    }
+
+    pub fn initialize(&mut self) {
+        self.initialize_buffers();
     }
 
     fn initialize_buffers(&mut self) {
@@ -250,7 +248,8 @@ impl BufferManager {
                             .insert(BufFlag::B_READ | BufFlag::B_ASYNC);
                         (*read_ahead_bp).b_wcount = Self::BUFFER_SIZE as i32;
 
-                        let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
+                        let device =
+                            block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
                         device.strategy(read_ahead_bp);
                     }
                 }
@@ -410,19 +409,19 @@ impl BufferManager {
     }
 
     pub fn buffers(&self) -> &[Buf; Self::NBUF] {
-        self.buffers.as_ref()
+        &self.buffers
     }
 
     pub fn buffers_mut(&mut self) -> &mut [Buf; Self::NBUF] {
-        self.buffers.as_mut()
+        &mut self.buffers
     }
 
     pub fn data(&self) -> &[[u8; Self::BUFFER_SIZE]; Self::NBUF] {
-        self.data.as_ref()
+        &self.data
     }
 
     pub fn data_mut(&mut self) -> &mut [[u8; Self::BUFFER_SIZE]; Self::NBUF] {
-        self.data.as_mut()
+        &mut self.data
     }
 
     fn get_error(&mut self, bp: *mut Buf) -> BufferResult<()> {
@@ -521,7 +520,12 @@ impl BufferManager {
         Self::remove_from_device_list(bp);
     }
 
-    fn in_device_list(&self, sentinel: *mut Buf, blkno: PhysicalBlock, dev: i16) -> Option<*mut Buf> {
+    fn in_device_list(
+        &self,
+        sentinel: *mut Buf,
+        blkno: PhysicalBlock,
+        dev: i16,
+    ) -> Option<*mut Buf> {
         unsafe {
             let mut bp = (*sentinel).b_forw;
 
@@ -604,11 +608,10 @@ impl Default for BufferManager {
     }
 }
 
-static GLOBAL_BUFFER_MANAGER: LazyLock<SuperCell<BufferManager>> =
-    LazyLock::new(|| SuperCell::new(BufferManager::new()));
+static GLOBAL_BUFFER_MANAGER: SuperCell<BufferManager> = SuperCell::new(BufferManager::new());
 
 pub(crate) fn global_buffer_manager() -> &'static mut BufferManager {
-    SuperCell::get_mut(&*GLOBAL_BUFFER_MANAGER)
+    GLOBAL_BUFFER_MANAGER.get_mut()
 }
 
 unsafe fn sleep_on(chan: usize, pri: i32) {
@@ -631,7 +634,6 @@ fn enable_interrupts() {
     }
 }
 
-
 unsafe extern "C" {
     fn rust_process_sleep(chan: usize, pri: i32);
     fn rust_process_wakeup_all(chan: usize);
@@ -647,4 +649,132 @@ pub fn process_wakeup_all(chan: usize) {
     unsafe {
         rust_process_wakeup_all(chan);
     }
+}
+
+fn buffer_error_to_posix(err: BufferError) -> PosixError {
+    match err {
+        BufferError::InvalidDevice => PosixError::ENXIO,
+        BufferError::BufferUnavailable => PosixError::EIO,
+        BufferError::IoError => PosixError::EIO,
+        BufferError::InvalidBuffer => PosixError::EINVAL,
+    }
+}
+
+fn set_buffer_error(err: BufferError) {
+    Userspace::get().set_error(buffer_error_to_posix(err));
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_manager_initialize() {
+    global_buffer_manager().initialize();
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_get_blk(dev: i16, blkno: i32) -> *mut Buf {
+    match global_buffer_manager().get_blk(DevId(dev), PhysicalBlock(blkno as u32)) {
+        Ok(bp) => bp,
+        Err(error) => {
+            set_buffer_error(error);
+            core::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_brelse(bp: *mut Buf) {
+    global_buffer_manager().brelse(bp);
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_io_wait(bp: *mut Buf) {
+    if let Err(error) = global_buffer_manager().io_wait(bp) {
+        set_buffer_error(error);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_io_done(bp: *mut Buf) {
+    global_buffer_manager().io_done(bp);
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_bread(dev: i16, blkno: i32) -> *mut Buf {
+    match global_buffer_manager().bread(DevId(dev), PhysicalBlock(blkno as u32)) {
+        Ok(bp) => bp,
+        Err(error) => {
+            set_buffer_error(error);
+            core::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_breada(dev: i16, blkno: i32, read_ahead_blkno: i32) -> *mut Buf {
+    let read_ahead_blkno =
+        (read_ahead_blkno != 0).then_some(PhysicalBlock(read_ahead_blkno as u32));
+    match global_buffer_manager().breada(DevId(dev), PhysicalBlock(blkno as u32), read_ahead_blkno)
+    {
+        Ok(bp) => bp,
+        Err(error) => {
+            set_buffer_error(error);
+            core::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_bwrite(bp: *mut Buf) {
+    if let Err(error) = global_buffer_manager().bwrite(bp) {
+        set_buffer_error(error);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_bdwrite(bp: *mut Buf) {
+    global_buffer_manager().bdwrite(bp);
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_bawrite(bp: *mut Buf) {
+    global_buffer_manager().bawrite(bp);
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_clr_buf(bp: *mut Buf) {
+    global_buffer_manager().clr_buf(bp);
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_bflush(dev: i16) {
+    let dev = (dev >= 0).then_some(DevId(dev));
+    if let Err(error) = global_buffer_manager().bflush(dev) {
+        set_buffer_error(error);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_swap(blkno: i32, addr: usize, count: i32, flag: u32) -> bool {
+    let flag = BufFlag::from_bits_retain(flag);
+    match global_buffer_manager().swap(
+        PhysicalBlock(blkno as u32),
+        addr,
+        count.max(0) as usize,
+        flag,
+    ) {
+        Ok(()) => true,
+        Err(error) => {
+            set_buffer_error(error);
+            false
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_get_swap_buf() -> *mut Buf {
+    global_buffer_manager().swap_buf_mut() as *mut Buf
+}
+
+#[no_mangle]
+pub extern "C" fn rust_buffer_get_b_free_list() -> *mut Buf {
+    global_buffer_manager().free_list_mut() as *mut Buf
 }
