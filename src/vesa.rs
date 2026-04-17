@@ -148,6 +148,7 @@ struct VesaConsole {
     initialized: bool,
     mem: usize,
     width: usize,
+    screen_height: usize,
     height: usize,
     pitch: usize,
     bytes_per_pixel: usize,
@@ -162,6 +163,7 @@ impl VesaConsole {
             initialized: false,
             mem: VESA_SCREEN_VADDR,
             width: 0,
+            screen_height: 0,
             height: 0,
             pitch: 0,
             bytes_per_pixel: 0,
@@ -175,7 +177,8 @@ impl VesaConsole {
         self.initialized = true;
         self.mem = VESA_SCREEN_VADDR;
         self.width = mode_info.width as usize;
-        self.height = mode_info.height as usize / 2;
+        self.screen_height = mode_info.height as usize;
+        self.height = self.screen_height / 2;
         self.pitch = mode_info.pitch as usize;
         self.bytes_per_pixel = (mode_info.bpp as usize).max(8) / 8;
         self.curr_x = 0;
@@ -307,8 +310,33 @@ impl VesaConsole {
         }
     }
 
+    fn clear_screen(&mut self, color: u32) -> bool {
+        if !self.initialized {
+            return false;
+        }
+
+        for y in 0..self.screen_height {
+            for x in 0..self.width {
+                self.put_pixel(x, y, color);
+            }
+        }
+        self.curr_x = 0;
+        self.curr_y = 0;
+        self.input_begin = 0;
+        true
+    }
+
+    fn put_screen_pixel(&mut self, x: usize, y: usize, color: u32) -> bool {
+        if !self.initialized {
+            return false;
+        }
+
+        self.put_pixel(x, y, color);
+        true
+    }
+
     fn put_pixel(&mut self, x: usize, y: usize, color: u32) {
-        if x >= self.width || y >= self.height {
+        if x >= self.width || y >= self.screen_height {
             return;
         }
 
@@ -370,6 +398,24 @@ pub fn write_output_byte(ch: u8) -> bool {
 
 pub fn mark_input_begin() -> bool {
     VESA_CONSOLE.with_mut(VesaConsole::mark_input_begin)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_vesa_clear(color: i32) {
+    VESA_CONSOLE.with_mut(|console| {
+        console.clear_screen(color as u32);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn rust_vesa_put_pixel(x: i32, y: i32, color: i32) {
+    if x < 0 || y < 0 {
+        return;
+    }
+
+    VESA_CONSOLE.with_mut(|console| {
+        console.put_screen_pixel(x as usize, y as usize, color as u32);
+    });
 }
 
 #[no_mangle]

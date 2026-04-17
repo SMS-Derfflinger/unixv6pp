@@ -8,7 +8,6 @@
 
 #include "PageManager.h"
 
-#include "vesa/svga.h"
 
 Machine Machine::instance;	/*单态类实例的定义*/
 

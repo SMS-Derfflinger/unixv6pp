@@ -23,9 +23,6 @@
 #include "CMOSTime.h"
 #include "./Lib.h"
 
-#include "vesa/svga.h"
-#include "vesa/console.h"
-
 #include "libyrosstd/sys/types.h"
 #include "libyrosstd/string.h"
 
@@ -213,6 +210,48 @@ extern "C" void Delay()
 
 extern "C" void rust_vesa_init(void* modeInfo);
 
+namespace rust_vesa_compat {
+
+const uintptr_t VESA_SCREEN_VADDR = Machine::KERNEL_SPACE_START_ADDRESS + 128 * 1024 * 1024;
+
+struct VbeModeInfo {
+	uint16_t attributes;
+	uint8_t windowA;
+	uint8_t windowB;
+	uint16_t granularity;
+	uint16_t windowSize;
+	uint16_t segmentA;
+	uint16_t segmentB;
+	uint32_t winFuncPtr;
+	uint16_t pitch;
+	uint16_t width;
+	uint16_t height;
+	uint8_t wChar;
+	uint8_t yChar;
+	uint8_t planes;
+	uint8_t bpp;
+	uint8_t banks;
+	uint8_t memoryModel;
+	uint8_t bankSize;
+	uint8_t imagePages;
+	uint8_t reserved0;
+	uint8_t redMask;
+	uint8_t redPosition;
+	uint8_t greenMask;
+	uint8_t greenPosition;
+	uint8_t blueMask;
+	uint8_t bluePosition;
+	uint8_t reservedMask;
+	uint8_t reservedPosition;
+	uint8_t directColorAttributes;
+	uint32_t framebuffer;
+	uint32_t offScreenMemOff;
+	uint16_t offScreenMemSize;
+	uint8_t reserved1[206];
+} __packed;
+
+}
+
 int splash();
 
 extern "C" void next()
@@ -220,19 +259,15 @@ extern "C" void next()
 	
 #ifdef USE_VESA
 	    intptr_t vesaModeInfoAddr = Machine::KERNEL_SPACE_START_ADDRESS + 0x7e00;
-		auto& vesaModeInfo = * (video::svga::VbeModeInfo*) vesaModeInfoAddr;
-		video::svga::init(&vesaModeInfo);
+		auto& vesaModeInfo = * (rust_vesa_compat::VbeModeInfo*) vesaModeInfoAddr;
 
 		Machine::Instance().InitVESAMemoryMap(
 			vesaModeInfo.framebuffer,
-			video::svga::VESA_SCREEN_VADDR,
-			video::svga::bytesPerPixel * vesaModeInfo.height * vesaModeInfo.width
+			rust_vesa_compat::VESA_SCREEN_VADDR,
+			vesaModeInfo.pitch * vesaModeInfo.height
 		);
 
 		rust_vesa_init(&vesaModeInfo);
-
-		video::console::init();
-		video::console::writeOutput("VESA enabled.\n", -1, 0xfeba07);
 	
 #endif
 	

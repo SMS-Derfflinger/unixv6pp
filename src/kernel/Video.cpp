@@ -1,6 +1,5 @@
 #include "Video.h"
 
-#include "vesa/console.h"
 #include "Kernel.h"
 
 #include <libyrosstd/stdio.h>
@@ -51,7 +50,6 @@ void Diagnose::Write(const char* fmt, ...)
     va_start(args, fmt);
     int res = vsprintf(buf, fmt, args);
     va_end(args);
-	// video::console::writeDiagnose(buf);
 	serial_write_cstr(buf);
 
 #else
