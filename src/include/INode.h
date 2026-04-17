@@ -24,7 +24,7 @@ public:
 		IWANT = 0x10,		/* 有进程正在等待该内存inode被解锁，清ILOCK标志时，要唤醒这种进程 */
 		ITEXT = 0x20		/* 内存inode对应进程图像的正文段 */
 	};
-	
+
 	/* static const member */
 	static const unsigned int IALLOC = 0x8000;		/* 文件被使用 */
 	static const unsigned int IFMT = 0x6000;		/* 文件类型掩码 */
@@ -41,7 +41,7 @@ public:
 	static const unsigned int IRWXU = (IREAD|IWRITE|IEXEC);		/* 文件主对文件的读、写、执行权限 */
 	static const unsigned int IRWXG = ((IRWXU) >> 3);			/* 文件主同组用户对文件的读、写、执行权限 */
 	static const unsigned int IRWXO = ((IRWXU) >> 6);			/* 其他用户对文件的读、写、执行权限 */
-	
+
 	static const int BLOCK_SIZE = 512;		/* 文件逻辑块大小: 512字节 */
 	static const int ADDRESS_PER_INDEX_BLOCK = BLOCK_SIZE / sizeof(int);	/* 每个间接索引表(或索引块)包含的物理盘块号 */
 
@@ -56,54 +56,54 @@ public:
 							经过bmap转换得到的物理盘块号。将rablock作为静态变量的原因：调用一次bmap的开销
 							对当前块和预读块的逻辑块号进行转换，bmap返回当前块的物理盘块号，并且将预读块
 							的物理盘块号保存在rablock中。 */
-	
+
 	/* Functions */
 public:
 	/* Constructors */
 	Inode();
 	/* Destructors */
 	~Inode();
-	
-	/* 
+
+	/*
 	 * @comment 根据Inode对象中的物理磁盘块索引表，读取相应
 	 * 的文件数据
 	 */
 	void ReadI();
-	/* 
+	/*
 	 * @comment 根据Inode对象中的物理磁盘块索引表，将数据写入文件
 	 */
 	void WriteI();
-	/* 
+	/*
 	 * @comment 将文件的逻辑块号转换成对应的物理盘块号
 	 */
 	int Bmap(int lbn);
-	
-	/* 
+
+	/*
 	 * @comment 对特殊字符设备、块设备文件，调用该设备注册在块设备开关表
 	 * 中的设备初始化程序
 	 */
 	void OpenI(int mode);
-	/* 
+	/*
 	 * @comment 对特殊字符设备、块设备文件。如果对该设备的引用计数为0，
 	 * 则调用该设备的关闭程序
 	 */
 	void CloseI(int mode);
-	
-	/* 
+
+	/*
 	 * @comment 更新外存Inode的最后的访问时间、修改时间
 	 */
 	void IUpdate(int time);
-	/* 
+	/*
 	 * @comment 释放Inode对应文件占用的磁盘块
 	 */
 	void ITrunc();
 
-	/* 
+	/*
 	 * @comment 对Pipe或者Inode解锁，并且唤醒因等待锁而睡眠的进程
 	 */
 	void Prele();
 
-	/* 
+	/*
 	 * @comment 对Pipe上锁，如果Pipe已经被上锁，则增设IWANT标志并睡眠等待直至解锁
 	 */
 	void Plock();
@@ -118,32 +118,32 @@ public:
 	 */
 	void NFlock();
 
-	/* 
+	/*
 	 * @comment 清空Inode对象中的数据
 	 */
 	void Clean();
-	/* 
+	/*
 	 * @comment 将包含外存Inode字符块中信息拷贝到内存Inode中
 	 */
 	void ICopy(Buf* bp, int inumber);
-	
+
 	/* Members */
 public:
 	unsigned int i_flag;	/* 状态的标志位，定义见enum INodeFlag */
 	unsigned int i_mode;	/* 文件工作方式信息 */
-	
+
 	int		i_count;		/* 引用计数 */
 	int		i_nlink;		/* 文件联结计数，即该文件在目录树中不同路径名的数量 */
-	
+
 	short	i_dev;			/* 外存inode所在存储设备的设备号 */
 	int		i_number;		/* 外存inode区中的编号 */
-	
+
 	short	i_uid;			/* 文件所有者的用户标识数 */
 	short	i_gid;			/* 文件所有者的组标识数 */
-	
+
 	int		i_size;			/* 文件大小，字节为单位 */
 	int		i_addr[10];		/* 用于文件逻辑块好和物理块好转换的基本索引表 */
-	
+
 	int		i_lastr;		/* 存放最近一次读取文件的逻辑块号，用于判断是否需要预读 */
 };
 
@@ -171,13 +171,13 @@ public:
 public:
 	unsigned int d_mode;	/* 状态的标志位，定义见enum INodeFlag */
 	int		d_nlink;		/* 文件联结计数，即该文件在目录树中不同路径名的数量 */
-	
+
 	short	d_uid;			/* 文件所有者的用户标识数 */
 	short	d_gid;			/* 文件所有者的组标识数 */
-	
+
 	int		d_size;			/* 文件大小，字节为单位 */
 	int		d_addr[10];		/* 用于文件逻辑块好和物理块好转换的基本索引表 */
-	
+
 	int		d_atime;		/* 最后访问时间 */
 	int		d_mtime;		/* 最后修改时间 */
 };
