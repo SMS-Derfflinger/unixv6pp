@@ -2,15 +2,17 @@ use alloc::boxed::Box;
 use core::array;
 
 use eonix_sync_base::LazyLock;
-use intrusive_collections::{LinkedList, UnsafeRef};
 
-use crate::sync::SuperCell;
+use crate::{sync::SuperCell, user};
 
 use super::{
     block_device::block_device_for_dev,
-    buffer::{Buf, BufFlag, BufFreeAdapter, DevId, PhysicalBlock},
+    buffer::{Buf, BufFlag, DevId, PhysicalBlock},
     device_manager::{set_minor, ROOTDEV},
 };
+
+const PRIBIO: i32 = -50;
+const PSWP: i32 = -100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BufferError {
@@ -23,8 +25,7 @@ pub enum BufferError {
 pub type BufferResult<T> = Result<T, BufferError>;
 
 pub struct BufferManager {
-    free_list: LinkedList<BufFreeAdapter>,
-    free_list_wanted: bool,
+    b_free_list: Buf,
     swap_buf: Buf,
     buffers: Box<[Buf; Self::NBUF]>,
     data: Box<[[u8; Self::BUFFER_SIZE]; Self::NBUF]>,
@@ -39,8 +40,7 @@ impl BufferManager {
 
     pub fn new() -> Self {
         let mut manager = Self {
-            free_list: LinkedList::new(BufFreeAdapter::NEW),
-            free_list_wanted: false,
+            b_free_list: Buf::new(),
             swap_buf: Buf::new(),
             buffers: Box::new(array::from_fn(|_| Buf::new())),
             data: Box::new([[0; Self::BUFFER_SIZE]; Self::NBUF]),
@@ -50,9 +50,11 @@ impl BufferManager {
     }
 
     fn initialize_buffers(&mut self) {
-        self.free_list = LinkedList::new(BufFreeAdapter::NEW);
-        self.free_list_wanted = false;
+        self.b_free_list = Buf::new();
         self.swap_buf = Buf::new();
+        unsafe {
+            self.init_free_list_sentinel();
+        }
 
         for index in 0..Self::NBUF {
             let bp = &mut self.buffers[index] as *mut Buf;
@@ -61,7 +63,8 @@ impl BufferManager {
                 *bp = Buf::new();
                 (*bp).b_dev = -1;
                 (*bp).b_addr = self.data[index].as_mut_ptr();
-                self.free_list.push_back(Self::buf_ref(bp));
+                Self::insert_device_front(self.free_list_sentinel(), bp);
+                self.push_free_back(bp);
             }
         }
     }
@@ -72,23 +75,32 @@ impl BufferManager {
         loop {
             if let Some(bp) = self.in_core(dev, blkno) {
                 unsafe {
+                    disable_interrupts();
                     if (*bp).b_flags.contains(BufFlag::B_BUSY) {
                         (*bp).b_flags.insert(BufFlag::B_WANTED);
-                        // TODO: Sleep(bp as usize, PRIBIO), then retry get_blk from the top.
-                        return Err(BufferError::BufferUnavailable);
+                        sleep_on(bp as usize, PRIBIO);
+                        enable_interrupts();
+                        continue;
                     }
+                    enable_interrupts();
                 }
 
                 self.not_avail(bp);
                 return Ok(bp);
             }
 
-            let bp = match self.find_free_buffer() {
-                Some(bp) => bp,
-                None => {
-                    self.free_list_wanted = true;
-                    // TODO: Sleep(&self.free_list as *const _ as usize, PRIBIO), then retry.
-                    return Err(BufferError::BufferUnavailable);
+            let bp = loop {
+                unsafe {
+                    disable_interrupts();
+                    if !self.is_free_list_empty() {
+                        let bp = (*self.free_list_sentinel()).av_forw;
+                        enable_interrupts();
+                        break bp;
+                    }
+
+                    self.b_free_list.b_flags.insert(BufFlag::B_WANTED);
+                    sleep_on(self.free_list_sentinel() as usize, PRIBIO);
+                    enable_interrupts();
                 }
             };
 
@@ -120,25 +132,27 @@ impl BufferManager {
 
         unsafe {
             if (*bp).b_flags.contains(BufFlag::B_WANTED) {
-                // TODO: WakeUpAll(bp as usize).
+                wakeup_all(bp as usize);
             }
 
-            if self.free_list_wanted {
-                self.free_list_wanted = false;
-                // TODO: WakeUpAll(&self.free_list as *const _ as usize).
+            if self.b_free_list.b_flags.contains(BufFlag::B_WANTED) {
+                self.b_free_list.b_flags.remove(BufFlag::B_WANTED);
+                wakeup_all(self.free_list_sentinel() as usize);
             }
 
             if (*bp).b_flags.contains(BufFlag::B_ERROR) {
                 (*bp).b_dev = set_minor((*bp).b_dev, -1);
             }
 
+            disable_interrupts();
             (*bp)
                 .b_flags
                 .remove(BufFlag::B_WANTED | BufFlag::B_BUSY | BufFlag::B_ASYNC);
 
-            if !(*bp).free_link.is_linked() {
-                self.free_list.push_back(Self::buf_ref(bp));
+            if !(*bp).is_on_free_list() {
+                self.push_free_back(bp);
             }
+            enable_interrupts();
         }
     }
 
@@ -148,11 +162,12 @@ impl BufferManager {
         }
 
         unsafe {
-            if !(*bp).b_flags.contains(BufFlag::B_DONE) {
+            disable_interrupts();
+            while !(*bp).b_flags.contains(BufFlag::B_DONE) {
                 (*bp).b_flags.insert(BufFlag::B_WANTED);
-                // TODO: Sleep(bp as usize, PRIBIO), then continue waiting until B_DONE.
-                return Err(BufferError::BufferUnavailable);
+                sleep_on(bp as usize, PRIBIO);
             }
+            enable_interrupts();
         }
 
         self.get_error(bp)
@@ -169,7 +184,7 @@ impl BufferManager {
                 self.brelse(bp);
             } else {
                 (*bp).b_flags.remove(BufFlag::B_WANTED);
-                // TODO: WakeUpAll(bp as usize).
+                wakeup_all(bp as usize);
             }
         }
     }
@@ -224,25 +239,20 @@ impl BufferManager {
 
         if let Some(read_ahead_blkno) = should_read_ahead {
             if self.in_core(dev, read_ahead_blkno).is_none() {
-                match self.get_blk(dev, read_ahead_blkno) {
-                    Ok(read_ahead_bp) => unsafe {
-                        if (*read_ahead_bp).b_flags.contains(BufFlag::B_DONE) {
-                            self.brelse(read_ahead_bp);
-                        } else {
-                            (*read_ahead_bp)
-                                .b_flags
-                                .insert(BufFlag::B_READ | BufFlag::B_ASYNC);
-                            (*read_ahead_bp).b_wcount = Self::BUFFER_SIZE as i32;
+                let read_ahead_bp = self.get_blk(dev, read_ahead_blkno)?;
 
-                            let device =
-                                block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
-                            device.strategy(read_ahead_bp);
-                        }
-                    },
-                    Err(BufferError::BufferUnavailable) => {
-                        // TODO: C++ GetBlk() would sleep here and retry the read-ahead path.
+                unsafe {
+                    if (*read_ahead_bp).b_flags.contains(BufFlag::B_DONE) {
+                        self.brelse(read_ahead_bp);
+                    } else {
+                        (*read_ahead_bp)
+                            .b_flags
+                            .insert(BufFlag::B_READ | BufFlag::B_ASYNC);
+                        (*read_ahead_bp).b_wcount = Self::BUFFER_SIZE as i32;
+
+                        let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
+                        device.strategy(read_ahead_bp);
                     }
-                    Err(err) => return Err(err),
                 }
             }
         }
@@ -336,14 +346,13 @@ impl BufferManager {
         count: usize,
         flag: BufFlag,
     ) -> BufferResult<()> {
-        if self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
-            if self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
-                return self.finish_swap();
+        unsafe {
+            disable_interrupts();
+            while self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
+                self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
+                sleep_on(self.swap_buf_ptr() as usize, PSWP);
             }
-
-            self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
-            // TODO: Sleep(&self.swap_buf as *const _ as usize, PSWP), then retry swap.
-            return Err(BufferError::BufferUnavailable);
+            enable_interrupts();
         }
 
         self.swap_buf.b_flags = BufFlag::B_BUSY | flag;
@@ -352,23 +361,29 @@ impl BufferManager {
         self.swap_buf.b_blkno = blkno;
         self.swap_buf.b_addr = addr as *mut u8;
 
-        let bp = &mut self.swap_buf as *mut Buf;
+        let bp = self.swap_buf_ptr();
         let device = block_device_for_dev(ROOTDEV).ok_or(BufferError::InvalidDevice)?;
         device.strategy(bp);
 
-        if !self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
-            // TODO: Sleep(&self.swap_buf as *const _ as usize, PSWP), then keep waiting.
-            return Err(BufferError::BufferUnavailable);
+        unsafe {
+            disable_interrupts();
+            while !self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
+                self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
+                sleep_on(self.swap_buf_ptr() as usize, PSWP);
+            }
+            enable_interrupts();
         }
 
         self.finish_swap()
     }
 
     fn finish_swap(&mut self) -> BufferResult<()> {
-        let bp = &mut self.swap_buf as *mut Buf;
+        let bp = self.swap_buf_ptr();
 
         if self.swap_buf.b_flags.contains(BufFlag::B_WANTED) {
-            // TODO: WakeUpAll(&self.swap_buf as *const _ as usize).
+            unsafe {
+                wakeup_all(bp as usize);
+            }
         }
 
         self.swap_buf
@@ -378,12 +393,12 @@ impl BufferManager {
         self.get_error(bp)
     }
 
-    pub fn free_list(&self) -> &LinkedList<BufFreeAdapter> {
-        &self.free_list
+    pub fn free_list(&self) -> &Buf {
+        &self.b_free_list
     }
 
-    pub fn free_list_mut(&mut self) -> &mut LinkedList<BufFreeAdapter> {
-        &mut self.free_list
+    pub fn free_list_mut(&mut self) -> &mut Buf {
+        &mut self.b_free_list
     }
 
     pub fn swap_buf(&self) -> &Buf {
@@ -430,37 +445,27 @@ impl BufferManager {
         }
 
         unsafe {
-            if !(*bp).free_link.is_linked() {
-                (*bp).b_flags.insert(BufFlag::B_BUSY);
-                return;
+            disable_interrupts();
+            if (*bp).is_on_free_list() {
+                self.remove_from_free_list(bp);
             }
-
-            let mut cursor = self.free_list.cursor_mut_from_ptr(bp as *const Buf);
-            cursor.remove();
             (*bp).b_flags.insert(BufFlag::B_BUSY);
+            enable_interrupts();
         }
     }
 
     fn in_core(&self, dev: DevId, blkno: PhysicalBlock) -> Option<*mut Buf> {
         if dev.0 < 0 {
-            return None;
+            return self.in_device_list(self.free_list_sentinel_const(), blkno, dev.0);
         }
 
         let device = block_device_for_dev(dev.0)?;
         device.devtab().with(|devtab| {
-            let mut cursor = devtab.buffers.front();
-
-            while let Some(bp) = cursor.get() {
-                if bp.b_dev == dev.0 && bp.b_blkno == blkno {
-                    return cursor
-                        .clone_pointer()
-                        .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf);
-                }
-
-                cursor.move_next();
+            if devtab.b_forw.is_null() {
+                None
+            } else {
+                self.in_device_list(devtab.sentinel_const(), blkno, dev.0)
             }
-
-            None
         })
     }
 
@@ -472,26 +477,20 @@ impl BufferManager {
         }
     }
 
-    fn find_free_buffer(&mut self) -> Option<*mut Buf> {
-        self.free_list
-            .front()
-            .clone_pointer()
-            .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf)
-    }
-
     fn find_delayed_write_buffer(&self, dev: Option<DevId>) -> Option<*mut Buf> {
-        let mut cursor = self.free_list.front();
+        unsafe {
+            let sentinel = self.free_list_sentinel_const();
+            let mut bp = (*sentinel).av_forw;
 
-        while let Some(bp) = cursor.get() {
-            let matches_dev = dev.is_none_or(|dev| bp.b_dev == dev.0);
+            while bp != sentinel {
+                let matches_dev = dev.is_none_or(|dev| (*bp).b_dev == dev.0);
 
-            if matches_dev && bp.b_flags.contains(BufFlag::B_DELWRI) {
-                return cursor
-                    .clone_pointer()
-                    .map(|buf| UnsafeRef::into_raw(buf) as *mut Buf);
+                if matches_dev && (*bp).b_flags.contains(BufFlag::B_DELWRI) {
+                    return Some(bp);
+                }
+
+                bp = (*bp).av_forw;
             }
-
-            cursor.move_next();
         }
 
         None
@@ -499,43 +498,103 @@ impl BufferManager {
 
     fn insert_into_device_queue(&self, dev: DevId, bp: *mut Buf) -> BufferResult<()> {
         if dev.0 < 0 {
+            unsafe {
+                Self::insert_device_front(self.free_list_sentinel_const(), bp);
+            }
             return Ok(());
         }
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
         device.devtab().with_mut(|devtab| unsafe {
-            if (*bp).device_link.is_linked() {
-                return;
-            }
-
-            devtab.buffers.push_front(Self::buf_ref(bp));
+            devtab.ensure_buffer_list();
+            Self::insert_device_front(devtab.sentinel(), bp);
         });
 
         Ok(())
     }
 
     unsafe fn remove_from_current_device_queue(&self, bp: *mut Buf) {
-        if !(*bp).device_link.is_linked() {
+        if !(*bp).is_on_device_list() {
             return;
         }
 
-        let dev = (*bp).b_dev;
-        if dev < 0 {
-            return;
-        }
-
-        let Some(device) = block_device_for_dev(dev) else {
-            return;
-        };
-
-        device.devtab().with_mut(|devtab| {
-            let mut cursor = devtab.buffers.cursor_mut_from_ptr(bp as *const Buf);
-            cursor.remove();
-        });
+        Self::remove_from_device_list(bp);
     }
 
-    unsafe fn buf_ref(bp: *mut Buf) -> UnsafeRef<Buf> {
-        UnsafeRef::from_raw(bp as *const Buf)
+    fn in_device_list(&self, sentinel: *mut Buf, blkno: PhysicalBlock, dev: i16) -> Option<*mut Buf> {
+        unsafe {
+            let mut bp = (*sentinel).b_forw;
+
+            while bp != sentinel {
+                if (*bp).b_blkno == blkno && (*bp).b_dev == dev {
+                    return Some(bp);
+                }
+
+                bp = (*bp).b_forw;
+            }
+        }
+
+        None
+    }
+
+    unsafe fn init_free_list_sentinel(&mut self) {
+        let sentinel = self.free_list_sentinel();
+        (*sentinel).b_forw = sentinel;
+        (*sentinel).b_back = sentinel;
+        (*sentinel).av_forw = sentinel;
+        (*sentinel).av_back = sentinel;
+    }
+
+    unsafe fn insert_device_front(sentinel: *mut Buf, bp: *mut Buf) {
+        if (*bp).is_on_device_list() {
+            return;
+        }
+
+        (*bp).b_forw = (*sentinel).b_forw;
+        (*bp).b_back = sentinel;
+        (*(*sentinel).b_forw).b_back = bp;
+        (*sentinel).b_forw = bp;
+    }
+
+    unsafe fn remove_from_device_list(bp: *mut Buf) {
+        (*(*bp).b_back).b_forw = (*bp).b_forw;
+        (*(*bp).b_forw).b_back = (*bp).b_back;
+        (*bp).b_forw = core::ptr::null_mut();
+        (*bp).b_back = core::ptr::null_mut();
+    }
+
+    unsafe fn push_free_back(&mut self, bp: *mut Buf) {
+        let sentinel = self.free_list_sentinel();
+        let tail = (*sentinel).av_back;
+
+        (*tail).av_forw = bp;
+        (*bp).av_back = tail;
+        (*bp).av_forw = sentinel;
+        (*sentinel).av_back = bp;
+    }
+
+    unsafe fn remove_from_free_list(&mut self, bp: *mut Buf) {
+        (*(*bp).av_back).av_forw = (*bp).av_forw;
+        (*(*bp).av_forw).av_back = (*bp).av_back;
+        (*bp).av_forw = core::ptr::null_mut();
+        (*bp).av_back = core::ptr::null_mut();
+    }
+
+    fn is_free_list_empty(&self) -> bool {
+        let sentinel = self.free_list_sentinel_const();
+        unsafe { (*sentinel).av_forw == sentinel }
+    }
+
+    fn free_list_sentinel(&mut self) -> *mut Buf {
+        &mut self.b_free_list as *mut Buf
+    }
+
+    fn free_list_sentinel_const(&self) -> *mut Buf {
+        &self.b_free_list as *const Buf as *mut Buf
+    }
+
+    fn swap_buf_ptr(&mut self) -> *mut Buf {
+        &mut self.swap_buf as *mut Buf
     }
 }
 
@@ -550,4 +609,42 @@ static GLOBAL_BUFFER_MANAGER: LazyLock<SuperCell<BufferManager>> =
 
 pub(crate) fn global_buffer_manager() -> &'static mut BufferManager {
     SuperCell::get_mut(&*GLOBAL_BUFFER_MANAGER)
+}
+
+unsafe fn sleep_on(chan: usize, pri: i32) {
+    process_sleep(chan, pri);
+}
+
+unsafe fn wakeup_all(chan: usize) {
+    process_wakeup_all(chan);
+}
+
+fn disable_interrupts() {
+    unsafe {
+        core::arch::asm!("cli", options(nomem, nostack));
+    }
+}
+
+fn enable_interrupts() {
+    unsafe {
+        core::arch::asm!("sti", options(nomem, nostack));
+    }
+}
+
+
+unsafe extern "C" {
+    fn rust_process_sleep(chan: usize, pri: i32);
+    fn rust_process_wakeup_all(chan: usize);
+}
+
+pub fn process_sleep(chan: usize, pri: i32) {
+    unsafe {
+        rust_process_sleep(chan, pri);
+    }
+}
+
+pub fn process_wakeup_all(chan: usize) {
+    unsafe {
+        rust_process_wakeup_all(chan);
+    }
 }
