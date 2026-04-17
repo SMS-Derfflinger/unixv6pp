@@ -2,18 +2,20 @@
 
 extern crate alloc;
 
+mod compat;
 mod constants;
-mod fs;
 mod dev;
+mod fs;
+mod loader;
 mod machine;
 mod mm;
 mod print;
 pub mod proc;
 mod serial;
-mod tty;
-mod vesa;
 pub mod sync;
+mod tty;
 mod user;
+mod vesa;
 
 use core::panic::PanicInfo;
 
