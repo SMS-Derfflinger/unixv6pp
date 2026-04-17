@@ -1,9 +1,20 @@
 #include "KeyboardInterrupt.h"
 #include "Kernel.h"
 #include "Regs.h"
-#include "Keyboard.h"
 #include "IOPort.h"
 #include "Chip8259A.h"
+
+extern "C" void keyboard_signal_ctrl_c()
+{
+	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
+	for ( int killed = 0; killed < ProcessManager::NPROC ; killed++ )
+	{
+		if ( procMgr.process[killed].p_pid > 1 )
+		{
+			procMgr.process[killed].PSignal(User::SIGINT);
+		}
+	}
+}
 
 extern "C" void keyboard_handle_interrupt();
 

@@ -18,7 +18,6 @@
 
 #include "Exception.h"
 #include "DMA.h"
-#include "CRT.h"
 #include "TimeInterrupt.h"
 #include "PEParser.h"
 #include "CMOSTime.h"
@@ -31,6 +30,16 @@
 #include "libyrosstd/string.h"
 
 bool isInit = false;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void rust_clear_screan();
+
+#ifdef __cplusplus
+}
+#endif
 
 extern "C" void MasterIRQ7()
 {
@@ -319,7 +328,8 @@ extern "C" void next()
 		Machine::Instance().InitUserPageTable();      //这是直接写0x202,0x203页表，没相对虚实地址映射表一样okay！
 		FlushPageDirectory();
 
-		CRT::ClearScreen();
+		//CRT::ClearScreen();
+        rust_clear_screan();
 
 		/* 1#进程回用户态，执行exec("shell.exe")系统调用*/
 		MoveToUserStack();

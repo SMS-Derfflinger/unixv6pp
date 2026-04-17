@@ -426,3 +426,8 @@ pub extern "C" fn rust_tty_input_byte(ch: u8) {
 pub extern "C" fn rust_tty_flush() {
     console_tty().with_mut(Tty::flush);
 }
+
+#[no_mangle]
+pub extern "C" fn rust_clear_screan() {
+    TEXT_CONSOLE.with_mut(TextModeConsole::clear_screen);
+}

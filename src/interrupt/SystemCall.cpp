@@ -3,7 +3,6 @@
 #include "Kernel.h"
 #include "Regs.h"
 #include "TimeInterrupt.h"
-#include "CRT.h"
 #include "Video.h"
 
 #include "vesa/svga.h"
@@ -502,7 +501,7 @@ int SystemCall::Sys_Trace()
 		Diagnose::m_Row = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
 		Diagnose::m_Column = 0;
 
-		CRT::ROWS = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
+		//CRT::ROWS = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
 	}
 	else /* if enabled already */
 	{
@@ -514,7 +513,7 @@ int SystemCall::Sys_Trace()
 		Diagnose::m_Column = 0;
 
 		/* 字符设备输出使用整个屏幕所有行 */
-		CRT::ROWS = Diagnose::SCREEN_ROWS;
+		//CRT::ROWS = Diagnose::SCREEN_ROWS;
 	}
 	u.u_ar0[User::EAX] = Diagnose::ROWS;
 
