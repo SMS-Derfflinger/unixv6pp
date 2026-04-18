@@ -1,9 +1,8 @@
 use eonix_sync_base::LazyLock;
 
-use core::arch::asm;
-
 use crate::{
     constants::PosixError,
+    machine::asm::{disable_interrupts, enable_interrupts},
     sync::SuperCell,
     tty::{console_tty, sleep_on_input_channel},
     user::Userspace,
@@ -69,22 +68,17 @@ impl CharDevice for ConsoleDevice {
     fn read(&self, dev: i16, out: &mut [u8]) -> Result<usize, PosixError> {
         Self::validate(dev)?;
         loop {
-            unsafe {
-                disable_interrupts();
-            }
+            disable_interrupts();
 
             if let Some(nread) = console_tty().with_mut(|tty| tty.read_available(out)) {
-                unsafe {
-                    enable_interrupts();
-                }
+                enable_interrupts();
                 return Ok(nread);
             }
 
             let chan = console_tty().with(|tty| tty.read_wait_channel());
             sleep_on_input_channel(chan);
-            unsafe {
-                enable_interrupts();
-            }
+
+            enable_interrupts();
         }
     }
 
@@ -92,14 +86,6 @@ impl CharDevice for ConsoleDevice {
         Self::validate(dev)?;
         Ok(console_tty().with_mut(|tty| tty.write(data)))
     }
-}
-
-unsafe fn disable_interrupts() {
-    asm!("cli", options(nomem, nostack));
-}
-
-unsafe fn enable_interrupts() {
-    asm!("sti", options(nomem, nostack));
 }
 
 static CONSOLE_DEVICE: LazyLock<ConsoleDevice> = LazyLock::new(ConsoleDevice::new);

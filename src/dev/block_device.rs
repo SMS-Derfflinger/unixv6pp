@@ -1,9 +1,10 @@
-use core::arch::asm;
-
 use eonix_sync_base::LazyLock;
 
 use crate::{
-    constants::PosixError, dev::buffer_manager::global_buffer_manager, sync::SuperCell,
+    constants::PosixError,
+    dev::buffer_manager::global_buffer_manager,
+    machine::asm::{disable_interrupts, enable_interrupts},
+    sync::SuperCell,
     user::Userspace,
 };
 
@@ -245,18 +246,5 @@ pub extern "C" fn block_device_start(major: i16) {
         None => {
             set_block_error(PosixError::ENXIO);
         }
-    }
-}
-
-// TODO: only for x86
-fn disable_interrupts() {
-    unsafe {
-        asm!("cli", options(nomem, nostack));
-    }
-}
-
-fn enable_interrupts() {
-    unsafe {
-        asm!("sti", options(nomem, nostack));
     }
 }

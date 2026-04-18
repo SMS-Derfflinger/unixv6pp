@@ -1,9 +1,13 @@
 use core::arch::asm;
 
-pub unsafe fn disable_interrupts() {
-    asm!("cli", options(nomem, nostack));
+pub fn disable_interrupts() {
+    unsafe {
+        asm!("cli", options(nomem, nostack));
+    }
 }
 
-pub unsafe fn enable_interrupts() {
-    asm!("sti", options(nomem, nostack));
+pub fn enable_interrupts() {
+    unsafe {
+        asm!("sti", options(nomem, nostack));
+    }
 }

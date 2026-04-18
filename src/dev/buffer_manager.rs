@@ -1,3 +1,4 @@
+use crate::machine::asm::{disable_interrupts, enable_interrupts};
 use crate::sync::SuperCell;
 use crate::{constants::PosixError, user::Userspace};
 
@@ -620,18 +621,6 @@ unsafe fn sleep_on(chan: usize, pri: i32) {
 
 unsafe fn wakeup_all(chan: usize) {
     process_wakeup_all(chan);
-}
-
-fn disable_interrupts() {
-    unsafe {
-        core::arch::asm!("cli", options(nomem, nostack));
-    }
-}
-
-fn enable_interrupts() {
-    unsafe {
-        core::arch::asm!("sti", options(nomem, nostack));
-    }
 }
 
 unsafe extern "C" {
