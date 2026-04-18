@@ -46,6 +46,7 @@ extern "C" void MasterIRQ7();
 void Machine::InitIDT()
 {
 	this->m_IDT = &g_IDT;
+	this->GetIDT().Initialize();
 	/*
 	 * 1. 将IDT中0 - 255个表项全部填入默认中断/异常处理函数入口，确
 	 *    保任意一种中断/异常发生时都会被处理，避免内核崩溃。
@@ -104,63 +105,12 @@ void Machine::InitIDT()
 void Machine::InitGDT()
 {
 	this->m_GDT = &g_GDT;
-	
-	//初始化GDT中的4个段：内核代码段、内核数据段，用户代码段、用户数据段
-	//limit = 0xfffff, base = 0x00000000, G = 1 , D = 1(32bit), P =1, DPL = 00, S = 1, TYPE = 1010 (code segment read only) 
-	//limit = 0xfffff, base = 0x00000000, G = 1, D = 1(32bit), P =1, DPL = 00, S = 1, TYPE = 0010 (data segment write/read) 
-	//limit = 0xfffff, base = 0x00000000, G = 1 , D = 1(32bit), P =1, DPL = 11, S = 1, TYPE = 1010 (code segment read only) 
-	//limit = 0xfffff, base = 0x00000000, G = 1, D = 1(32bit), P =1, DPL = 11, S = 1, TYPE = 0010 (data segment write/read) 
-	
-	//TODO 添加相应的可读的常量，如GDTConsts::GRANULARITY_4K...
-	SegmentDescriptor tmpDescriptor; 
-	//0x08:00
-	tmpDescriptor.SetSegmentLimit(0xfffff);
-	tmpDescriptor.SetBaseAddress(0x00000000);
-	tmpDescriptor.m_Granularity = 1;
-	tmpDescriptor.m_DefaultOperationSize = 1;
-	tmpDescriptor.m_SegmentPresent = 1;
-	tmpDescriptor.m_DPL = 0x00;
-	tmpDescriptor.m_System = 1;
-	tmpDescriptor.m_Type = 0xA;	
-	GetGDT().SetSegmentDescriptor(1, tmpDescriptor);
+	this->GetGDT().Initialize();
 
-	//0x10:00
-	tmpDescriptor.SetSegmentLimit(0xfffff);
-	tmpDescriptor.SetBaseAddress(0x00000000);
-	tmpDescriptor.m_Granularity = 1;
-	tmpDescriptor.m_DefaultOperationSize = 1;
-	tmpDescriptor.m_SegmentPresent = 1;
-	tmpDescriptor.m_DPL = 0x00;
-	tmpDescriptor.m_System = 1;
-	tmpDescriptor.m_Type = 0x2;	
-	GetGDT().SetSegmentDescriptor(2, tmpDescriptor);
-
-	//0x18:00
-	tmpDescriptor.SetSegmentLimit(0xfffff);
-	tmpDescriptor.SetBaseAddress(0x00000000);
-	tmpDescriptor.m_Granularity = 1;
-	tmpDescriptor.m_DefaultOperationSize = 1;
-	tmpDescriptor.m_SegmentPresent = 1;
-	tmpDescriptor.m_DPL = 0x3;
-	tmpDescriptor.m_System = 1;
-	tmpDescriptor.m_Type = 0xA;	
-	GetGDT().SetSegmentDescriptor(3, tmpDescriptor);
-
-	//0x20:00
-	tmpDescriptor.SetSegmentLimit(0xfffff);
-	tmpDescriptor.SetBaseAddress(0x00000000);
-	tmpDescriptor.m_Granularity = 1;
-	tmpDescriptor.m_DefaultOperationSize = 1;
-	tmpDescriptor.m_SegmentPresent = 1;
-	tmpDescriptor.m_DPL = 0x3;
-	tmpDescriptor.m_System = 1;
-	tmpDescriptor.m_Type = 0x2;	
-	GetGDT().SetSegmentDescriptor(4, tmpDescriptor);
-
-	/* 初始化TSS段 */
 	this->m_TaskStateSegment = &g_TaskStateSegment;
 	this->InitTaskStateSegment();
 }
+
 
 
 void Machine::InitPageDirectory()
@@ -286,37 +236,9 @@ void Machine::InitUserPageTable()
 
 void Machine::InitTaskStateSegment()
 {
-	TaskStateSegment& tss = this->GetTaskStateSegment();
-	tss.m_CR3 = 0x200000;	/* Physical base address of page directory */
-	tss.m_CS = Machine::USER_CODE_SEGMENT_SELECTOR;
-	tss.m_DS = Machine::USER_DATA_SEGMENT_SELECTOR;
-	tss.m_SS = Machine::USER_DATA_SEGMENT_SELECTOR;
-	tss.m_ES = tss.m_FS = tss.m_GS = Machine::USER_DATA_SEGMENT_SELECTOR;
-
-	tss.m_EBP = 0xC0400000;
-	tss.m_ESP = 0xC0400000;
-	tss.m_EIP = 0xC0000000;	//runtime
-	tss.m_EFLAGS = 0x200;	/* 仅仅enable IF 位 */
-	tss.m_SS0 = Machine::KERNEL_DATA_SEGMENT_SELECTOR;
-	tss.m_ESP0 = 0xC0400000;	/* 核心态地址空间末尾作为栈底 */
-
-	/* 
-	 * 将GDT表的第5项(Machine::TASK_STATE_SEGMENT_IDX)指向TSS段。
-	 * 
-	 * 由于GDT被抽象成SegmentDescriptor数组，所以没有对TSS段
-	 * 描述符的抽象，因此需要将TaskStateSegmentDescriptor强转，
-	 * 以进行必要的设置。
-	 */
-	TaskStateSegmentDescriptor* p_TSSDescriptor = 
-		(TaskStateSegmentDescriptor*)(&(GetGDT().GetSegmentDescriptor(Machine::TASK_STATE_SEGMENT_IDX)));
-	p_TSSDescriptor->SetSegmengLimit(0x68 - 1);
-	p_TSSDescriptor->SetBaseAddress((unsigned long)&g_TaskStateSegment);
-	p_TSSDescriptor->m_Granularity = 1;
-	p_TSSDescriptor->m_Type = 0x9; //第三位为busy位，设置为0
-	p_TSSDescriptor->m_Present = 0x1;
-	p_TSSDescriptor->m_Available = 0x1;
-	p_TSSDescriptor->m_DescriptorPrivilegeLevel = 0x00;
+	this->GetTaskStateSegment().Initialize();
 }
+
 void Machine::EnablePageProtection()
 {
 	/* 
