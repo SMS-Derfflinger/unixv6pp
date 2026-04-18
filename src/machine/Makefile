@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include
 
-objs := Machine.o PageDirectory.o
+objs := Machine.o
 
 include $(abs_srctree)/scripts/Makefile
 
