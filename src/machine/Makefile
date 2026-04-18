@@ -1,7 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include
 
-objs := GDT.o IDT.o Machine.o \
-	PageDirectory.o TaskStateSegment.o
+objs := Machine.o PageDirectory.o
 
 include $(abs_srctree)/scripts/Makefile
 

@@ -1,6 +1,9 @@
 #ifndef TSS_H
 #define TSS_H
 
+extern "C" void _tss_descriptor_set_base_address(struct TaskStateSegmentDescriptor* descriptor, unsigned long baseAddress);
+extern "C" void _tss_descriptor_set_segment_limit(struct TaskStateSegmentDescriptor* descriptor, unsigned int segmentLimit);
+
 struct TaskStateSegment
 {
 	unsigned int m_PreviousTaskLink;	//16bit
@@ -49,8 +52,13 @@ struct TaskStateSegmentDescriptor
 	unsigned char	m_High8BitsBaseAddress : 8;
 
 public:
-	void SetBaseAddress(unsigned long baseAddress);
-	void SetSegmengLimit(unsigned int segmentLimit);
+	void SetBaseAddress(unsigned long baseAddress) {
+		_tss_descriptor_set_base_address(this, baseAddress);
+	}
+
+	void SetSegmengLimit(unsigned int segmentLimit) {
+		_tss_descriptor_set_segment_limit(this, segmentLimit);
+	}
 }__attribute__((packed));
 
 #endif

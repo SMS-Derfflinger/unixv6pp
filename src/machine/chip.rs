@@ -1,6 +1,4 @@
-use core::arch::asm;
-
-use crate::dev::io_port::IOPort;
+use crate::{dev::io_port::IOPort, machine::asm::{disable_interrupts, enable_interrupts}};
 
 #[repr(C)]
 pub struct SystemTime {
@@ -157,12 +155,4 @@ pub extern "C" fn _cmos_read_byte_high() -> i32 {
 
 fn bcd_to_binary(value: i32) -> i32 {
     (value & 0x0f) + ((value >> 4) * 10)
-}
-
-unsafe fn disable_interrupts() {
-    asm!("cli", options(nomem, nostack));
-}
-
-unsafe fn enable_interrupts() {
-    asm!("sti", options(nomem, nostack));
 }

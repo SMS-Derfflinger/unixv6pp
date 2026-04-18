@@ -1,6 +1,12 @@
 #ifndef	IDT_H
 #define	IDT_H
 
+#include "Utility.h"
+
+extern "C" void _idt_set_interrupt_gate(class IDT* idt, int number, unsigned int handler);
+extern "C" void _idt_set_trap_gate(class IDT* idt, int number, unsigned int handler);
+extern "C" void _idt_form_idtr(class IDT* idt, struct IDTR* idtr);
+
 /* 
  * 定义与IDT(中断描述符表)相关的类。
  * 主要是下面这3个class: 
@@ -42,18 +48,29 @@ class IDT
 {
 	/* static member functions */
 public:
-	static void DefaultInterruptHandler();		/* 默认中断处理程序 */
-	static void DefaultExceptionHandler();		/* 默认异常处理程序 */
+	static void DefaultInterruptHandler() {
+		Utility::Panic("Default Interrupt Handler!");
+	}
+
+	static void DefaultExceptionHandler() {
+		Utility::Panic("Default Exception Handler!");
+	}
 
 public:
 	/* 根据中断号、中断/异常处理程序入口地址，设置IDT表中对应的中断门描述符 */
-	void SetInterruptGate(int number, unsigned int handler);
+	void SetInterruptGate(int number, unsigned int handler) {
+		_idt_set_interrupt_gate(this, number, handler);
+	}
 	
 	/* 根据中断号、中断/异常处理程序入口地址，设置IDT表中对应的陷入门描述符 */
-	void SetTrapGate(int number, unsigned int handler);
+	void SetTrapGate(int number, unsigned int handler) {
+		_idt_set_trap_gate(this, number, handler);
+	}
 	
 	/* 根据IDT表的起始地址(线性地址)与长度设置GDTR结构体 */
-	void FormIDTR(IDTR& idtr);
+	void FormIDTR(IDTR& idtr) {
+		_idt_form_idtr(this, &idtr);
+	}
 
 private:
 	GateDescriptor m_Descriptor[256];	/* 256 * 8 Bytes */
