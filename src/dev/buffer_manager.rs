@@ -1,3 +1,4 @@
+use crate::dev::buffer::Buffer;
 use crate::machine::asm::{disable_interrupts, enable_interrupts};
 use crate::sync::SuperCell;
 use crate::{constants::PosixError, user::Userspace};
@@ -199,12 +200,12 @@ impl BufferManager {
         }
     }
 
-    pub fn bread(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<*mut Buf> {
+    pub fn bread(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<Buffer> {
         let bp = self.get_blk(dev, blkno)?;
 
         unsafe {
             if (*bp).b_flags.contains(BufFlag::B_DONE) {
-                return Ok(bp);
+                return Ok(Buffer::new(bp));
             }
 
             (*bp).b_flags.insert(BufFlag::B_READ);
@@ -215,7 +216,9 @@ impl BufferManager {
         device.strategy(bp);
         self.io_wait(bp)?;
 
-        Ok(bp)
+        unsafe {
+            Ok(Buffer::new(bp))
+        }
     }
 
     pub fn breada(
@@ -223,7 +226,7 @@ impl BufferManager {
         dev: DevId,
         blkno: PhysicalBlock,
         read_ahead_blkno: Option<PhysicalBlock>,
-    ) -> BufferResult<*mut Buf> {
+    ) -> BufferResult<Buffer> {
         self.validate_device(dev)?;
 
         let mut bp = None;
@@ -271,7 +274,9 @@ impl BufferManager {
         match bp {
             Some(bp) => {
                 self.io_wait(bp)?;
-                Ok(bp)
+                unsafe {
+                    Ok(Buffer::new(bp))
+                }
             }
             None => self.bread(dev, blkno),
         }
@@ -691,7 +696,7 @@ pub extern "C" fn buffer_io_done(bp: *mut Buf) {
 #[no_mangle]
 pub extern "C" fn buffer_bread(dev: i16, blkno: i32) -> *mut Buf {
     match global_buffer_manager().bread(DevId(dev), PhysicalBlock(blkno as u32)) {
-        Ok(bp) => bp,
+        Ok(bp) => bp.into_raw(),
         Err(error) => {
             set_buffer_error(error);
             core::ptr::null_mut()
@@ -705,7 +710,7 @@ pub extern "C" fn buffer_breada(dev: i16, blkno: i32, read_ahead_blkno: i32) -> 
         (read_ahead_blkno != 0).then_some(PhysicalBlock(read_ahead_blkno as u32));
     match global_buffer_manager().breada(DevId(dev), PhysicalBlock(blkno as u32), read_ahead_blkno)
     {
-        Ok(bp) => bp,
+        Ok(bp) => bp.into_raw(),
         Err(error) => {
             set_buffer_error(error);
             core::ptr::null_mut()
