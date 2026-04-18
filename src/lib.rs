@@ -5,6 +5,7 @@ extern crate alloc;
 mod constants;
 mod fs;
 mod dev;
+mod machine;
 mod mm;
 mod print;
 pub mod proc;

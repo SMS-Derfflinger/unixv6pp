@@ -5,4 +5,4 @@ pub(crate) mod buffer_manager;
 pub(crate) mod char_device;
 pub(crate) mod device_manager;
 pub(crate) mod dma;
-mod io_port;
+pub(crate) mod io_port;

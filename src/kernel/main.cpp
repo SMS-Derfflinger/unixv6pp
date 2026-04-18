@@ -290,8 +290,8 @@ extern "C" void next()
 	unsigned char lowMem, highMem;
 
 	/* 这里只是借用CMOSTime类中的ReadCMOSByte函数读取CMOS中物理内存大小信息 */
-	lowMem = CMOSTime::ReadCMOSByte(CMOSTime::EXTENDED_MEMORY_ABOVE_1MB_LOW);
-	highMem = CMOSTime::ReadCMOSByte(CMOSTime::EXTENDED_MEMORY_ABOVE_1MB_HIGH);
+	lowMem = CMOSTime::ReadCMOSByteLow();
+	highMem = CMOSTime::ReadCMOSByteHigh();
 	memSize = (highMem << 8) + lowMem;
 
 	/* 加上1MB以下物理内存区域，计算总内存容量，以字节为单位的内存大小 */

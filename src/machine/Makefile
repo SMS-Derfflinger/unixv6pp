@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include
 
-objs := Chip8253.o Chip8259A.o CMOSTime.o GDT.o IDT.o Machine.o \
+objs := GDT.o IDT.o Machine.o \
 	PageDirectory.o TaskStateSegment.o
 
 include $(abs_srctree)/scripts/Makefile
