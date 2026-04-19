@@ -11,10 +11,6 @@
 
 Machine Machine::instance;	/*单态类实例的定义*/
 
-/* 全局GDT、IDT、TSS变量 */
-GDT g_GDT;
-IDT g_IDT;
-
 TaskStateSegment g_TaskStateSegment;
 
 Machine& Machine::Instance()
@@ -25,14 +21,14 @@ Machine& Machine::Instance()
 void Machine::LoadIDT()
 {
 	IDTR idtr;
-	GetIDT().FormIDTR(idtr);
+	IDT::FormIDTR(idtr);
 	X86Assembly::LIDT((unsigned short*)(&idtr));
 }
 
 void Machine::LoadGDT()
 {
 	GDTR gdtr;
-	GetGDT().FormGDTR(gdtr);
+	GDT::FormGDTR(gdtr);
 	X86Assembly::LGDT((unsigned short*)(&gdtr));
 }
 
@@ -45,8 +41,7 @@ extern "C" void MasterIRQ7();
 
 void Machine::InitIDT()
 {
-	this->m_IDT = &g_IDT;
-	this->GetIDT().Initialize();
+	GDT::Initialize();
 	/*
 	 * 1. 将IDT中0 - 255个表项全部填入默认中断/异常处理函数入口，确
 	 *    保任意一种中断/异常发生时都会被处理，避免内核崩溃。
@@ -60,58 +55,53 @@ void Machine::InitIDT()
 	for ( int i = 0; i <= 255; i++ )
 	{
 		 if( i < 32 )
-			 this->GetIDT().SetTrapGate(i, (unsigned long)IDT::DefaultExceptionHandler); 
+			 IDT::SetTrapGate(i, (unsigned long)IDT::DefaultExceptionHandler); 
 		 else
-			 this->GetIDT().SetInterruptGate(i, (unsigned long)IDT::DefaultInterruptHandler); 
+			 IDT::SetInterruptGate(i, (unsigned long)IDT::DefaultInterruptHandler); 
 	}
 	/* 初始化INT 0 - 31号异常 */
-	this->GetIDT().SetTrapGate(0, (unsigned long)Exception::DivideErrorEntrance);
-	this->GetIDT().SetTrapGate(1, (unsigned long)Exception::DebugEntrance);
-	this->GetIDT().SetTrapGate(2, (unsigned long)Exception::NMIEntrance);
-	this->GetIDT().SetTrapGate(3, (unsigned long)Exception::BreakpointEntrance);
-	this->GetIDT().SetTrapGate(4, (unsigned long)Exception::OverflowEntrance);
-	this->GetIDT().SetTrapGate(5, (unsigned long)Exception::BoundEntrance);
-	this->GetIDT().SetTrapGate(6, (unsigned long)Exception::InvalidOpcodeEntrance);
-	this->GetIDT().SetTrapGate(7, (unsigned long)Exception::DeviceNotAvailableEntrance);
-	this->GetIDT().SetTrapGate(8, (unsigned long)Exception::DoubleFaultEntrance);
-	this->GetIDT().SetTrapGate(9, (unsigned long)Exception::CoprocessorSegmentOverrunEntrance);
-	this->GetIDT().SetTrapGate(10,(unsigned long)Exception::InvalidTSSEntrance);
-	this->GetIDT().SetTrapGate(11,(unsigned long)Exception::SegmentNotPresentEntrance);
-	this->GetIDT().SetTrapGate(12,(unsigned long)Exception::StackSegmentErrorEntrance);
-	this->GetIDT().SetTrapGate(13,(unsigned long)Exception::GeneralProtectionEntrance);
+	IDT::SetTrapGate(0, (unsigned long)Exception::DivideErrorEntrance);
+	IDT::SetTrapGate(1, (unsigned long)Exception::DebugEntrance);
+	IDT::SetTrapGate(2, (unsigned long)Exception::NMIEntrance);
+	IDT::SetTrapGate(3, (unsigned long)Exception::BreakpointEntrance);
+	IDT::SetTrapGate(4, (unsigned long)Exception::OverflowEntrance);
+	IDT::SetTrapGate(5, (unsigned long)Exception::BoundEntrance);
+	IDT::SetTrapGate(6, (unsigned long)Exception::InvalidOpcodeEntrance);
+	IDT::SetTrapGate(7, (unsigned long)Exception::DeviceNotAvailableEntrance);
+	IDT::SetTrapGate(8, (unsigned long)Exception::DoubleFaultEntrance);
+	IDT::SetTrapGate(9, (unsigned long)Exception::CoprocessorSegmentOverrunEntrance);
+	IDT::SetTrapGate(10,(unsigned long)Exception::InvalidTSSEntrance);
+	IDT::SetTrapGate(11,(unsigned long)Exception::SegmentNotPresentEntrance);
+	IDT::SetTrapGate(12,(unsigned long)Exception::StackSegmentErrorEntrance);
+	IDT::SetTrapGate(13,(unsigned long)Exception::GeneralProtectionEntrance);
 	
 	/* 缺页异常(INT 14) UNIX V6++中对整个进程图像换入换出，非页式交换，因此不需要缺页异常处理函数 */
-	this->GetIDT().SetTrapGate(14,(unsigned long)Exception::PageFaultEntrance);
+	IDT::SetTrapGate(14,(unsigned long)Exception::PageFaultEntrance);
 	/* Intel保留异常(INT 15)  使用IDT::DefaultExceptionHandler() */
-	this->GetIDT().SetTrapGate(16,(unsigned long)Exception::CoprocessorErrorEntrance);
-	this->GetIDT().SetTrapGate(17,(unsigned long)Exception::AlignmentCheckEntrance);
-	this->GetIDT().SetTrapGate(18,(unsigned long)Exception::MachineCheckEntrance);
-	this->GetIDT().SetTrapGate(19,(unsigned long)Exception::SIMDExceptionEntrance);
+	IDT::SetTrapGate(16,(unsigned long)Exception::CoprocessorErrorEntrance);
+	IDT::SetTrapGate(17,(unsigned long)Exception::AlignmentCheckEntrance);
+	IDT::SetTrapGate(18,(unsigned long)Exception::MachineCheckEntrance);
+	IDT::SetTrapGate(19,(unsigned long)Exception::SIMDExceptionEntrance);
 
 	/* INT 20 - 31号异常为Intel保留未使用的异常 */
 
 	/* 设置时钟中断的中断门 */
-	this->GetIDT().SetInterruptGate(0x20, (unsigned long)Time::TimeInterruptEntrance);
+	IDT::SetInterruptGate(0x20, (unsigned long)Time::TimeInterruptEntrance);
 	/* 设置键盘中断的中断门 */
-	this->GetIDT().SetInterruptGate(0x21, (unsigned long)KeyboardInterrupt::KeyboardInterruptEntrance);
+	IDT::SetInterruptGate(0x21, (unsigned long)KeyboardInterrupt::KeyboardInterruptEntrance);
 	/* 设置IDT中磁盘中断对应中断门 */
-	this->GetIDT().SetInterruptGate(0x2E, (unsigned long)DiskInterrupt::DiskInterruptEntrance);
+	IDT::SetInterruptGate(0x2E, (unsigned long)DiskInterrupt::DiskInterruptEntrance);
 	/* 0x80号中断向量作为系统调用，设置系统调用对应的陷入门 */
-	this->GetIDT().SetTrapGate(0x80, (unsigned long)SystemCall::SystemCallEntrance);
+	IDT::SetTrapGate(0x80, (unsigned long)SystemCall::SystemCallEntrance);
 	/* 8259A主片的irq7引脚会产生的未知中断，提供中断处理函数“忽略它” */
-	this->GetIDT().SetInterruptGate(0x27, (unsigned long)MasterIRQ7);
+	IDT::SetInterruptGate(0x27, (unsigned long)MasterIRQ7);
 }
 
 void Machine::InitGDT()
 {
-	this->m_GDT = &g_GDT;
-	this->GetGDT().Initialize();
-
-	this->m_TaskStateSegment = &g_TaskStateSegment;
-	this->InitTaskStateSegment();
+	GDT::Initialize();
+    TaskStateSegment::Initialize();
 }
-
-
 
 void Machine::InitPageDirectory()
 {
@@ -234,11 +224,6 @@ void Machine::InitUserPageTable()
 	this->m_UserPageTable = pUserPageTable;	
 }
 
-void Machine::InitTaskStateSegment()
-{
-	this->GetTaskStateSegment().Initialize();
-}
-
 void Machine::EnablePageProtection()
 {
 	/* 
@@ -255,16 +240,6 @@ void Machine::EnablePageProtection()
 							movl %%eax, %%cr0" : : "a"(pageDirPhyBaseAddr) );
 }
 
-IDT& Machine::GetIDT()
-{
-	return *(this->m_IDT);
-}
-
-GDT& Machine::GetGDT()
-{
-	return *(this->m_GDT);
-}
-
 PageDirectory& Machine::GetPageDirectory()
 {
 	return *(this->m_PageDirectory);
@@ -279,10 +254,3 @@ PageTable* Machine::GetUserPageTableArray()
 {
 	return this->m_UserPageTable;
 }
-
-TaskStateSegment& Machine::GetTaskStateSegment()
-{
-	return *(this->m_TaskStateSegment);
-}
-
-

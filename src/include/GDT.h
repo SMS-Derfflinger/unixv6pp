@@ -13,11 +13,11 @@ extern "C" void _gdt_form_gdtr(GDTR* gdtr);
 class GDT
 {
 public:
-    void Initialize() {
+    static void Initialize() {
         _gdt_init();
     }
 
-    void FormGDTR(GDTR& gdtr) {
+    static void FormGDTR(GDTR& gdtr) {
         _gdt_form_gdtr(&gdtr);
     }
 };

@@ -17,7 +17,7 @@ extern "C" void _idt_form_idtr(IDTR* idtr);
 class IDT
 {
 public:
-    void Initialize() {
+    static void Initialize() {
         _idt_init();
     }
 
@@ -29,15 +29,15 @@ public:
         _idt_default_exception_handler();
     }
 
-    void SetInterruptGate(int number, unsigned int handler) {
+    static void SetInterruptGate(int number, unsigned int handler) {
         _idt_set_interrupt_gate(number, handler);
     }
 
-    void SetTrapGate(int number, unsigned int handler) {
+    static void SetTrapGate(int number, unsigned int handler) {
         _idt_set_trap_gate(number, handler);
     }
 
-    void FormIDTR(IDTR& idtr) {
+    static void FormIDTR(IDTR& idtr) {
         _idt_form_idtr(&idtr);
     }
 };

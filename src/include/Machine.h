@@ -57,28 +57,21 @@ public:
 
 	void InitPageDirectory();
 	void InitUserPageTable();
-	void InitTaskStateSegment();
 	void EnablePageProtection();
 	
 	/* property functions */
 public:
-	IDT& GetIDT();						/* 获取当前正在使用的IDT */
-	GDT& GetGDT();						/* 获取当前正在使用的GDT */
 	PageDirectory& GetPageDirectory();	/* 获取当前正在使用的页目录表 */
 	PageTable& GetKernelPageTable();	/* 获取操作系统内核所使用的页表，用于map 0xc0000000以上地址 */
 	PageTable* GetUserPageTableArray();	/* 获取用户进程页表，共两张，被映射在0x202000和0x203000上，
 										    映射0x00000000 - 0x00800000用户态地址空间 */
-	TaskStateSegment& GetTaskStateSegment();
 	
 private:
 	static Machine instance;	/* Machine单体类实例 */
 	
-	IDT* m_IDT;
-	GDT* m_GDT;
 	PageDirectory* m_PageDirectory;	
 	PageTable*	m_KernelPageTable;
 	PageTable*	m_UserPageTable;
-	TaskStateSegment* m_TaskStateSegment;
 };
 
 #endif

@@ -6,7 +6,7 @@ extern "C" void _task_state_segment_init();
 struct TaskStateSegment
 {
 public:
-    void Initialize() {
+    static void Initialize() {
         _task_state_segment_init();
     }
 };
