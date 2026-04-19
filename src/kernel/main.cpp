@@ -7,10 +7,8 @@
 #include "Chip8253.h"
 #include "Chip8259A.h"
 #include "Machine.h"
-#include "IDT.h"
 #include "Assembly.h"
 #include "Kernel.h"
-#include "TaskStateSegment.h"
 
 #include "PageDirectory.h"
 #include "PageTable.h"

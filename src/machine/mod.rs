@@ -2,6 +2,7 @@ pub mod asm;
 mod chip;
 
 use core::mem::size_of;
+use core::arch::asm;
 
 use crate::sync::SuperCell;
 
@@ -9,6 +10,7 @@ const DESCRIPTOR_COUNT: usize = 256;
 const KERNEL_DATA_SEGMENT_SELECTOR: u32 = 0x10;
 const USER_CODE_SEGMENT_SELECTOR: u32 = 0x18 | 0x3;
 const USER_DATA_SEGMENT_SELECTOR: u32 = 0x20 | 0x3;
+const TASK_STATE_SEGMENT_SELECTOR: u16 = 0x28;
 const PAGE_DIRECTORY_BASE_ADDRESS: u32 = 0x200000;
 const KERNEL_SPACE_START_ADDRESS: u32 = 0xc0000000;
 const KERNEL_SPACE_SIZE: u32 = 0x400000;
@@ -203,6 +205,72 @@ impl Idt {
     fn set_gate(&mut self, number: usize, handler: u32, gate_type: u8) {
         self.descriptors[number] = GateDescriptor::new(handler, gate_type);
     }
+
+    fn init_gates(&mut self, handlers: &MachineIdtHandlers) {
+        self.init();
+
+        for number in 0..DESCRIPTOR_COUNT {
+            if number < 32 {
+                self.set_gate(number, _idt_default_exception_handler as u32, 0x0f);
+            } else {
+                self.set_gate(number, _idt_default_interrupt_handler as u32, 0x0e);
+            }
+        }
+
+        self.set_gate(0, handlers.divide_error, 0x0f);
+        self.set_gate(1, handlers.debug, 0x0f);
+        self.set_gate(2, handlers.nmi, 0x0f);
+        self.set_gate(3, handlers.breakpoint, 0x0f);
+        self.set_gate(4, handlers.overflow, 0x0f);
+        self.set_gate(5, handlers.bound, 0x0f);
+        self.set_gate(6, handlers.invalid_opcode, 0x0f);
+        self.set_gate(7, handlers.device_not_available, 0x0f);
+        self.set_gate(8, handlers.double_fault, 0x0f);
+        self.set_gate(9, handlers.coprocessor_segment_overrun, 0x0f);
+        self.set_gate(10, handlers.invalid_tss, 0x0f);
+        self.set_gate(11, handlers.segment_not_present, 0x0f);
+        self.set_gate(12, handlers.stack_segment_error, 0x0f);
+        self.set_gate(13, handlers.general_protection, 0x0f);
+        self.set_gate(14, handlers.page_fault, 0x0f);
+        self.set_gate(16, handlers.coprocessor_error, 0x0f);
+        self.set_gate(17, handlers.alignment_check, 0x0f);
+        self.set_gate(18, handlers.machine_check, 0x0f);
+        self.set_gate(19, handlers.simd_exception, 0x0f);
+
+        self.set_gate(0x20, handlers.time, 0x0e);
+        self.set_gate(0x21, handlers.keyboard, 0x0e);
+        self.set_gate(0x2e, handlers.disk, 0x0e);
+        self.set_gate(0x80, handlers.system_call, 0x0f);
+        self.set_gate(0x27, handlers.master_irq7, 0x0e);
+    }
+}
+
+#[repr(C)]
+pub struct MachineIdtHandlers {
+    divide_error: u32,
+    debug: u32,
+    nmi: u32,
+    breakpoint: u32,
+    overflow: u32,
+    bound: u32,
+    invalid_opcode: u32,
+    device_not_available: u32,
+    double_fault: u32,
+    coprocessor_segment_overrun: u32,
+    invalid_tss: u32,
+    segment_not_present: u32,
+    stack_segment_error: u32,
+    general_protection: u32,
+    page_fault: u32,
+    coprocessor_error: u32,
+    alignment_check: u32,
+    machine_check: u32,
+    simd_exception: u32,
+    time: u32,
+    keyboard: u32,
+    disk: u32,
+    system_call: u32,
+    master_irq7: u32,
 }
 
 #[repr(C, packed)]
@@ -292,58 +360,89 @@ static IDT: SuperCell<Idt> = SuperCell::new(Idt::empty());
 static TSS: SuperCell<TaskStateSegment> = SuperCell::new(TaskStateSegment::empty());
 
 #[no_mangle]
-pub extern "C" fn _gdt_init() {
+pub extern "C" fn _init_idt(handlers: *const MachineIdtHandlers) {
+    let handlers = unsafe { handlers.as_ref().expect("_init_idt null handlers") };
+    IDT.with_mut(|idt| idt.init_gates(handlers));
+}
+
+#[no_mangle]
+pub extern "C" fn _init_gdt() {
     GDT.with_mut(|gdt| gdt.init());
-}
-
-#[no_mangle]
-pub extern "C" fn _gdt_form_gdtr(gdtr: *mut DescriptorTableRegister) {
-    GDT.with(|gdt| unsafe {
-        *gdtr = DescriptorTableRegister::new(gdt as *const Gdt, size_of::<Gdt>());
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn _idt_init() {
-    IDT.with_mut(|idt| idt.init());
-}
-
-#[no_mangle]
-pub extern "C" fn _idt_set_interrupt_gate(number: i32, handler: u32) {
-    IDT.with_mut(|idt| idt.set_gate(number as usize, handler, 0x0e));
-}
-
-#[no_mangle]
-pub extern "C" fn _idt_set_trap_gate(number: i32, handler: u32) {
-    IDT.with_mut(|idt| idt.set_gate(number as usize, handler, 0x0f));
-}
-
-#[no_mangle]
-pub extern "C" fn _idt_form_idtr(idtr: *mut DescriptorTableRegister) {
-    IDT.with(|idt| unsafe {
-        *idtr = DescriptorTableRegister::new(idt as *const Idt, size_of::<Idt>());
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn _idt_default_interrupt_handler() {
-    panic!("Default Interrupt Handler!");
-}
-
-#[no_mangle]
-pub extern "C" fn _idt_default_exception_handler() {
-    panic!("Default Exception Handler!");
-}
-
-#[no_mangle]
-pub extern "C" fn _task_state_segment_init() {
     TSS.with_mut(|tss| tss.init());
     GDT.with_mut(|gdt| gdt.init_tss_descriptor());
 }
 
 #[no_mangle]
-pub extern "C" fn _task_state_segment_ptr() -> *mut TaskStateSegment {
-    task_state_segment_ptr()
+pub extern "C" fn _load_idt() {
+    IDT.with(|idt| {
+        let idtr = DescriptorTableRegister::new(idt as *const Idt, size_of::<Idt>());
+        unsafe {
+            asm!(
+                "lidt [{idtr}]",
+                idtr = in(reg) &idtr,
+                options(readonly, nostack, preserves_flags),
+            );
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn _load_gdt() {
+    GDT.with(|gdt| {
+        let gdtr = DescriptorTableRegister::new(gdt as *const Gdt, size_of::<Gdt>());
+        unsafe {
+            asm!(
+                "lgdt [{gdtr}]",
+                gdtr = in(reg) &gdtr,
+                options(readonly, nostack, preserves_flags),
+            );
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn _load_task_register() {
+    unsafe {
+        asm!(
+            "ltr {selector:x}",
+            selector = in(reg) TASK_STATE_SEGMENT_SELECTOR,
+            options(nostack, preserves_flags),
+        );
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn _enable_page_protection(page_directory: *const u8) {
+    let page_directory_physical_address = page_directory as u32 - KERNEL_SPACE_START_ADDRESS;
+    unsafe {
+        asm!(
+            "mov cr3, eax",
+            "mov eax, cr0",
+            "or eax, 0x80000000",
+            "mov cr0, eax",
+            inout("eax") page_directory_physical_address => _,
+            options(nostack),
+        );
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn _flush_page_directory() {
+    unsafe {
+        asm!(
+            "mov cr3, eax",
+            in("eax") PAGE_DIRECTORY_BASE_ADDRESS,
+            options(nostack, preserves_flags),
+        );
+    }
+}
+
+fn _idt_default_interrupt_handler() {
+    panic!("Default Interrupt Handler!");
+}
+
+fn _idt_default_exception_handler() {
+    panic!("Default Exception Handler!");
 }
 
 fn task_state_segment_ptr() -> *mut TaskStateSegment {
