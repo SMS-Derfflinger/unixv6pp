@@ -1,8 +1,9 @@
 pub mod asm;
 mod chip;
+mod page_table;
 
-use core::mem::size_of;
 use core::arch::asm;
+use core::mem::size_of;
 
 use crate::sync::SuperCell;
 
@@ -211,9 +212,17 @@ impl Idt {
 
         for number in 0..DESCRIPTOR_COUNT {
             if number < 32 {
-                self.set_gate(number, _idt_default_exception_handler as u32, 0x0f);
+                self.set_gate(
+                    number,
+                    idt_default_exception_handler as *const () as u32,
+                    0x0f,
+                );
             } else {
-                self.set_gate(number, _idt_default_interrupt_handler as u32, 0x0e);
+                self.set_gate(
+                    number,
+                    idt_default_interrupt_handler as *const () as u32,
+                    0x0e,
+                );
             }
         }
 
@@ -245,7 +254,6 @@ impl Idt {
     }
 }
 
-#[repr(C)]
 pub struct MachineIdtHandlers {
     divide_error: u32,
     debug: u32,
@@ -273,7 +281,6 @@ pub struct MachineIdtHandlers {
     master_irq7: u32,
 }
 
-#[repr(C, packed)]
 pub struct TaskStateSegment {
     previous_task_link: u32,
     esp0: u32,
@@ -426,22 +433,11 @@ pub extern "C" fn _enable_page_protection(page_directory: *const u8) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _flush_page_directory() {
-    unsafe {
-        asm!(
-            "mov cr3, eax",
-            in("eax") PAGE_DIRECTORY_BASE_ADDRESS,
-            options(nostack, preserves_flags),
-        );
-    }
-}
-
-fn _idt_default_interrupt_handler() {
+const fn idt_default_interrupt_handler() {
     panic!("Default Interrupt Handler!");
 }
 
-fn _idt_default_exception_handler() {
+const fn idt_default_exception_handler() {
     panic!("Default Exception Handler!");
 }
 

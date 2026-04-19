@@ -9,11 +9,7 @@
 #include "Machine.h"
 #include "Assembly.h"
 #include "Kernel.h"
-
-#include "PageDirectory.h"
-#include "PageTable.h"
 #include "SystemCall.h"
-
 #include "Exception.h"
 #include "DMA.h"
 #include "TimeInterrupt.h"
