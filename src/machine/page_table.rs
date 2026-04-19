@@ -1,4 +1,5 @@
 use core::arch::asm;
+use core::ptr::NonNull;
 
 const ENTRY_COUNT_PER_PAGE_TABLE: usize = 1024;
 const SIZE_PER_PAGE_TABLE_MAP: usize = 0x400000;
@@ -16,6 +17,28 @@ const PAGE_SIZE: EntryFlags = EntryFlags(1 << 7);
 const ENTRY_FRAME_MASK: u32 = 0xfffff000;
 const ENTRY_FLAGS_MASK: u32 = 0x00000fff;
 const KERNEL_PAGE_DIRECTORY_INDEX: usize = KERNEL_SPACE_START_ADDRESS / SIZE_PER_PAGE_TABLE_MAP;
+
+/// kernel virtual address
+#[derive(Clone, Copy)]
+struct KVA(usize);
+
+impl KVA {
+    const fn from_physical(physical_address: usize) -> Self {
+        Self(physical_address + KERNEL_SPACE_START_ADDRESS)
+    }
+
+    fn as_non_null<T>(self) -> NonNull<T> {
+        NonNull::new(self.0 as *mut T).expect("kernel virtual address must not be null")
+    }
+
+    fn as_mut<T>(self) -> &'static mut T {
+        unsafe { self.as_non_null().as_mut() }
+    }
+
+    fn as_mut_array<T, const N: usize>(self) -> &'static mut [T; N] {
+        self.as_mut()
+    }
+}
 
 #[derive(Clone, Copy)]
 struct EntryFlags(u32);
@@ -167,41 +190,41 @@ pub extern "C" fn _init_vesa_memory_map(
 
 #[no_mangle]
 pub extern "C" fn _page_directory() -> *mut PageDirectory {
-    page_directory_ptr()
+    page_directory_address().as_non_null().as_ptr()
 }
 
 #[no_mangle]
 pub extern "C" fn _kernel_page_table() -> *mut PageTable {
-    kernel_page_table_ptr()
+    kernel_page_table_address().as_non_null().as_ptr()
 }
 
 #[no_mangle]
 pub extern "C" fn _user_page_table_array() -> *mut PageTable {
-    user_page_table_array_ptr()
+    user_page_table_array_address().as_non_null().as_ptr()
 }
 
 fn page_directory_mut() -> &'static mut PageDirectory {
-    unsafe { &mut *page_directory_ptr() }
+    page_directory_address().as_mut()
 }
 
 fn kernel_page_table_mut() -> &'static mut PageTable {
-    unsafe { &mut *kernel_page_table_ptr() }
+    kernel_page_table_address().as_mut()
 }
 
 fn user_page_table_array_mut() -> &'static mut [PageTable; USER_PAGE_TABLE_COUNT] {
-    unsafe { &mut *(user_page_table_array_ptr() as *mut [PageTable; USER_PAGE_TABLE_COUNT]) }
+    user_page_table_array_address().as_mut_array()
 }
 
-fn page_directory_ptr() -> *mut PageDirectory {
-    (PAGE_DIRECTORY_BASE_ADDRESS + KERNEL_SPACE_START_ADDRESS) as *mut PageDirectory
+fn page_directory_address() -> KVA {
+    KVA::from_physical(PAGE_DIRECTORY_BASE_ADDRESS)
 }
 
-fn kernel_page_table_ptr() -> *mut PageTable {
-    (KERNEL_PAGE_TABLE_BASE_ADDRESS + KERNEL_SPACE_START_ADDRESS) as *mut PageTable
+fn kernel_page_table_address() -> KVA {
+    KVA::from_physical(KERNEL_PAGE_TABLE_BASE_ADDRESS)
 }
 
-fn user_page_table_array_ptr() -> *mut PageTable {
-    (USER_PAGE_TABLE_BASE_ADDRESS + KERNEL_SPACE_START_ADDRESS) as *mut PageTable
+fn user_page_table_array_address() -> KVA {
+    KVA::from_physical(USER_PAGE_TABLE_BASE_ADDRESS)
 }
 
 fn align_down(value: usize, alignment: usize) -> usize {

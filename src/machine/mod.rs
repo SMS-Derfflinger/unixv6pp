@@ -4,6 +4,7 @@ mod page_table;
 
 use core::arch::asm;
 use core::mem::size_of;
+use core::ptr::NonNull;
 
 use crate::sync::SuperCell;
 
@@ -117,10 +118,10 @@ pub struct DescriptorTableRegister {
 }
 
 impl DescriptorTableRegister {
-    fn new<T>(table: *const T, bytes: usize) -> Self {
+    fn new(base: usize, bytes: usize) -> Self {
         Self {
             limit: (bytes - 1) as u16,
-            base: table as u32,
+            base: base as u32,
         }
     }
 }
@@ -174,7 +175,7 @@ impl Gdt {
 
     fn init_tss_descriptor(&mut self) {
         self.descriptors[TASK_STATE_SEGMENT_INDEX] = SegmentDescriptor::new(
-            task_state_segment_ptr() as u32,
+            task_state_segment_address() as u32,
             size_of::<TaskStateSegment>() as u32 - 1,
             0x09,
             0,
@@ -212,17 +213,9 @@ impl Idt {
 
         for number in 0..DESCRIPTOR_COUNT {
             if number < 32 {
-                self.set_gate(
-                    number,
-                    idt_default_exception_handler as *const () as u32,
-                    0x0f,
-                );
+                self.set_gate(number, function_address(idt_default_exception_handler), 0x0f);
             } else {
-                self.set_gate(
-                    number,
-                    idt_default_interrupt_handler as *const () as u32,
-                    0x0e,
-                );
+                self.set_gate(number, function_address(idt_default_interrupt_handler), 0x0e);
             }
         }
 
@@ -254,6 +247,7 @@ impl Idt {
     }
 }
 
+#[repr(C)]
 pub struct MachineIdtHandlers {
     divide_error: u32,
     debug: u32,
@@ -281,6 +275,7 @@ pub struct MachineIdtHandlers {
     master_irq7: u32,
 }
 
+#[repr(C, packed)]
 pub struct TaskStateSegment {
     previous_task_link: u32,
     esp0: u32,
@@ -368,7 +363,11 @@ static TSS: SuperCell<TaskStateSegment> = SuperCell::new(TaskStateSegment::empty
 
 #[no_mangle]
 pub extern "C" fn _init_idt(handlers: *const MachineIdtHandlers) {
-    let handlers = unsafe { handlers.as_ref().expect("_init_idt null handlers") };
+    let handlers = unsafe {
+        NonNull::new(handlers as *mut MachineIdtHandlers)
+            .expect("_init_idt null handlers")
+            .as_ref()
+    };
     IDT.with_mut(|idt| idt.init_gates(handlers));
 }
 
@@ -382,7 +381,7 @@ pub extern "C" fn _init_gdt() {
 #[no_mangle]
 pub extern "C" fn _load_idt() {
     IDT.with(|idt| {
-        let idtr = DescriptorTableRegister::new(idt as *const Idt, size_of::<Idt>());
+        let idtr = DescriptorTableRegister::new(address_of(idt), size_of::<Idt>());
         unsafe {
             asm!(
                 "lidt [{idtr}]",
@@ -396,7 +395,7 @@ pub extern "C" fn _load_idt() {
 #[no_mangle]
 pub extern "C" fn _load_gdt() {
     GDT.with(|gdt| {
-        let gdtr = DescriptorTableRegister::new(gdt as *const Gdt, size_of::<Gdt>());
+        let gdtr = DescriptorTableRegister::new(address_of(gdt), size_of::<Gdt>());
         unsafe {
             asm!(
                 "lgdt [{gdtr}]",
@@ -441,6 +440,18 @@ const fn idt_default_exception_handler() {
     panic!("Default Exception Handler!");
 }
 
-fn task_state_segment_ptr() -> *mut TaskStateSegment {
-    TSS.get_mut() as *mut TaskStateSegment
+fn task_state_segment_address() -> usize {
+    TSS.with_mut(address_of_mut)
+}
+
+fn address_of<T>(value: &T) -> usize {
+    value as *const T as usize
+}
+
+fn address_of_mut<T>(value: &mut T) -> usize {
+    value as *mut T as usize
+}
+
+fn function_address(function: fn()) -> u32 {
+    function as *const () as usize as u32
 }
