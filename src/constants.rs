@@ -35,7 +35,8 @@ pub enum PosixError {
     EOVERFLOW = 75,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Signal {
     SIGHUP = 1,
     SIGINT = 2,
@@ -70,4 +71,19 @@ pub enum Signal {
     SIGSYS = 31,
 }
 
-pub const SIGMAX: usize = 32;
+impl Signal {
+    pub const SIGMAX: u32 = 32;
+}
+
+pub const SIGMAX: usize = Signal::SIGMAX as usize;
+
+impl TryFrom<u32> for Signal {
+    type Error = PosixError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 | Self::SIGMAX.. => Err(PosixError::EINVAL),
+            sig => Ok(unsafe { core::mem::transmute(sig) })
+        }
+    }
+}

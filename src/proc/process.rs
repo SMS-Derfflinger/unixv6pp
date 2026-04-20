@@ -1,3 +1,7 @@
+use kernel_macros::define_class_compat;
+
+use crate::{constants::{PosixError, SIGMAX, Signal}, serial::KResult, user::Userspace};
+
 #[repr(u32)]
 enum ProcessState {
     SNULL = 0,
@@ -31,13 +35,65 @@ pub struct Process {
 
     wchan: usize,
 
-    sig: u32,
+    pending_signal: Option<Signal>,
     tty: *const Terminal,
     sigmap: usize,
+}
+
+trait KResultExt {
+    fn pass_to_user(self);
+}
+
+trait NativeWord {
+    fn into_word(self) -> usize;
+}
+
+impl NativeWord for u32 {
+    fn into_word(self) -> usize {
+        self as usize
+    }
+}
+
+impl NativeWord for usize {
+    fn into_word(self) -> usize {
+        self
+    }
+}
+
+impl<T: NativeWord> KResultExt for KResult<T> {
+    fn pass_to_user(self) {
+        match self {
+            Ok(retval) => Userspace::get().set_user_retval(retval.into_word() as u32),
+            Err(err) => Userspace::get().set_error(err),
+        }
+    }
 }
 
 impl Process {
     pub fn setuid(&mut self, uid: u16) {
         self.uid = uid;
     }
+
+    pub fn send_signal(&mut self, signal: u32, func: usize) -> KResult<usize> {
+        let signal = Signal::try_from(signal)?;
+        let old_handler = Userspace::get().get_signal_handler(signal);
+        Userspace::get().set_signal_handler(signal, func);
+
+        if let Some(pending) = self.pending_signal {
+            if pending == signal {
+                self.pending_signal = None;
+            }
+        }
+
+        Ok(old_handler)
+    }
 }
+
+define_class_compat! {impl Process {
+    pub fn send_signal(&mut self) {
+        let signal = Userspace::get().args[0] as u32;
+        let func = Userspace::get().args[1];
+
+        this.send_signal(signal, func).pass_to_user();
+    }
+}}

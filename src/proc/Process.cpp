@@ -520,25 +520,11 @@ void Process::Nice()
 	this->p_nice = niceValue;
 }
 
+extern "C" {
+	void Process_send_signal(Process*);
+}
+
 void Process::Ssig()
 {
-	User& u = Kernel::Instance().GetUser();
-
-	int signalIndex = User_get_arg()[0];
-	unsigned long func = User_get_arg()[1];
-
-	/* �⼸���źŲ������� */
-	if ( signalIndex <= 0 || signalIndex >= User::NSIG || signalIndex == User::SIGKILL )
-	{
-		User_get_error() = User::EINVAL;
-		return;
-	}
-	/* ���ú�����ַ���źŴ����������� */
-	User_get_ar0()[User::EAX] = User_get_signal()[signalIndex];
-	User_get_signal()[signalIndex] = func;
-	/* �嵱ǰ�ź� */
-	if ( User_get_procp()->p_sig == signalIndex )
-	{
-		User_get_procp()->p_sig = 0;
-	}
+	Process_send_signal(this);
 }

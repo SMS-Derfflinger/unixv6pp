@@ -4,8 +4,8 @@ use alloc::boxed::Box;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::{PosixError, SIGMAX},
-    fs::{inoderef_leak, DirectoryEntry, IOParameter, Inode, InodeRef, InodeRefCompat, OpenFiles},
+    constants::{PosixError, SIGMAX, Signal},
+    fs::{DirectoryEntry, IOParameter, Inode, InodeRef, InodeRefCompat, OpenFiles, inoderef_leak},
     proc::Process,
 };
 
@@ -34,7 +34,7 @@ pub struct Userspace {
     ar0: *mut u32,
 
     /// Used by syscall handlers
-    args: [usize; 5],
+    pub args: [usize; 5],
 
     pub dirp: *mut u8,
 
@@ -165,6 +165,14 @@ impl Userspace {
 
     pub fn proc(&self) -> &'static mut Process {
         unsafe { &mut *self.proc }
+    }
+
+    pub fn set_signal_handler(&mut self, signal: Signal, func: usize) {
+        self.signals[signal as usize] = func;
+    }
+
+    pub fn get_signal_handler(&self, signal: Signal) -> usize {
+        self.signals[signal as usize]
     }
 }
 
