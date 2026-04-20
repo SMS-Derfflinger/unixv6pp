@@ -5,6 +5,12 @@
 #include "Machine.h"
 #include "Video.h"
 
+extern "C" {
+	void Process_send_signal(Process*);
+	void Process_process_signal(Process*, struct pt_context*);
+	void Process_set_nice(Process*);
+	bool Process_should_process(Process*);
+}
 
 Process::Process()
 {
@@ -444,34 +450,13 @@ void Process::PSignal( int signal )
 
 int Process::IsSig()
 {
-	User& u = Kernel::Instance().GetUser();
-
-	/* δ���ܵ��ź� */
-	if ( this->p_sig == 0 )
-	{
-		return 0;
-	} else {
-		if (this->p_sig == 2)
-			User_get_signal()[this->p_sig] = 0xffffffff;
-
-		if (User_get_signal()[this->p_sig]) {
-			Diagnose::Write("Handler: %x\n", User_get_signal()[this->p_sig]);
-			return this->p_sig;
-		}
-	}
-	return 0;
+	return Process_should_process(this);
 }
 
 /*
 extern "C" void runtime();
 extern "C" void SignalHandler();
 */
-
-extern "C" {
-	void Process_send_signal(Process*);
-	void Process_process_signal(Process*, struct pt_context*);
-	void Process_set_nice(Process*);
-}
 
 extern "C" void user_exit() {
 	User_get_procp()->Exit();

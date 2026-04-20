@@ -113,6 +113,20 @@ impl Process {
         }
     }
 
+    pub fn should_process(&self) -> bool {
+        if let Some(pending) = self.pending_signal {
+            if pending == Signal::SIGINT {
+                return true;
+            }
+
+            if Userspace::get().get_signal_handler(pending) != 0 {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn set_nice(&mut self, mut nice: i32) {
         if nice > 20 {
             nice = 20;
@@ -136,6 +150,10 @@ define_class_compat! {impl Process {
 
     pub fn process_signal(&mut self, context: &mut TaskContext) {
         this.process_signal(context);
+    }
+
+    pub fn should_process(&mut self) -> bool {
+        this.should_process()
     }
 
     pub fn set_nice(&mut self) {
