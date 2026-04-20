@@ -1,6 +1,6 @@
 use kernel_macros::define_class_compat;
 
-use crate::{constants::{PosixError, SIGMAX, Signal}, serial::KResult, user::Userspace};
+use crate::{compat::compat_user_exit, constants::{PosixError, SIGMAX, Signal}, serial::KResult, user::Userspace};
 
 #[repr(u32)]
 enum ProcessState {
@@ -11,6 +11,15 @@ enum ProcessState {
     SIDL = 4,
     SZOMB = 5,
     SSTOP = 6,
+}
+
+#[repr(C)]
+struct TaskContext {
+    eip: usize,
+    xcs: usize,
+    eflags: usize,
+    esp: *mut usize,
+    xss: usize,
 }
 
 pub struct Text;
@@ -88,6 +97,22 @@ impl Process {
         Ok(old_handler)
     }
 
+    pub fn process_signal(&mut self, context: &mut TaskContext) {
+        let Some(pending) = self.pending_signal.take() else {
+            crate::println_warn!("Signal UNKNOWN");
+            compat_user_exit();
+        };
+
+        Userspace::get().clear_error();
+        let old_eip = context.eip;
+        context.eip = Userspace::get().get_signal_handler(pending);
+        context.esp = context.esp.wrapping_sub(1);
+
+        unsafe {
+            context.esp.write(old_eip);
+        }
+    }
+
     pub fn set_nice(&mut self, mut nice: i32) {
         if nice > 20 {
             nice = 20;
@@ -107,6 +132,10 @@ define_class_compat! {impl Process {
         let func = Userspace::get().args[1];
 
         this.send_signal(signal, func).pass_to_user();
+    }
+
+    pub fn process_signal(&mut self, context: &mut TaskContext) {
+        this.process_signal(context);
     }
 
     pub fn set_nice(&mut self) {

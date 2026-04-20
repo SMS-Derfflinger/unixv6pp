@@ -267,10 +267,14 @@ void Exception::PageFault(struct pt_regs* regs, struct pte_context* context)
 			current->SStack();
 		else
 		{
-			Diagnose::Write("Invalid MM access");
+			Diagnose::Write("Invalid MM access\n");
 			current -> PSignal(User::SIGSEGV);
 			if ( current->IsSig() )
 				current->PSig( (pt_context *)&context->eip );
+			else {
+				Diagnose::Write("%d Killed\n", current->p_pid);
+				current->Exit();
+			}
 		}
 	}
 	else {

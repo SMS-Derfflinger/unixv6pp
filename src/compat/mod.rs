@@ -31,6 +31,16 @@ pub fn compat_get_time() -> u32 {
     }
 }
 
+pub fn compat_user_exit() -> ! {
+    extern "C" {
+        fn user_exit() -> !;
+    }
+
+    unsafe {
+        user_exit();
+    }
+}
+
 define_class_compat! {impl Utils{
     pub fn get_path() -> *mut u8 {
         let dirp = Userspace::get().dirp;

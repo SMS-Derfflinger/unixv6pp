@@ -450,11 +450,14 @@ int Process::IsSig()
 	if ( this->p_sig == 0 )
 	{
 		return 0;
-	}
-	/* User_get_signal()[n]Ϊż���ű�ʾ���źŽ��̴��� */
-	else if ( (User_get_signal()[this->p_sig] & 1) == 0 )
-	{
-		return this->p_sig;
+	} else {
+		if (this->p_sig == 2)
+			User_get_signal()[this->p_sig] = 0xffffffff;
+
+		if (User_get_signal()[this->p_sig]) {
+			Diagnose::Write("Handler: %x\n", User_get_signal()[this->p_sig]);
+			return this->p_sig;
+		}
 	}
 	return 0;
 }
@@ -464,48 +467,18 @@ extern "C" void runtime();
 extern "C" void SignalHandler();
 */
 
-void Process::PSig(struct pt_context* pContext)
-{
-	User& u = Kernel::Instance().GetUser();
-	int signal = this->p_sig;
-	/* ����ѽ��봦�����̵��ź� */
-	this->p_sig = 0;
+extern "C" {
+	void Process_send_signal(Process*);
+	void Process_process_signal(Process*, struct pt_context*);
+	void Process_set_nice(Process*);
+}
 
-	if ( User_get_signal()[signal] != 0 )
-	{
-		/* ����������յ��ź�֮ǰִ��ϵͳ�����ڼ���ܲ�����ErrCode */
-		User_get_error() = User::NOERROR;
-
-		unsigned int old_eip = pContext->eip;
-
-		/* ����̬����ֵΪԤ�����û�����SignalHandler()���׵�ַ */
-		/*pContext->eip = ((unsigned long)SignalHandler - (unsigned long)runtime);
-		pContext->esp -= 8;
-		int* pInt = (int *)pContext->esp;
-		*pInt = User_get_signal()[signal];
-		*(pInt + 1) = old_eip;*/
-		pContext->eip = User_get_signal()[signal];
-		pContext->esp -= 4;
-		int* pInt = (int *)pContext->esp;
-		*pInt = old_eip;
-
-		/*
-		 * ��ǰ�źŴ�����������Ӧ�걾���ź�֮����Ҫ����ΪĬ��
-		 * ���źŴ�����������Ϊ0��ʾ���źŵĴ�����ʽΪ��ֹ�����̡�
-		 */
-		User_get_signal()[signal] = 0;
-		return;
-	}
-
-	serial_write_cstr("signal?");
-
-	/* User_get_signal()[n]Ϊ0������źŵĴ�����ʽ����ֹ������ */
+extern "C" void user_exit() {
 	User_get_procp()->Exit();
 }
 
-extern "C" {
-	void Process_send_signal(Process*);
-	void Process_set_nice(Process*);
+void Process::PSig(struct pt_context* pContext) {
+	Process_process_signal(this, pContext);
 }
 
 void Process::Nice() {
