@@ -6,6 +6,7 @@ pub mod compat;
 mod constants;
 mod dev;
 mod fs;
+mod kernel;
 mod loader;
 pub mod machine;
 mod mm;

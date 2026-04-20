@@ -7,23 +7,32 @@
 #include "Video.h"
 #include "Assembly.h"
 
+extern "C" {
+void utility_mem_copy(unsigned long src, unsigned long dst, unsigned int count);
+int utility_calculate_page_need(unsigned int memory_need, unsigned int page_size);
+short utility_get_major(short dev);
+short utility_get_minor(short dev);
+short utility_set_major(short dev, short value);
+short utility_set_minor(short dev, short value);
+void utility_dword_copy(const int* src, int* dst, int count);
+int utility_min(int a, int b);
+int utility_max(int a, int b);
+int utility_bcd_to_binary(int value);
+void utility_io_move(const unsigned char* from, unsigned char* to, int count);
+unsigned int utility_make_kernel_time(const SystemTime* time);
+bool utility_is_leap_year(int year);
+unsigned int utility_days_in_year(int year);
+}
 
 void Utility::MemCopy(unsigned long src, unsigned long des, unsigned int count)
 {
-	unsigned char* psrc = (unsigned char*)src;
-	unsigned char* pdes = (unsigned char*)des;
-	
-	for ( unsigned int i = 0; i < count; i++ ) 
-		pdes[i] = psrc[i];
+	utility_mem_copy(src, des, count);
 }
 
 
 int Utility::CaluPageNeed(unsigned int memoryneed, unsigned int pagesize)
 {
-	int pageRequired = memoryneed / pagesize;
-	pageRequired += memoryneed % pagesize ? 1 : 0;
-
-	return pageRequired;
+	return utility_calculate_page_need(memoryneed, pagesize);
 }
 
 #if 0  // use libyrosstd instead
@@ -111,30 +120,22 @@ extern "C" void phys_copy(unsigned long from, unsigned long to, unsigned long le
 
 short Utility::GetMajor(const short dev)
 {
-	short major;
-	major = dev >> 8;
-	return major;
+	return utility_get_major(dev);
 }
 
 short Utility::GetMinor(const short dev)
 {
-	short minor;
-	minor = dev & 0x00FF;
-	return minor;
+	return utility_get_minor(dev);
 }
 
 short Utility::SetMajor(short dev, const short value)
 {
-	dev &= 0x00FF;	/*  清除dev中原先高8比特 */
-	dev |= (value << 8);
-	return dev;
+	return utility_set_major(dev, value);
 }
 
 short Utility::SetMinor(short dev, const short value)
 {
-	dev &= 0xFF00;	/*  清除dev中原先低8比特 */
-	dev |= (value & 0x00FF);	/* 仅保留value中的低8位 */
-	return dev;
+	return utility_set_minor(dev, value);
 }
 
 void Utility::Panic(const char* str)
@@ -147,66 +148,32 @@ void Utility::Panic(const char* str)
 
 void Utility::DWordCopy(int *src, int *dst, int count)
 {
-	while(count--)
-	{
-		*dst++ = *src++;
-	}
-	return;
+	utility_dword_copy(src, dst, count);
 }
 
 int Utility::Min(int a, int b)
 {
-	if(a < b)
-		return a;
-	return b;
+	return utility_min(a, b);
 }
 
 int Utility::Max(int a, int b)
 {
-	if(a > b)
-		return a;
-	return b;
+	return utility_max(a, b);
 }
 
 int Utility::BCDToBinary( int value )
 {
-	return ( (value >> 4) * 10 + (value & 0xF) );
+	return utility_bcd_to_binary(value);
 }
 
 void Utility::IOMove(unsigned char* from, unsigned char* to, int count)
 {
-	while(count--)
-	{
-		*to++ = *from++;
-	}
-	return;
+	utility_io_move(from, to, count);
 }
 
 unsigned int Utility::MakeKernelTime( struct SystemTime* pTime )
 {
-	unsigned int timeInSeconds = 0;
-	unsigned int days;
-	int currentYear = 2000 + pTime->Year;	/* Year中只有年份后2位 */
-
-	/* compute hours, minutes, seconds */
-	timeInSeconds += pTime->Second;
-	timeInSeconds += pTime->Minute * Utility::SECONDS_IN_MINUTE;
-	timeInSeconds += pTime->Hour * Utility::SECONDS_IN_HOUR;
-
-	/* compute days in current year */
-	days = pTime->DayOfMonth - 1;
-	days += Utility::DaysBeforeMonth[pTime->Month];
-	if (Utility::IsLeapYear(currentYear) && pTime->Month >= 3 /* After February */)
-		days++;
-
-	/* compute days in previous years */
-	for (int year = 1970; year < currentYear; year++)
-	{
-		days += Utility::DaysInYear(year);
-	}
-	timeInSeconds += days * Utility::SECONDS_IN_DAY;
-	
-	return timeInSeconds;
+	return utility_make_kernel_time(pTime);
 }
 
 /* 某个月份前经过的天数，第0项不使用，未纳入计算闰年2月份29天 */
@@ -214,10 +181,10 @@ const unsigned int Utility::DaysBeforeMonth[13] = {0xFFFFFFFF/* Unused */, 0, 31
 
 bool Utility::IsLeapYear( int year )
 {
-	return (year % 4) == 0 && ( (year % 100) != 0 || (year % 400) == 0 );
+	return utility_is_leap_year(year);
 }
 
 unsigned int Utility::DaysInYear( int year )
 {
-	return IsLeapYear(year) ? 366 : 365;
+	return utility_days_in_year(year);
 }
