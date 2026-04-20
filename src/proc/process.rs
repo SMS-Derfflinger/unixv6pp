@@ -15,7 +15,7 @@ enum ProcessState {
 }
 
 #[repr(C)]
-struct TaskContext {
+struct TrapFrame {
     eip: usize,
     xcs: usize,
     eflags: usize,
@@ -104,7 +104,7 @@ impl Process {
         Ok(old_handler)
     }
 
-    pub fn process_signal(&mut self, context: &mut TaskContext) {
+    pub fn process_signal(&mut self, context: &mut TrapFrame) {
         let Some(pending) = self.pending_signal.take() else {
             crate::println_warn!("Signal UNKNOWN");
             compat_user_exit();
@@ -192,7 +192,7 @@ define_class_compat! {impl Process {
         this.send_signal(signal, func).pass_to_user();
     }
 
-    pub fn process_signal(&mut self, context: &mut TaskContext) {
+    pub fn process_signal(&mut self, context: &mut TrapFrame) {
         this.process_signal(context);
     }
 
