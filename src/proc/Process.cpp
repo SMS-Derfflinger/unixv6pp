@@ -542,8 +542,3 @@ void Process::Ssig()
 		User_get_procp()->p_sig = 0;
 	}
 }
-
-
-
-
-
