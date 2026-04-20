@@ -8,31 +8,31 @@
 #include "Assembly.h"
 
 extern "C" {
-void utility_mem_copy(unsigned long src, unsigned long dst, unsigned int count);
-int utility_calculate_page_need(unsigned int memory_need, unsigned int page_size);
-short utility_get_major(short dev);
-short utility_get_minor(short dev);
-short utility_set_major(short dev, short value);
-short utility_set_minor(short dev, short value);
-void utility_dword_copy(const int* src, int* dst, int count);
-int utility_min(int a, int b);
-int utility_max(int a, int b);
-int utility_bcd_to_binary(int value);
-void utility_io_move(const unsigned char* from, unsigned char* to, int count);
-unsigned int utility_make_kernel_time(const SystemTime* time);
-bool utility_is_leap_year(int year);
-unsigned int utility_days_in_year(int year);
+void _mem_copy(unsigned long src, unsigned long dst, unsigned int count);
+int _calculate_page_need(unsigned int memory_need, unsigned int page_size);
+short _get_major(short dev);
+short _get_minor(short dev);
+short _set_major(short dev, short value);
+short _set_minor(short dev, short value);
+void _dword_copy(const int* src, int* dst, int count);
+int _min(int a, int b);
+int _max(int a, int b);
+int _bcd_to_binary(int value);
+void _io_move(const unsigned char* from, unsigned char* to, int count);
+unsigned int _make_kernel_time(const SystemTime* time);
+bool _is_leap_year(int year);
+unsigned int _days_in_year(int year);
 }
 
 void Utility::MemCopy(unsigned long src, unsigned long des, unsigned int count)
 {
-	utility_mem_copy(src, des, count);
+	_mem_copy(src, des, count);
 }
 
 
 int Utility::CaluPageNeed(unsigned int memoryneed, unsigned int pagesize)
 {
-	return utility_calculate_page_need(memoryneed, pagesize);
+	return _calculate_page_need(memoryneed, pagesize);
 }
 
 #if 0  // use libyrosstd instead
@@ -120,22 +120,22 @@ extern "C" void phys_copy(unsigned long from, unsigned long to, unsigned long le
 
 short Utility::GetMajor(const short dev)
 {
-	return utility_get_major(dev);
+	return _get_major(dev);
 }
 
 short Utility::GetMinor(const short dev)
 {
-	return utility_get_minor(dev);
+	return _get_minor(dev);
 }
 
 short Utility::SetMajor(short dev, const short value)
 {
-	return utility_set_major(dev, value);
+	return _set_major(dev, value);
 }
 
 short Utility::SetMinor(short dev, const short value)
 {
-	return utility_set_minor(dev, value);
+	return _set_minor(dev, value);
 }
 
 void Utility::Panic(const char* str)
@@ -148,32 +148,32 @@ void Utility::Panic(const char* str)
 
 void Utility::DWordCopy(int *src, int *dst, int count)
 {
-	utility_dword_copy(src, dst, count);
+	_dword_copy(src, dst, count);
 }
 
 int Utility::Min(int a, int b)
 {
-	return utility_min(a, b);
+	return _min(a, b);
 }
 
 int Utility::Max(int a, int b)
 {
-	return utility_max(a, b);
+	return _max(a, b);
 }
 
 int Utility::BCDToBinary( int value )
 {
-	return utility_bcd_to_binary(value);
+	return _bcd_to_binary(value);
 }
 
 void Utility::IOMove(unsigned char* from, unsigned char* to, int count)
 {
-	utility_io_move(from, to, count);
+	_io_move(from, to, count);
 }
 
 unsigned int Utility::MakeKernelTime( struct SystemTime* pTime )
 {
-	return utility_make_kernel_time(pTime);
+	return _make_kernel_time(pTime);
 }
 
 /* 某个月份前经过的天数，第0项不使用，未纳入计算闰年2月份29天 */
@@ -181,10 +181,10 @@ const unsigned int Utility::DaysBeforeMonth[13] = {0xFFFFFFFF/* Unused */, 0, 31
 
 bool Utility::IsLeapYear( int year )
 {
-	return utility_is_leap_year(year);
+	return _is_leap_year(year);
 }
 
 unsigned int Utility::DaysInYear( int year )
 {
-	return utility_days_in_year(year);
+	return _days_in_year(year);
 }

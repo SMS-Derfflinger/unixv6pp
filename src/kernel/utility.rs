@@ -29,7 +29,7 @@ pub struct SystemTime {
 }
 
 #[no_mangle]
-pub extern "C" fn utility_mem_copy(src: usize, dst: usize, count: u32) {
+pub extern "C" fn _mem_copy(src: usize, dst: usize, count: u32) {
     let src = src as *const u8;
     let dst = dst as *mut u8;
 
@@ -41,7 +41,7 @@ pub extern "C" fn utility_mem_copy(src: usize, dst: usize, count: u32) {
 }
 
 #[no_mangle]
-pub extern "C" fn utility_calculate_page_need(memory_need: u32, page_size: u32) -> i32 {
+pub extern "C" fn _calculate_page_need(memory_need: u32, page_size: u32) -> i32 {
     let mut page_required = memory_need / page_size;
     if memory_need % page_size != 0 {
         page_required += 1;
@@ -50,27 +50,27 @@ pub extern "C" fn utility_calculate_page_need(memory_need: u32, page_size: u32) 
 }
 
 #[no_mangle]
-pub extern "C" fn utility_get_major(dev: i16) -> i16 {
+pub extern "C" fn _get_major(dev: i16) -> i16 {
     dev >> 8
 }
 
 #[no_mangle]
-pub extern "C" fn utility_get_minor(dev: i16) -> i16 {
+pub extern "C" fn _get_minor(dev: i16) -> i16 {
     dev & 0x00ff
 }
 
 #[no_mangle]
-pub extern "C" fn utility_set_major(dev: i16, value: i16) -> i16 {
+pub extern "C" fn _set_major(dev: i16, value: i16) -> i16 {
     (dev & 0x00ff) | (value << 8)
 }
 
 #[no_mangle]
-pub extern "C" fn utility_set_minor(dev: i16, value: i16) -> i16 {
+pub extern "C" fn _set_minor(dev: i16, value: i16) -> i16 {
     (dev & !0x00ff) | (value & 0x00ff)
 }
 
 #[no_mangle]
-pub extern "C" fn utility_dword_copy(src: *const i32, dst: *mut i32, count: i32) {
+pub extern "C" fn _dword_copy(src: *const i32, dst: *mut i32, count: i32) {
     for offset in 0..count.max(0) as usize {
         unsafe {
             dst.add(offset).write(src.add(offset).read());
@@ -79,7 +79,7 @@ pub extern "C" fn utility_dword_copy(src: *const i32, dst: *mut i32, count: i32)
 }
 
 #[no_mangle]
-pub extern "C" fn utility_min(a: i32, b: i32) -> i32 {
+pub extern "C" fn _min(a: i32, b: i32) -> i32 {
     if a < b {
         a
     } else {
@@ -88,7 +88,7 @@ pub extern "C" fn utility_min(a: i32, b: i32) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn utility_max(a: i32, b: i32) -> i32 {
+pub extern "C" fn _max(a: i32, b: i32) -> i32 {
     if a > b {
         a
     } else {
@@ -97,12 +97,12 @@ pub extern "C" fn utility_max(a: i32, b: i32) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn utility_bcd_to_binary(value: i32) -> i32 {
+pub extern "C" fn _bcd_to_binary(value: i32) -> i32 {
     ((value >> 4) * 10) + (value & 0x0f)
 }
 
 #[no_mangle]
-pub extern "C" fn utility_io_move(src: *const u8, dst: *mut u8, count: i32) {
+pub extern "C" fn _io_move(src: *const u8, dst: *mut u8, count: i32) {
     for offset in 0..count.max(0) as usize {
         unsafe {
             dst.add(offset).write(src.add(offset).read());
@@ -111,8 +111,8 @@ pub extern "C" fn utility_io_move(src: *const u8, dst: *mut u8, count: i32) {
 }
 
 #[no_mangle]
-pub extern "C" fn utility_make_kernel_time(time: *const SystemTime) -> u32 {
-    let time = unsafe { time.as_ref().expect("utility_make_kernel_time null time") };
+pub extern "C" fn _make_kernel_time(time: *const SystemTime) -> u32 {
+    let time = unsafe { time.as_ref().expect("_make_kernel_time null time") };
     let current_year = 2000 + time.year;
 
     let mut seconds = time.second as u32;
@@ -121,25 +121,25 @@ pub extern "C" fn utility_make_kernel_time(time: *const SystemTime) -> u32 {
 
     let mut days = (time.day_of_month - 1) as u32;
     days += DAYS_BEFORE_MONTH[time.month as usize];
-    if utility_is_leap_year(current_year) && time.month >= 3 {
+    if _is_leap_year(current_year) && time.month >= 3 {
         days += 1;
     }
 
     for year in 1970..current_year {
-        days += utility_days_in_year(year);
+        days += _days_in_year(year);
     }
 
     seconds + days * SECONDS_IN_DAY
 }
 
 #[no_mangle]
-pub extern "C" fn utility_is_leap_year(year: i32) -> bool {
+pub extern "C" fn _is_leap_year(year: i32) -> bool {
     year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
 #[no_mangle]
-pub extern "C" fn utility_days_in_year(year: i32) -> u32 {
-    if utility_is_leap_year(year) {
+pub extern "C" fn _days_in_year(year: i32) -> u32 {
+    if _is_leap_year(year) {
         366
     } else {
         365
