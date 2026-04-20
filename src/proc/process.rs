@@ -3,6 +3,7 @@ use kernel_macros::define_class_compat;
 use crate::{compat::compat_user_exit, constants::{PosixError, SIGMAX, Signal}, serial::KResult, user::Userspace};
 
 #[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProcessState {
     SNULL = 0,
     SSLEEP = 1,
@@ -69,6 +70,12 @@ impl NativeWord for usize {
     }
 }
 
+impl NativeWord for () {
+    fn into_word(self) -> usize {
+        0
+    }
+}
+
 impl<T: NativeWord> KResultExt for KResult<T> {
     fn pass_to_user(self) {
         match self {
@@ -127,6 +134,41 @@ impl Process {
         false
     }
 
+    const PUSER: u32 = 100;
+
+    pub fn set_run(&mut self) {
+        extern "C" {
+            fn compat_set_run(proc: &mut Process);
+        }
+
+        unsafe {
+            compat_set_run(self);
+        }
+    }
+
+    pub fn raise(&mut self, signal: u32) -> KResult<()> {
+        let signal = Signal::try_from(signal)?;
+
+        crate::println_info!("{signal:?} triggered");
+
+        // ???
+        if signal == Signal::SIGKILL {
+            return Ok(());
+        }
+
+        self.pending_signal = Some(signal);
+
+        if self.pri > Self::PUSER {
+            self.pri = Self::PUSER;
+        }
+
+        if self.stat == ProcessState::SWAIT {
+            self.set_run();
+        }
+
+        Ok(())
+    }
+
     pub fn set_nice(&mut self, mut nice: i32) {
         if nice > 20 {
             nice = 20;
@@ -154,6 +196,10 @@ define_class_compat! {impl Process {
 
     pub fn should_process(&mut self) -> bool {
         this.should_process()
+    }
+
+    pub fn raise(&mut self, signal: u32) {
+        this.raise(signal).pass_to_user();
     }
 
     pub fn set_nice(&mut self) {

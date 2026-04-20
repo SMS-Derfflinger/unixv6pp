@@ -10,6 +10,7 @@ extern "C" {
 	void Process_process_signal(Process*, struct pt_context*);
 	void Process_set_nice(Process*);
 	bool Process_should_process(Process*);
+	void Process_raise(Process*, int);
 }
 
 Process::Process()
@@ -422,30 +423,13 @@ void Process::SBreak()
 	User_get_ar0()[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
 }
 
+extern "C" void compat_set_run(Process* proc) {
+	proc->SetRun();
+}
+
 void Process::PSignal( int signal )
 {
-	Diagnose::Write("Signal %d triggered\n", signal);
-
-	if ( signal >= User::NSIG )
-	{
-		return;
-	}
-
-	/* ����Ѿ����յ�SIGKILL�źţ�����Ժ����ź� */
-	if ( this->p_sig != User::SIGKILL )
-	{
-		this->p_sig = signal;
-	}
-	/* �����̵�����������PUSER(100)����������ΪPUSER */
-	if ( this->p_pri > ProcessManager::PUSER )
-	{
-		this->p_pri	= ProcessManager::PUSER;
-	}
-	/* �����̵Ĵ��ڵ�����Ȩ˯�ߣ����份�� */
-	if ( this->p_stat == Process::SWAIT )
-	{
-		this->SetRun();
-	}
+	Process_raise(this, signal);
 }
 
 int Process::IsSig()
