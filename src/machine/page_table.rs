@@ -210,7 +210,7 @@ fn page_directory_mut() -> &'static mut PageDirectory {
     }
 }
 
-fn kernel_page_table_mut() -> &'static mut PageTable {
+pub fn kernel_page_table_mut() -> &'static mut PageTable {
     unsafe {
         &mut *phys_to_virt(PAddr::from(KERNEL_PAGE_TABLE_BASE_ADDRESS)).cast()
     }

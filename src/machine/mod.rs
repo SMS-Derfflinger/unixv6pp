@@ -9,7 +9,8 @@ use core::ptr::NonNull;
 use crate::sync::SuperCell;
 
 pub use page_table::{
-    global_user_page_table, switch_user_struct, EntryFlags, PageTable, PageTableEntry,
+    global_user_page_table, kernel_page_table_mut, switch_user_struct, EntryFlags, PageTable,
+    PageTableEntry,
 };
 
 const DESCRIPTOR_COUNT: usize = 256;

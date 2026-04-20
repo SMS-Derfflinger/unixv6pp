@@ -1,3 +1,8 @@
+use eonix_mm::paging::PFN;
+
+use crate::compat::compat_flush_page_directory;
+use crate::machine::{global_user_page_table, kernel_page_table_mut, EntryFlags};
+
 const SECONDS_IN_MINUTE: u32 = 60;
 const SECONDS_IN_HOUR: u32 = 3600;
 const SECONDS_IN_DAY: u32 = 86400;
@@ -143,5 +148,83 @@ pub extern "C" fn _days_in_year(year: i32) -> u32 {
         366
     } else {
         365
+    }
+}
+
+/// 对应 C++ 的 Utility::CopySeg
+/// 通过内核页表中借用的两个 PTE（索引 256 和 257），
+/// 将 src 物理地址处的一个字节复制到 dst 物理地址处。
+fn copy_seg(src: usize, dst: usize) {
+    const BORROWED_PTE: usize = 256;
+    const KERNEL_SPACE_START: usize = 0xC0000000;
+    const PAGE_SIZE: usize = 0x1000;
+
+    let kernel_pt = kernel_page_table_mut();
+
+    // 保存原页表项
+    let ori_entry1 = kernel_pt[BORROWED_PTE].get();
+    let ori_entry2 = kernel_pt[BORROWED_PTE + 1].get();
+
+    // 将 src 和 dst 所在物理页映射到借用的 PTE
+    let flags = EntryFlags::PRESENT | EntryFlags::WRITE;
+    kernel_pt[BORROWED_PTE].set(Some(PFN::from_val(src / PAGE_SIZE)), flags);
+    kernel_pt[BORROWED_PTE + 1].set(Some(PFN::from_val(dst / PAGE_SIZE)), flags);
+
+    let addr_src = (KERNEL_SPACE_START + BORROWED_PTE * PAGE_SIZE + src % PAGE_SIZE) as *const u8;
+    let addr_dst =
+        (KERNEL_SPACE_START + (BORROWED_PTE + 1) * PAGE_SIZE + dst % PAGE_SIZE) as *mut u8;
+
+    // 刷新页表缓存
+    compat_flush_page_directory();
+
+    unsafe {
+        addr_dst.write_volatile(addr_src.read_volatile());
+    }
+
+    // 恢复原页表映射
+    kernel_pt[BORROWED_PTE].set(Some(ori_entry1.0), ori_entry1.1);
+    kernel_pt[BORROWED_PTE + 1].set(Some(ori_entry2.0), ori_entry2.1);
+    compat_flush_page_directory();
+}
+
+/// 对应 C++ 的 Utility::CopySeg2
+/// 通过用户页表的前两个 PTE（索引 0 和 1），
+/// 将 src 物理地址处的一个字节复制到 dst 物理地址处。
+fn copy_seg2(src: usize, dst: usize) {
+    const PAGE_SIZE: usize = 0x1000;
+
+    let user_pt = global_user_page_table();
+
+    // 保存原页表项（用户页表第一张的第 0 项和第 1 项）
+    let ori_entry1 = user_pt[0][0].get();
+    let ori_entry2 = user_pt[0][1].get();
+
+    // 将 src 和 dst 所在物理页映射到用户页表前两项
+    let flags = EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::USER;
+    user_pt[0][0].set(Some(PFN::from_val(src / PAGE_SIZE)), flags);
+    user_pt[0][1].set(Some(PFN::from_val(dst / PAGE_SIZE)), flags);
+
+    let addr_src = (src % PAGE_SIZE) as *const u8;
+    let addr_dst = (PAGE_SIZE + dst % PAGE_SIZE) as *mut u8;
+
+    // 刷新页表缓存
+    compat_flush_page_directory();
+
+    unsafe {
+        addr_dst.write_volatile(addr_src.read_volatile());
+    }
+
+    // 恢复原页表映射
+    user_pt[0][0].set(Some(ori_entry1.0), ori_entry1.1);
+    user_pt[0][1].set(Some(ori_entry2.0), ori_entry2.1);
+    compat_flush_page_directory();
+}
+
+/// 对应 C++ 的 phys_copy
+/// 逐字节将物理地址 from 处的 len 个字节复制到物理地址 to 处。
+#[no_mangle]
+pub extern "C" fn phys_copy(from: usize, to: usize, len: usize) {
+    for i in 0..len {
+        copy_seg(from + i, to + i);
     }
 }

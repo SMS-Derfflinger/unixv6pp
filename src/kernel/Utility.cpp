@@ -54,69 +54,7 @@ int Utility::StringLength(char* pString)
 	/* 返回字符串长度 */
 	return length;
 }
-#endif 
-
-void Utility::CopySeg2(unsigned long src, unsigned long des)
-{
-	PageTableEntry* userPageTable = (PageTableEntry*)Machine::Instance().GetUserPageTableArray();
-	
-
-	/*
-	 * 先保存原用户态第一页与第二页PageTableEntry，因为下面的操作
-	 * 将会将src所在页映射到0#目录表项，des映射到1#表项，最后进行copy
-	 */
-	unsigned long oriEntry1 = userPageTable[0].m_PageBaseAddress;
-	unsigned long oriEntry2 = userPageTable[1].m_PageBaseAddress;	
-
-	userPageTable[0].m_PageBaseAddress = src / PAGE_SIZE;
-	userPageTable[1].m_PageBaseAddress = des / PAGE_SIZE;
-
-	unsigned char* addressSrc = (unsigned char*)(src % PAGE_SIZE);	
-	//第二页virtual addess从4096开始
-	unsigned char* addressDes = (unsigned char*)(PAGE_SIZE + des % PAGE_SIZE);	
-	//需要刷新页表缓存
-	FlushPageDirectory();
-
-	*addressDes = *addressSrc;
-	
-	//恢复原页表映射
-	userPageTable[0].m_PageBaseAddress = oriEntry1;
-	userPageTable[1].m_PageBaseAddress = oriEntry2;
-	FlushPageDirectory();
-}
-
-void Utility::CopySeg(unsigned long src, unsigned long des)
-{
-	PageTableEntry* PageTable = Machine::Instance().GetKernelPageTable().m_Entrys;
-
-	/*
-	 * 先保存原用户态第一页与第二页PageTableEntry，因为下面的操作
-	 * 将会将src所在页映射到0#目录表项，des映射到1#表项，最后进行copy
-	 */
-	unsigned long oriEntry1 = PageTable[borrowedPTE].m_PageBaseAddress;
-	unsigned long oriEntry2 = PageTable[borrowedPTE + 1].m_PageBaseAddress;
-
-	PageTable[256].m_PageBaseAddress = src / PAGE_SIZE;
-	PageTable[257].m_PageBaseAddress = des / PAGE_SIZE;
-
-	unsigned char* addressSrc = (unsigned char*)(0xC0000000 + borrowedPTE * PAGE_SIZE + src % PAGE_SIZE);
-
-	unsigned char* addressDes = (unsigned char*)(0xC0000000 + (borrowedPTE + 1) * PAGE_SIZE + des % PAGE_SIZE);
-	//需要刷新页表缓存
-	FlushPageDirectory();
-
-	*addressDes = *addressSrc;
-
-	//恢复原页表映射
-	PageTable[borrowedPTE].m_PageBaseAddress = oriEntry1;
-	PageTable[(borrowedPTE + 1)].m_PageBaseAddress = oriEntry2;
-	FlushPageDirectory();
-}
-
-extern "C" void phys_copy(unsigned long from, unsigned long to, unsigned long len) {
-        while (len--)
-                Utility::CopySeg(from++, to++);
-}
+#endif
 
 short Utility::GetMajor(const short dev)
 {
