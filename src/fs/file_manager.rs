@@ -7,18 +7,19 @@ use crate::{
     constants::PosixError,
     dev::{
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
-        buffer_manager::{PPIPE, global_buffer_manager},
+        buffer_manager::{global_buffer_manager, PPIPE},
         device_manager::ROOTDEV,
     },
     fs::{
-        self, File, FileRef, Inode, InodeRef, InodeRefCompat, InodeRefGuard, InodeRefPutExt,
+        self,
         file::FileFlags,
         file_system::FileSystem,
-        inode::{InodeFlag, InodeMode, inoderef_leak},
+        inode::{inoderef_leak, InodeFlag, InodeMode},
+        File, FileRef, Inode, InodeRef, InodeRefCompat, InodeRefGuard, InodeRefPutExt,
     },
-    proc::{Channel, sleep, wakeup_all},
+    proc::{sleep, wakeup_all, Channel, Process},
     sync::SpinExt,
-    user::{Process, Userspace},
+    user::Userspace,
 };
 
 #[repr(u32)]
@@ -114,8 +115,9 @@ fn access_inode(inode: &Inode, mode: InodeMode) -> bool {
     }
 
     if uid() == 0 {
-        let exec_bits =
-            InodeMode::IEXEC.bits() | (InodeMode::IEXEC.bits() >> 3) | (InodeMode::IEXEC.bits() >> 6);
+        let exec_bits = InodeMode::IEXEC.bits()
+            | (InodeMode::IEXEC.bits() >> 3)
+            | (InodeMode::IEXEC.bits() >> 6);
         let has_exec = (inode.i_mode.bits() & exec_bits) != 0;
 
         if mode == InodeMode::IEXEC && !has_exec {
@@ -175,7 +177,12 @@ fn write_i(inode: &mut Inode) {
 trait InodeRefExt {
     fn has_access(&self, mode: InodeMode) -> bool;
     fn readblk(&self, lbn: LogicalBlock) -> Buffer;
-    fn search(&self, name: &[u8], create: bool, remove: bool) -> Result<Option<InodeRefGuard>, PosixError>;
+    fn search(
+        &self,
+        name: &[u8],
+        create: bool,
+        remove: bool,
+    ) -> Result<Option<InodeRefGuard>, PosixError>;
 }
 
 impl InodeRefExt for InodeRef {
@@ -188,7 +195,12 @@ impl InodeRefExt for InodeRef {
         self.lock().get_blk(lbn, &mut ra).unwrap()
     }
 
-    fn search(&self, name: &[u8], create: bool, remove: bool) -> Result<Option<InodeRefGuard>, PosixError> {
+    fn search(
+        &self,
+        name: &[u8],
+        create: bool,
+        remove: bool,
+    ) -> Result<Option<InodeRefGuard>, PosixError> {
         const DENTRY_SIZE: usize = size_of::<DirectoryEntry>();
         let mut count = self.lock().i_size as usize / DENTRY_SIZE;
         let mut offset = 0;
@@ -280,7 +292,11 @@ impl FileManager {
         }
     }
 
-    pub fn find(&self, mut path: &[u8], mode: DirSearchMode) -> Result<Option<InodeRef>, PosixError> {
+    pub fn find(
+        &self,
+        mut path: &[u8],
+        mode: DirSearchMode,
+    ) -> Result<Option<InodeRef>, PosixError> {
         let mut iref = if let Some(b'/') = path.first() {
             i_get(DevId(ROOTDEV), FileSystem::ROOTINO)?
         } else {

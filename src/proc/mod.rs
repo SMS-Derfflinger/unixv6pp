@@ -1,3 +1,7 @@
+mod process;
+
+pub use process::Process;
+
 /// A channel that sleepers can subscribe to.
 ///
 /// Used by sleep and wakeup family functions.

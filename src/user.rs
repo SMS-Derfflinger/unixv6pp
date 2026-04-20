@@ -5,49 +5,14 @@ use kernel_macros::define_class_compat;
 
 use crate::{
     constants::{PosixError, SIGMAX},
-    fs::{DirectoryEntry, IOParameter, Inode, InodeRef, InodeRefCompat, OpenFiles, inoderef_leak},
+    fs::{inoderef_leak, DirectoryEntry, IOParameter, Inode, InodeRef, InodeRefCompat, OpenFiles},
+    proc::Process,
 };
 
 #[derive(Clone, Copy)]
 pub struct Pointer(usize);
 
-pub struct Text;
 pub struct Terminal;
-
-#[repr(u32)]
-enum ProcessState {
-    SNULL= 0,
-    SSLEEP= 1,
-    SWAIT= 2,
-    SRUN= 3,
-    SIDL= 4,
-    SZOMB= 5,
-    SSTOP= 6,
-}
-
-#[repr(C)]
-pub struct Process {
-    uid: u16,
-    pid: u32,
-    ppid: u32,
-
-    addr: usize,
-    size: u32,
-    textp: *mut Text,
-    stat: ProcessState,
-    flag: u32,
-
-    pri: u32,
-    cpu: u32,
-    nice: u32,
-    time: u32,
-
-    wchan: usize,
-
-    sig: u32,
-    tty: *const Terminal,
-    sigmap: usize,
-}
 
 #[repr(C)]
 #[derive(Clone)]
@@ -155,9 +120,7 @@ impl Userspace {
         if self.euid == uid || self.is_root() {
             self.uid = uid;
             self.euid = uid;
-            unsafe {
-                (&mut *self.proc).uid = uid;
-            }
+            self.proc().setuid(uid);
         } else {
             self.error = Some(PosixError::EPERM);
         }
@@ -185,9 +148,7 @@ impl Userspace {
     }
 
     pub fn argdir(&self) -> &[u8] {
-        unsafe {
-            CStr::from_ptr(self.dirp as *const i8).to_bytes()
-        }
+        unsafe { CStr::from_ptr(self.dirp as *const i8).to_bytes() }
     }
 
     pub fn argdir_mut(&mut self) -> &mut [u8; 28] {
@@ -200,6 +161,10 @@ impl Userspace {
 
     pub fn set_cwd_parent(&mut self, parent: InodeRef) {
         self.cwd_parent = Some(inoderef_leak(parent));
+    }
+
+    pub fn proc(&self) -> &'static mut Process {
+        unsafe { &mut *self.proc }
     }
 }
 
