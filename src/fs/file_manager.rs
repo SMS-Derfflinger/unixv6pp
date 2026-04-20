@@ -4,7 +4,7 @@ use kernel_macros::define_class_compat;
 
 use crate::{
     compat::compat_get_time,
-    constants::PosixError,
+    constants::{PosixError, Signal},
     dev::{
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
         buffer_manager::{global_buffer_manager, PPIPE},
@@ -42,7 +42,6 @@ pub struct FileManager;
 
 extern "C" {
     fn Userspace_is_root() -> bool;
-    fn Process_psignal(proc: *mut Process, signal: i32);
 
     fn User_get_arg_() -> *mut [usize; 5];
     fn User_get_uid_() -> *mut u16;
@@ -419,9 +418,7 @@ impl FileManager {
             if inode.i_count < 2 {
                 inode.prele();
                 set_error(PosixError::EPIPE);
-                unsafe {
-                    Process_psignal(*User_get_procp_(), 13);
-                }
+                Userspace::get().proc().raise(Signal::SIGPIPE);
                 return;
             }
 

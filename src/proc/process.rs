@@ -146,14 +146,12 @@ impl Process {
         }
     }
 
-    pub fn raise(&mut self, signal: u32) -> KResult<()> {
-        let signal = Signal::try_from(signal)?;
-
+    pub fn raise(&mut self, signal: Signal) {
         crate::println_info!("{signal:?} triggered");
 
         // ???
         if signal == Signal::SIGKILL {
-            return Ok(());
+            return;
         }
 
         self.pending_signal = Some(signal);
@@ -165,7 +163,11 @@ impl Process {
         if self.stat == ProcessState::SWAIT {
             self.set_run();
         }
+    }
 
+    fn raise_raw(&mut self, signal: u32) -> KResult<()> {
+        let signal = Signal::try_from(signal)?;
+        self.raise(signal);
         Ok(())
     }
 
@@ -199,7 +201,7 @@ define_class_compat! {impl Process {
     }
 
     pub fn raise(&mut self, signal: u32) {
-        this.raise(signal).pass_to_user();
+        this.raise_raw(signal).pass_to_user();
     }
 
     pub fn set_nice(&mut self) {
