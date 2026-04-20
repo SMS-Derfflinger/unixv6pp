@@ -91,3 +91,9 @@ pub fn compat_swap_free(blkno: u32) {
         compat_swap_free(blkno);
     }
 }
+
+define_class_compat!{impl Utility {
+    pub fn panic(msg: *const i8) -> ! {
+        panic!("{:?}", unsafe { CStr::from_ptr(msg) })
+    }
+}}

@@ -2,11 +2,19 @@
 #ifndef DIAGNOSE_H
 #define DIAGNOSE_H
 
+#include "libyrosstd/stdarg.h"
+#include "libyrosstd/stdio.h"
+
+extern "C" {
+void _diagnose_trace_on();
+void _diagnose_trace_off();
+bool _diagnose_is_trace_on();
+void _diagnose_write_cstr(const char* str);
+void _diagnose_clear_screen();
+}
+
 class Diagnose
 {
-public:
-	static unsigned int ROWS;
-
 	/* static const member */
 	static const unsigned int COLUMNS = 80;
 	static const unsigned short COLOR = 0x0B00;	/* char in bright CYAN */
@@ -16,25 +24,30 @@ public:
 	Diagnose();
 	~Diagnose();
 
-	static void TraceOn();
-	static void TraceOff();
+	static void TraceOn() {
+        _diagnose_trace_on();
+    }
+	static void TraceOff() {
+        _diagnose_trace_off();
+    }
 
-	static void Write(const char* fmt, ...);
-	static void ClearScreen();
+	static void Write(const char* fmt, ...) {
+        if (false == _diagnose_is_trace_on())
+	    {
+		    return;
+	    }
 
-private:	
-	static void PrintInt(unsigned int value, int base);
-	static void NextLine();
-	static void WriteChar(const char ch);
+	    char buf[1024];
+	    va_list args;
+	    va_start(args, fmt);
+	    vsprintf(buf, fmt, args);
+	    va_end(args);
+	    _diagnose_write_cstr(buf);
+    }
 
-public:
-	static unsigned int		m_Row;
-	static unsigned int		m_Column;
-
-private:
-	static unsigned short*	m_VideoMemory;
-	/* Debug输出开关 */
-	static bool trace_on;
+	static void ClearScreen() {
+        _diagnose_clear_screen();
+    }
 };
 
 #endif

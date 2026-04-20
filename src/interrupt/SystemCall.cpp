@@ -5,6 +5,12 @@
 #include "TimeInterrupt.h"
 #include "Video.h"
 
+extern "C" {
+unsigned int _diagnose_rows();
+void _diagnose_enable_rows(unsigned int rows);
+void _diagnose_disable_rows();
+}
+
 
 /* 系统调用入口表的定义
  * 参照UNIX V6中sysent.c中对系统调用入口表sysent的定义 @line 2910 
@@ -509,29 +515,15 @@ int SystemCall::Sys_Trace()
 {
 	User& u = Kernel::Instance().GetUser();
 
-	if (Diagnose::ROWS == 0) /* if Diagnose not enabled */
+	if (_diagnose_rows() == 0) /* if Diagnose not enabled */
 	{
-		Diagnose::ROWS = User_get_arg()[0];	/* Diagnose类调试输出的总行数 */
-
-		/* 定位当前输出坐标 */
-		Diagnose::m_Row = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
-		Diagnose::m_Column = 0;
-
-		//CRT::ROWS = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
+		_diagnose_enable_rows(User_get_arg()[0]);	/* Diagnose类调试输出的总行数 */
 	}
 	else /* if enabled already */
 	{
-		Diagnose::ClearScreen();
-		/* 停止Diagnose类调试输出 */
-		Diagnose::ROWS = 0;
-		/* 定位当前输出坐标 */
-		Diagnose::m_Row = Diagnose::SCREEN_ROWS - Diagnose::ROWS;
-		Diagnose::m_Column = 0;
-
-		/* 字符设备输出使用整个屏幕所有行 */
-		//CRT::ROWS = Diagnose::SCREEN_ROWS;
+		_diagnose_disable_rows();	/* 停止Diagnose类调试输出 */
 	}
-	User_get_ar0()[User::EAX] = Diagnose::ROWS;
+	User_get_ar0()[User::EAX] = _diagnose_rows();
 
 	return 0;	/* GCC likes it ! */
 }
