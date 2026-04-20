@@ -503,28 +503,15 @@ void Process::PSig(struct pt_context* pContext)
 	User_get_procp()->Exit();
 }
 
-void Process::Nice()
-{
-	User& u = Kernel::Instance().GetUser();
-	int niceValue = User_get_arg()[0];
-
-	if (niceValue > 20)
-	{
-		niceValue = 20;
-	}
-	if (niceValue < 0 && !Userspace_is_root())
-	{
-		/* ��ϵͳ�����û�����Ϊ��������С��0�Ľ�������������ƫ��ֵ */
-		niceValue = 0;
-	}
-	this->p_nice = niceValue;
-}
-
 extern "C" {
 	void Process_send_signal(Process*);
+	void Process_set_nice(Process*);
 }
 
-void Process::Ssig()
-{
+void Process::Nice() {
+	Process_set_nice(this);
+}
+
+void Process::Ssig() {
 	Process_send_signal(this);
 }

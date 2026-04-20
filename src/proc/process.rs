@@ -30,7 +30,7 @@ pub struct Process {
 
     pri: u32,
     cpu: u32,
-    nice: u32,
+    nice: i32,
     time: u32,
 
     wchan: usize,
@@ -87,6 +87,18 @@ impl Process {
 
         Ok(old_handler)
     }
+
+    pub fn set_nice(&mut self, mut nice: i32) {
+        if nice > 20 {
+            nice = 20;
+        }
+
+        if nice < 0 && self.uid != 0 {
+            nice = 0;
+        }
+
+        self.nice = nice;
+    }
 }
 
 define_class_compat! {impl Process {
@@ -95,5 +107,10 @@ define_class_compat! {impl Process {
         let func = Userspace::get().args[1];
 
         this.send_signal(signal, func).pass_to_user();
+    }
+
+    pub fn set_nice(&mut self) {
+        let nice = Userspace::get().args[0] as i32;
+        this.set_nice(nice);
     }
 }}
