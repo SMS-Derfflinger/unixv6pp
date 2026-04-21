@@ -30,17 +30,6 @@ extern "C" void Userspace_init();
 extern "C" void* Userspace_before_fork();
 extern "C" void Userspace_after_fork(void*);
 
-/*
- * Sched() 和 Wait() 已迁移至 Rust (manager.rs)。
- * 进程表现在由 Rust 的 ProcessManager.procs 管理。
- */
-
-extern "C" void ProcessManager_sched();
-void ProcessManager::Sched()
-{
-	ProcessManager_sched();
-}
-
 extern "C" void ProcessManager_wait();
 void ProcessManager::Wait()
 {
@@ -75,24 +64,6 @@ extern "C" void ProcessManager_kill();
 void ProcessManager::Kill()
 {
 	ProcessManager_kill();
-}
-
-extern "C" int ProcessManager_new_proc();
-int ProcessManager::NewProc()
-{
-	return ProcessManager_new_proc();
-}
-
-extern "C" int ProcessManager_new_init_proc();
-int ProcessManager::NewInitProc()
-{
-	return ProcessManager_new_init_proc();
-}
-
-extern "C" void ProcessManager_setup_proc_zero();
-void ProcessManager::SetupProcessZero()
-{
-	ProcessManager_setup_proc_zero();
 }
 
 extern "C" void ProcessManager_xswap(Process* p, bool free_mem, int size);

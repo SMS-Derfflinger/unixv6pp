@@ -564,7 +564,7 @@ impl ProcessManager {
         }
     }
 
-    fn schedule() {
+    pub fn schedule() {
         loop {
             let pm = ProcessManager::get();
             let me = Userspace::get().proc();
@@ -657,6 +657,39 @@ impl ProcessManager {
         self.procs.push(child);
         pid
     }
+
+    pub fn setup_proc_zero(&mut self) {
+        const PPDA_ADDR: usize = 0x400000 - 0x1000;
+
+        // 0 号进程的内核栈在 main.cpp 的 main0() 中通过 KernelStack_new() 分配，
+        // 0 号进程是调度器（SSYS），永远运行在内核态，不需要通过 TSS esp0 切换栈。
+        let mut proc = Box::new(Process {
+            uid: 0,
+            pid: ProcessManager::assign_pid(),
+            ppid: 0,
+            addr: PPDA_ADDR,
+            size: 0x1000,
+            text: None,
+            stat: ProcessState::SRUN,
+            flag: SLOAD | SSYS,
+            pri: 0,
+            cpu: 0,
+            nice: 0,
+            time: 0,
+            wchan: 0,
+            pending_signal: None,
+            tty: core::ptr::null(),
+            sigmap: 0,
+            pages: None,
+            ctx: TaskContext::new(),
+            kstack: None,
+        });
+
+        Userspace_init();
+        Userspace::get().proc = &raw mut *proc;
+
+        self.procs.push(proc);
+    }
 }
 
 static TEMPORARY_STACK: [usize; 6] = [0; 6];
@@ -742,45 +775,6 @@ impl Stack {
 }
 
 define_class_compat! {impl ProcessManager {
-    pub fn setup_proc_zero() {
-        const PPDA_ADDR: usize = 0x400000 - 0x1000;
-
-        // 0 号进程的内核栈在 main.cpp 的 main0() 中通过 KernelStack_new() 分配，
-        // 0 号进程是调度器（SSYS），永远运行在内核态，不需要通过 TSS esp0 切换栈。
-        let mut proc = Box::new(Process {
-            uid: 0,
-            pid: ProcessManager::assign_pid(),
-            ppid: 0,
-            addr: PPDA_ADDR,
-            size: 0x1000,
-            text: None,
-            stat: ProcessState::SRUN,
-            flag: SLOAD | SSYS,
-            pri: 0,
-            cpu: 0,
-            nice: 0,
-            time: 0,
-            wchan: 0,
-            pending_signal: None,
-            tty: core::ptr::null(),
-            sigmap: 0,
-            pages: None,
-            ctx: TaskContext::new(),
-            kstack: None,
-        });
-
-        Userspace_init();
-        Userspace::get().proc = &raw mut *proc;
-
-        ProcessManager::get().procs.push(proc);
-    }
-
-    /// Sched() 的 Rust 实现 - 0# 进程的调度循环
-    /// 原 C++ 版本负责进程换入换出，现在直接使用 Rust 的 schedule() 循环
-    pub fn sched() {
-        ProcessManager::schedule();
-    }
-
     /// Wait() 的 Rust 实现 - 父进程等待子进程结束
     pub fn wait() {
         let pm = ProcessManager::get();
@@ -882,12 +876,6 @@ define_class_compat! {impl ProcessManager {
         let signal_num = Userspace::get().args[1] as u32;
         let signal = unsafe { core::mem::transmute::<u32, Signal>(signal_num) };
         pm.kill(pid, signal).pass_to_user();
-    }
-
-    /// NewProc() 的 Rust 实现 - 创建新进程并返回 pid
-    pub fn new_proc() -> i32 {
-        let pm = ProcessManager::get();
-        pm.new_proc_compat() as i32
     }
 
     pub fn new_init_proc() -> i32 {

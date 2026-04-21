@@ -15,8 +15,6 @@
 
 #include "libyrosstd/sys/types.h"
 
-bool isInit = false;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -215,155 +213,33 @@ extern "C" void Delay()
 }
 #endif
 
+extern "C" void rust_kernel_next();
 
-extern "C" void vesa_init(void* modeInfo);
-
-namespace vesa_compat {
-
-const uintptr_t VESA_SCREEN_VADDR = Machine::KERNEL_SPACE_START_ADDRESS + 128 * 1024 * 1024;
-
-struct VbeModeInfo {
-	uint16_t attributes;
-	uint8_t windowA;
-	uint8_t windowB;
-	uint16_t granularity;
-	uint16_t windowSize;
-	uint16_t segmentA;
-	uint16_t segmentB;
-	uint32_t winFuncPtr;
-	uint16_t pitch;
-	uint16_t width;
-	uint16_t height;
-	uint8_t wChar;
-	uint8_t yChar;
-	uint8_t planes;
-	uint8_t bpp;
-	uint8_t banks;
-	uint8_t memoryModel;
-	uint8_t bankSize;
-	uint8_t imagePages;
-	uint8_t reserved0;
-	uint8_t redMask;
-	uint8_t redPosition;
-	uint8_t greenMask;
-	uint8_t greenPosition;
-	uint8_t blueMask;
-	uint8_t bluePosition;
-	uint8_t reservedMask;
-	uint8_t reservedPosition;
-	uint8_t directColorAttributes;
-	uint32_t framebuffer;
-	uint32_t offScreenMemOff;
-	uint16_t offScreenMemSize;
-	uint8_t reserved1[206];
-} __packed;
-
+extern "C" void cpp_kernel_initialize()
+{
+	Kernel::Instance().Initialize();
 }
 
-extern "C" int splash();
+extern "C" void cpp_init_root_cdir()
+{
+	User_get_cdir() = InodeTable_get(DeviceManager::ROOTDEV, 1);
+	User_get_cdir()->i_flag &= (~Inode::ILOCK);
+}
+
+extern "C" void cpp_set_kernel_time(unsigned int value)
+{
+	Time::time = value;
+}
+
+extern "C" void cpp_enter_user_shell()
+{
+	MoveToUserStack();
+	__asm ("call *%%eax" :: "a"((unsigned long)ExecShell - 0xC0000000));
+}
 
 extern "C" void next()
 {
-
-#ifdef USE_VESA
-	    intptr_t vesaModeInfoAddr = Machine::KERNEL_SPACE_START_ADDRESS + 0x7e00;
-		auto& vesaModeInfo = * (vesa_compat::VbeModeInfo*) vesaModeInfoAddr;
-
-		Machine::Instance().InitVESAMemoryMap(
-			vesaModeInfo.framebuffer,
-			vesa_compat::VESA_SCREEN_VADDR,
-			vesaModeInfo.pitch * vesaModeInfo.height
-		);
-
-		vesa_init(&vesaModeInfo);
-
-#endif
-
-
-	//这个时候0M-4M的内存映射已经不被使用了，所以要重新映射用户态的页表，为用户态程序运行做好准备
-	//Machine::Instance().InitUserPageTable();
-	//FlushPageDirectory();
-
-
-	Machine::Instance().LoadTaskRegister();
-
-	/* 获取CMOS当前时间，设置系统时钟 */
-	struct SystemTime cTime;
-	CMOSTime::ReadCMOSTime(&cTime);
-	/* MakeKernelTime()计算出内核时间，从1970年1月1日0时至当前的秒数 */
-	Time::time = Utility::MakeKernelTime(&cTime);
-
-	/* 从CMOS中获取物理内存大小 */
-	unsigned short memSize = 0;	/* size in KB */
-	unsigned char lowMem, highMem;
-
-	/* 这里只是借用CMOSTime类中的ReadCMOSByte函数读取CMOS中物理内存大小信息 */
-	lowMem = CMOSTime::ReadCMOSByteLow();
-	highMem = CMOSTime::ReadCMOSByteHigh();
-	memSize = (highMem << 8) + lowMem;
-
-	/* 加上1MB以下物理内存区域，计算总内存容量，以字节为单位的内存大小 */
-	memSize += 1024; /* KB */
-	// PageManager::PHY_MEM_SIZE = memSize * 1024;
-	// UserPageManager::USER_PAGE_POOL_SIZE = PageManager::PHY_MEM_SIZE - UserPageManager::USER_PAGE_POOL_START_ADDR;
-
-	asm volatile("sti");
-
-	/* 真正操作系统内核初始化逻辑	 */
-	Kernel::Instance().Initialize();
-	Kernel::Instance().GetProcessManager().SetupProcessZero();
-	isInit = true;
-
-	Kernel::Instance().GetFileSystem().LoadSuperBlock();
-	Diagnose::Write("Unix V6++ FileSystem Loaded......OK\n");
-
-	Diagnose::Write("test \n");
-
-	/*  初始化用户当前工作目录，以便NameI()正常工作 */
-
-	User& us = Kernel::Instance().GetUser();
-	User_get_cdir() = InodeTable_get(DeviceManager::ROOTDEV, 1);
-	//us.u_cdir = g_InodeTable.IGet(DeviceManager::ROOTDEV, FileSystem::ROOTINO);
-	User_get_cdir()->i_flag &= (~Inode::ILOCK);
-
-	/* 打开TTy设备 */
-	int fd_tty = lib_open("/dev/tty1", File::FREAD);
-
-	if ( fd_tty != 0 )
-	{
-		Utility::Panic("STDIN Error!");
-	}
-	fd_tty = lib_open("/dev/tty1", File::FWRITE);
-	if ( fd_tty != 1 )
-	{
-                Utility::Panic("STDOUT Error!");
-	}
-	Diagnose::TraceOn();
-
-
-#ifdef ENABLE_SPLASH
-	// show splash.
-	// splash();
-#endif
-
-
-	unsigned char* runtimeSrc = (unsigned char*)runtime;
-	unsigned char* runtimeDst = 0x00000000;
-	for (unsigned int i = 0; i < (unsigned long)ExecShell - (unsigned long)runtime; i++)
-	{
-		*runtimeDst++ = *runtimeSrc++;
-	}
-
-    //us.u_MemoryDescriptor.Release();
-
-	int pid = Kernel::Instance().GetProcessManager().NewInitProc();     /* 0#进程创建1#进程 */
-	if( pid <= 0 )
-	{
-		Utility::Panic("NewInitProc failed");
-	}
-
-	/* 0#进程执行Sched()，成为系统中永远运行在核心态的唯一进程 */
-	Kernel::Instance().GetProcessManager().Sched();
+	rust_kernel_next();
 }
 
 
