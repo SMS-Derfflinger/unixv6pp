@@ -5,3 +5,4 @@ mod swapper_manager;
 mod zone;
 
 pub use page::{PageList, PhysPage, PAGE_SIZE};
+pub use page_manager::USER_PAGE_MANAGER;

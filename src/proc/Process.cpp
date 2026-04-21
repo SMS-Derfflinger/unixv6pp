@@ -63,17 +63,6 @@ void Process::SetPri()
 	this->p_pri = priority;
 }
 
-bool Process::IsSleepOn(unsigned long chan)
-{
-	/* ��鵱ǰ����˯��ԭ���Ƿ�Ϊchan */
-	if( this->p_wchan == chan
-		&& (this->p_stat == Process::SWAIT || this->p_stat == Process::SSLEEP) )
-	{
-		return true;
-	}
-	return false;
-}
-
 extern "C" void _sleep(unsigned long chan, int pri) {
         User_get_procp()->Sleep(chan, pri);
 }

@@ -1,10 +1,12 @@
+use core::num::NonZero;
+
 use kernel_macros::define_class_compat;
 
-use crate::{compat::compat_user_exit, constants::{PosixError, SIGMAX, Signal}, serial::KResult, user::Userspace};
+use crate::{compat::compat_user_exit, constants::{PosixError, SIGMAX, Signal}, fs::{InodeRef, InodeRefCompat}, mm::{PhysPage, USER_PAGE_MANAGER}, serial::KResult, sync::SpinExt, user::Userspace};
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProcessState {
+pub enum ProcessState {
     SNULL = 0,
     SSLEEP = 1,
     SWAIT = 2,
@@ -23,31 +25,84 @@ struct TrapFrame {
     xss: usize,
 }
 
-pub struct Text;
+#[repr(C)]
+pub struct Text {
+    disk_addr: Option<NonZero<u32>>,
+    pages: Option<&'static mut PhysPage>,
+    len_bytes: usize,
+    inode: InodeRef,
+    refcount: usize,
+    in_mem_count: usize,
+}
+
+impl Text {
+    pub fn get(&mut self) {
+        self.refcount += 1;
+        self.in_mem_count += 1;
+    }
+
+    pub fn put_mem(&mut self) {
+        assert_ne!(self.in_mem_count, 0);
+        self.in_mem_count -= 1;
+
+        if self.in_mem_count != 0 {
+            return;
+        }
+
+        let pages = self.pages.take().unwrap();
+        unsafe {
+            USER_PAGE_MANAGER.lock().dealloc(pages);
+        }
+    }
+
+    pub fn put(&mut self) {
+        if self.in_mem_count != 0 {
+            self.put_mem();
+        }
+
+        assert_ne!(self.refcount, 0);
+        self.refcount -= 1;
+
+        if self.refcount != 0 {
+            return;
+        }
+
+        extern "C" {
+            fn compat_swap_free(blkno: u32);
+        }
+
+        let Some(blkno) = self.disk_addr.take() else { return };
+        unsafe {
+            compat_swap_free(blkno.get());
+        }
+    }
+}
+
 pub struct Terminal;
 
 #[repr(C)]
 pub struct Process {
-    uid: u16,
-    pid: u32,
-    ppid: u32,
+    pub uid: u16,
+    pub pid: u32,
+    pub ppid: u32,
 
-    addr: usize,
-    size: u32,
-    textp: *mut Text,
-    stat: ProcessState,
-    flag: u32,
+    pub addr: usize,
+    pub size: u32,
+    pub textp: *mut Text,
+    pub stat: ProcessState,
+    pub flag: u32,
 
-    pri: u32,
-    cpu: u32,
-    nice: i32,
-    time: u32,
+    pub pri: u32,
+    pub cpu: u32,
+    pub nice: i32,
+    pub time: u32,
 
-    wchan: usize,
+    pub wchan: usize,
 
-    pending_signal: Option<Signal>,
-    tty: *const Terminal,
-    sigmap: usize,
+    pub pending_signal: Option<Signal>,
+    pub tty: *const Terminal,
+    pub sigmap: usize,
+    pub pages: Option<&'static mut PhysPage>,
 }
 
 trait KResultExt {
@@ -181,6 +236,15 @@ impl Process {
         }
 
         self.nice = nice;
+    }
+
+    pub fn is_sleeping_on(&self, chan: usize) -> bool {
+        match self.stat {
+            ProcessState::SWAIT | ProcessState::SSLEEP => {}
+            _ => return false,
+        }
+
+        self.wchan == chan
     }
 }
 
