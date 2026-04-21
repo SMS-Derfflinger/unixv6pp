@@ -1,7 +1,12 @@
 use core::{arch::asm, mem::MaybeUninit, ptr};
 
 use crate::{
-    interrupt::set_time, machine::asm::enable_interrupts, println, proc::ProcessManager, vesa::{VbeModeInfo, vesa_init}
+    interrupt::set_time,
+    kernel::kernel::rust_kernel_initialize,
+    machine::asm::enable_interrupts,
+    println,
+    proc::ProcessManager,
+    vesa::{vesa_init, VbeModeInfo},
 };
 
 use super::{
@@ -71,7 +76,6 @@ unsafe extern "C" {
 
     fn FileSystem_load_super_block() -> bool;
 
-    fn cpp_kernel_initialize();
     fn cpp_init_root_cdir();
     fn cpp_set_kernel_time(value: u32);
 
@@ -92,10 +96,8 @@ pub extern "C" fn rust_kernel_next() {
 
     enable_interrupts();
 
-    unsafe {
-        cpp_kernel_initialize();
-        ProcessManager::get().setup_proc_zero();
-    }
+    rust_kernel_initialize();
+    ProcessManager::get().setup_proc_zero();
 
     load_file_system();
     println!("Unix V6++ FileSystem Loaded......OK");

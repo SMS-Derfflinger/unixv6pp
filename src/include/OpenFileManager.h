@@ -3,7 +3,6 @@
 
 #include "INode.h"
 #include "File.h"
-#include "FileSystem.h"
 
 extern "C" File* OpenFileTable_f_alloc();
 extern "C" void OpenFileTable_f_close(File*);

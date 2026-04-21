@@ -1,4 +1,5 @@
 #include "SystemCall.h"
+#include "CharDevice.h"
 #include "User.h"
 #include "Kernel.h"
 
@@ -104,7 +105,7 @@ int SystemCall::Sys_Stty()
 		return 0;
 	}
 	short dev = Inode_get_dev(pInode);
-	Kernel::Instance().GetDeviceManager().GetCharDevice(dev).SgTTy(dev, pTTy);
+        g_ConsoleDevice.SgTTy(dev, pTTy);
 
 	return 0;	/* GCC likes it ! */
 }
@@ -129,7 +130,7 @@ int SystemCall::Sys_Gtty()
 		return 0;
 	}
 	short dev = Inode_get_dev(pInode);
-	Kernel::Instance().GetDeviceManager().GetCharDevice(dev).SgTTy(dev, pTTy);
+        g_ConsoleDevice.SgTTy(dev, pTTy);
 
 	return 0;	/* GCC likes it ! */
 }

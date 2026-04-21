@@ -9,6 +9,7 @@
 #include "Assembly.h"
 #include "Kernel.h"
 #include "DMA.h"
+#include "OpenFileManager.h"
 #include "CMOSTime.h"
 #include "./Lib.h"
 
@@ -146,7 +147,7 @@ void main0(void)
 	asm volatile(
 		"mov %0, %%ebp \n\t \
 		 mov %0, %%esp \n\t \
-		 jmp $0x8, $next"
+		 jmp $0x8, $rust_kernel_next"
 		: : "r"(stack)
 	);
 
@@ -212,22 +213,11 @@ extern "C" void Delay()
 }
 #endif
 
-extern "C" void rust_kernel_next();
-
-extern "C" void cpp_kernel_initialize()
-{
-	Kernel::Instance().Initialize();
-}
-
 extern "C" void cpp_init_root_cdir()
 {
-	User_get_cdir() = InodeTable_get(DeviceManager::ROOTDEV, 1);
+        // ROOTDEV
+	User_get_cdir() = InodeTable_get(0, 1);
 	User_get_cdir()->i_flag &= (~Inode::ILOCK);
-}
-
-extern "C" void next()
-{
-	rust_kernel_next();
 }
 
 

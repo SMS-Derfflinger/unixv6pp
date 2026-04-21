@@ -10,7 +10,7 @@ mod interrupt;
 mod kernel;
 mod loader;
 pub mod machine;
-mod mm;
+pub mod mm;
 mod print;
 pub mod proc;
 mod serial;

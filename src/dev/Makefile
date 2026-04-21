@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
 
-objs := BlockDevice.o CharDevice.o DeviceManager.o
+objs := BlockDevice.o CharDevice.o
 
 include $(abs_srctree)/scripts/Makefile
 

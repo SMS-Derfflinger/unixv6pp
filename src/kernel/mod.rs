@@ -1,5 +1,6 @@
 pub mod diagnose;
-mod next;
+mod init;
+mod kernel;
 mod splash;
 mod syscall;
 mod utility;

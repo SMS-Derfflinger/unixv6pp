@@ -25,13 +25,6 @@ ProcessManager g_ProcessManager;
  * 设备管理、高速缓存管理全局manager
  */
 BufferManager g_BufferManager;
-DeviceManager g_DeviceManager;
-
-/*
- * 文件系统相关全局manager
- */
-FileSystem g_FileSystem;
-FileManager g_FileManager;
 
 Kernel::Kernel()
 {
@@ -100,9 +93,6 @@ extern "C" void cpp_exception_page_fault(struct pt_regs* regs, struct pte_contex
 
 void Kernel::InitMemory()
 {
-	this->m_KernelPageManager = &g_KernelPageManager;
-	this->m_UserPageManager = &g_UserPageManager;
-
 	Diagnose::Write("Initilize Memory...");
 	Diagnose::Write("Ok.\n");
 
@@ -125,50 +115,29 @@ void Kernel::InitProcess()
 void Kernel::InitBuffer()
 {
 	this->m_BufferManager = &g_BufferManager;
-	this->m_DeviceManager = &g_DeviceManager;
 
 	Diagnose::Write("Initialize Buffer...");
 	this->GetBufferManager().Initialize();
-	Diagnose::Write("OK.\n");
-
-	Diagnose::Write("Initialize Device Manager...");
-	this->GetDeviceManager().Initialize();
 	Diagnose::Write("OK.\n");
 }
 
 void Kernel::InitFileSystem()
 {
-	this->m_FileSystem = &g_FileSystem;
-	this->m_FileManager = &g_FileManager;
-
 	Diagnose::Write("Initialize File System...");
-	this->GetFileSystem().Initialize();
 	Diagnose::Write("OK.\n");
 
 	Diagnose::Write("Initialize File Manager...");
-	this->GetFileManager().Initialize();
 	Diagnose::Write("OK.\n");
 }
 
-extern "C" int init_serial();
-
-void Kernel::Initialize()
+extern "C" int cpp_swapper_manager_initialize()
 {
-	init_serial();
-	InitMemory();
-	InitProcess();
-	InitBuffer();
-	InitFileSystem();
+	return g_SwapperManager.Initialize();
 }
 
-KernelPageManager& Kernel::GetKernelPageManager()
+extern "C" void cpp_process_manager_initialize()
 {
-	return *(this->m_KernelPageManager);
-}
-
-UserPageManager& Kernel::GetUserPageManager()
-{
-	return *(this->m_UserPageManager);
+	g_ProcessManager.Initialize();
 }
 
 ProcessManager& Kernel::GetProcessManager()
@@ -184,21 +153,6 @@ SwapperManager& Kernel::GetSwapperManager()
 BufferManager& Kernel::GetBufferManager()
 {
 	return *(this->m_BufferManager);
-}
-
-DeviceManager& Kernel::GetDeviceManager()
-{
-	return *(this->m_DeviceManager);
-}
-
-FileSystem& Kernel::GetFileSystem()
-{
-	return *(this->m_FileSystem);
-}
-
-FileManager& Kernel::GetFileManager()
-{
-	return *(this->m_FileManager);
 }
 
 User& Kernel::GetUser()

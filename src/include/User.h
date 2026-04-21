@@ -5,7 +5,6 @@
 #include "Process.h"
 #include "File.h"
 #include "INode.h"
-#include "FileManager.h"
 #include "libyrosstd/string.h"
 
 /*
@@ -190,18 +189,6 @@ inline Inode* &User_get_cdir() {
 extern "C" Inode* *User_get_pdir_();
 inline Inode* &User_get_pdir() {
 	auto& ref = *User_get_pdir_();
-	return ref;
-}
-
-extern "C" DirectoryEntry *User_get_dent_();
-inline DirectoryEntry &User_get_dent() {
-	auto& ref = *User_get_dent_();
-	return ref;
-}
-
-extern "C" char (*User_get_dbuf_())[DirectoryEntry::DIRSIZ];
-inline char (&User_get_dbuf())[DirectoryEntry::DIRSIZ] {
-	auto& ref = *User_get_dbuf_();
 	return ref;
 }
 

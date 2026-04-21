@@ -82,11 +82,6 @@ pub fn global_device_manager() -> &'static DeviceManager {
 }
 
 #[no_mangle]
-pub extern "C" fn device_manager_initialize() {
-    let _ = global_device_manager();
-}
-
-#[no_mangle]
 pub extern "C" fn device_manager_n_block_devices() -> i32 {
     global_device_manager().n_block_devices() as i32
 }
