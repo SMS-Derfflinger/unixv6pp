@@ -260,7 +260,7 @@ struct VbeModeInfo {
 
 }
 
-int splash();
+extern "C" int splash();
 
 extern "C" void next()
 {

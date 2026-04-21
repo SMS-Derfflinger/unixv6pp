@@ -400,15 +400,13 @@ pub fn mark_input_begin() -> bool {
     VESA_CONSOLE.with_mut(VesaConsole::mark_input_begin)
 }
 
-#[no_mangle]
-pub extern "C" fn vesa_clear(color: i32) {
+pub fn vesa_clear(color: i32) {
     VESA_CONSOLE.with_mut(|console| {
         console.clear_screen(color as u32);
     });
 }
 
-#[no_mangle]
-pub extern "C" fn vesa_put_pixel(x: i32, y: i32, color: i32) {
+pub fn vesa_put_pixel(x: i32, y: i32, color: i32) {
     if x < 0 || y < 0 {
         return;
     }
