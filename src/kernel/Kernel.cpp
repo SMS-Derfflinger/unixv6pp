@@ -5,7 +5,6 @@
 #include "Utility.h"
 #include "OpenFileManager.h"
 #include "Regs.h"
-#include "TimeInterrupt.h"
 
 Kernel Kernel::instance;
 

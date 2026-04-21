@@ -1,10 +1,7 @@
 use core::{arch::asm, mem::MaybeUninit, ptr};
 
 use crate::{
-    machine::asm::enable_interrupts,
-    println,
-    proc::ProcessManager,
-    vesa::{vesa_init, VbeModeInfo},
+    interrupt::set_time, machine::asm::enable_interrupts, println, proc::ProcessManager, vesa::{VbeModeInfo, vesa_init}
 };
 
 use super::{
@@ -142,8 +139,8 @@ fn init_kernel_time() {
     let mut time = MaybeUninit::<SystemTime>::uninit();
     unsafe {
         _cmos_read_time(time.as_mut_ptr());
-        cpp_set_kernel_time(_make_kernel_time(time.as_ptr()));
     }
+    set_time(_make_kernel_time(time.as_ptr()));
 }
 
 fn read_memory_size() {

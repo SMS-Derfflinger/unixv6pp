@@ -283,7 +283,6 @@ unsafe extern "C" {
     safe fn KeyboardInterruptEntrance();
     safe fn DiskInterruptEntrance();
     safe fn MasterIRQ7();
-    #[link_name = "_ZN4Time21TimeInterruptEntranceEv"]
     safe fn TimeInterruptEntrance();
     #[link_name = "_ZN10SystemCall18SystemCallEntranceEv"]
     safe fn SystemCallEntrance();

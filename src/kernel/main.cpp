@@ -9,7 +9,6 @@
 #include "Assembly.h"
 #include "Kernel.h"
 #include "DMA.h"
-#include "TimeInterrupt.h"
 #include "CMOSTime.h"
 #include "./Lib.h"
 
@@ -224,11 +223,6 @@ extern "C" void cpp_init_root_cdir()
 {
 	User_get_cdir() = InodeTable_get(DeviceManager::ROOTDEV, 1);
 	User_get_cdir()->i_flag &= (~Inode::ILOCK);
-}
-
-extern "C" void cpp_set_kernel_time(unsigned int value)
-{
-	Time::time = value;
 }
 
 extern "C" void next()

@@ -2,13 +2,17 @@
 #include "User.h"
 #include "Kernel.h"
 #include "Regs.h"
-#include "TimeInterrupt.h"
 #include "Video.h"
 
 extern "C" {
 unsigned int _diagnose_rows();
 void _diagnose_enable_rows(unsigned int rows);
 void _diagnose_disable_rows();
+unsigned int get_time();
+void time_set(unsigned int value);
+unsigned int time_tout();
+void time_set_tout(unsigned int value);
+unsigned long time_tout_address();
 }
 
 
@@ -369,7 +373,7 @@ int SystemCall::Sys_ChDir()
 int SystemCall::Sys_GTime()
 {
 	User& u = Kernel::Instance().GetUser();
-	User_get_ar0()[User::EAX] = Time::time;
+	User_get_ar0()[User::EAX] = get_time();
 
 	return 0;	/* GCC likes it ! */
 }
@@ -490,7 +494,7 @@ int SystemCall::Sys_Stime()
 	/* 仅超级用户才具有设置系统时间的权限 */
 	if (Userspace_is_root())
 	{
-		Time::time = User_get_ar0()[User::EAX];
+		time_set(User_get_ar0()[User::EAX]);
 	}
 
 	return 0;	/* GCC likes it ! */
@@ -594,7 +598,7 @@ int SystemCall::Sys_Sslep()
 
 	X86Assembly::CLI();
 
-	unsigned int wakeTime = Time::time + User_get_arg()[0];	/* sleep(second) */
+	unsigned int wakeTime = get_time() + User_get_arg()[0];	/* sleep(second) */
 
 	/*
 	 * 对   if ( Time::tout <= Time::time || Time::tout > wakeTime )  中判断条件的解释：
@@ -614,13 +618,15 @@ int SystemCall::Sys_Sslep()
 	 *
 	 * 现在的闹钟服务正确，执行sleep(0)的进程不会入睡更不会使tout值出现错误。
 	 */
-	while( wakeTime > Time::time )
+	while( wakeTime > get_time() )
 	{
-		if ( Time::tout <= Time::time || Time::tout > wakeTime )
+		unsigned int now = get_time();
+		unsigned int tout = time_tout();
+		if ( tout <= now || tout > wakeTime )
 		{
-			Time::tout = wakeTime;
+			time_set_tout(wakeTime);
 		}
-		User_get_procp()->Sleep((unsigned long)&Time::tout, ProcessManager::PSLEP);
+		User_get_procp()->Sleep(time_tout_address(), ProcessManager::PSLEP);
 	}
 
 	X86Assembly::STI();

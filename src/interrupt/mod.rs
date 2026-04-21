@@ -1,9 +1,13 @@
 mod exception;
 mod interrupt;
+mod time;
 
 use core::arch::asm;
 
 use crate::dev::io_port::IOPort;
+
+pub use interrupt::send_master_eoi;
+pub use time::set_time;
 
 pub const KERNEL_MODE: u32 = 0x0;
 pub const USER_MODE: u32 = 0x3;
@@ -58,12 +62,6 @@ impl PteContext {
 
     pub fn from_user_mode(&self) -> bool {
         self.xcs & USER_MODE == USER_MODE
-    }
-}
-
-pub fn send_master_eoi() {
-    unsafe {
-        IOPort::out_byte(PIC_MASTER_IO_PORT_1, PIC_EOI);
     }
 }
 

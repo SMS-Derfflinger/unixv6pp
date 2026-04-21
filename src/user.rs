@@ -49,9 +49,9 @@ pub struct Userspace {
     pub dirp: *mut u8,
 
     /// User time elapsed
-    utime: u32,
+    pub utime: u32,
     /// Sys time elapsed
-    stime: u32,
+    pub stime: u32,
 
     /// Sum of all children's user time
     children_utime: u32,

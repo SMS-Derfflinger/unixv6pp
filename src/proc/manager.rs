@@ -700,6 +700,20 @@ impl ProcessManager {
 
         self.procs.push(proc);
     }
+
+    pub fn recalc_pri(&mut self) {
+        const SCHED_MAGIC: u32 = 20;
+        const MAX_TIME: u32 = 127;
+        const PUSER: i32 = 100;
+
+        for proc in &mut self.procs {
+            proc.time = (proc.time + 1).min(MAX_TIME);
+            proc.cpu = proc.cpu.saturating_sub(SCHED_MAGIC);
+            if proc.pri > PUSER {
+                proc.set_pri();
+            }
+        }
+    }
 }
 
 static TEMPORARY_STACK: [usize; 6] = [0; 6];
