@@ -4,10 +4,10 @@ mod page_table;
 
 use core::arch::asm;
 use core::mem::size_of;
-use core::ptr::NonNull;
 
 use crate::sync::SuperCell;
 
+use kernel_macros::define_class_compat;
 pub use page_table::{
     global_user_page_table, kernel_page_table_mut, switch_user_struct, EntryFlags, PageTable,
     PageTableEntry,
@@ -213,7 +213,7 @@ impl Idt {
         self.descriptors[number] = GateDescriptor::new(handler, gate_type);
     }
 
-    fn init_gates(&mut self, handlers: &MachineIdtHandlers) {
+    fn init_gates(&mut self) {
         self.init();
 
         for number in 0..DESCRIPTOR_COUNT {
@@ -232,60 +232,61 @@ impl Idt {
             }
         }
 
-        self.set_gate(0, handlers.divide_error, 0x0f);
-        self.set_gate(1, handlers.debug, 0x0f);
-        self.set_gate(2, handlers.nmi, 0x0f);
-        self.set_gate(3, handlers.breakpoint, 0x0f);
-        self.set_gate(4, handlers.overflow, 0x0f);
-        self.set_gate(5, handlers.bound, 0x0f);
-        self.set_gate(6, handlers.invalid_opcode, 0x0f);
-        self.set_gate(7, handlers.device_not_available, 0x0f);
-        self.set_gate(8, handlers.double_fault, 0x0f);
-        self.set_gate(9, handlers.coprocessor_segment_overrun, 0x0f);
-        self.set_gate(10, handlers.invalid_tss, 0x0f);
-        self.set_gate(11, handlers.segment_not_present, 0x0f);
-        self.set_gate(12, handlers.stack_segment_error, 0x0f);
-        self.set_gate(13, handlers.general_protection, 0x0f);
-        self.set_gate(14, handlers.page_fault, 0x0f);
-        self.set_gate(16, handlers.coprocessor_error, 0x0f);
-        self.set_gate(17, handlers.alignment_check, 0x0f);
-        self.set_gate(18, handlers.machine_check, 0x0f);
-        self.set_gate(19, handlers.simd_exception, 0x0f);
+        self.set_gate(0, entry_address(DivideErrorEntrance), 0x0f);
+        self.set_gate(1, entry_address(DebugEntrance), 0x0f);
+        self.set_gate(2, entry_address(NMIEntrance), 0x0f);
+        self.set_gate(3, entry_address(BreakpointEntrance), 0x0f);
+        self.set_gate(4, entry_address(OverflowEntrance), 0x0f);
+        self.set_gate(5, entry_address(BoundEntrance), 0x0f);
+        self.set_gate(6, entry_address(InvalidOpcodeEntrance), 0x0f);
+        self.set_gate(7, entry_address(DeviceNotAvailableEntrance), 0x0f);
+        self.set_gate(8, entry_address(DoubleFaultEntrance), 0x0f);
+        self.set_gate(9, entry_address(CoprocessorSegmentOverrunEntrance), 0x0f);
+        self.set_gate(10, entry_address(InvalidTSSEntrance), 0x0f);
+        self.set_gate(11, entry_address(SegmentNotPresentEntrance), 0x0f);
+        self.set_gate(12, entry_address(StackSegmentErrorEntrance), 0x0f);
+        self.set_gate(13, entry_address(GeneralProtectionEntrance), 0x0f);
+        self.set_gate(14, entry_address(PageFaultEntrance), 0x0f);
+        self.set_gate(16, entry_address(CoprocessorErrorEntrance), 0x0f);
+        self.set_gate(17, entry_address(AlignmentCheckEntrance), 0x0f);
+        self.set_gate(18, entry_address(MachineCheckEntrance), 0x0f);
+        self.set_gate(19, entry_address(SIMDExceptionEntrance), 0x0f);
 
-        self.set_gate(0x20, handlers.time, 0x0e);
-        self.set_gate(0x21, handlers.keyboard, 0x0e);
-        self.set_gate(0x2e, handlers.disk, 0x0e);
-        self.set_gate(0x80, handlers.system_call, 0x0f);
-        self.set_gate(0x27, handlers.master_irq7, 0x0e);
+        self.set_gate(0x20, entry_address(TimeInterruptEntrance), 0x0e);
+        self.set_gate(0x21, entry_address(KeyboardInterruptEntrance), 0x0e);
+        self.set_gate(0x2e, entry_address(DiskInterruptEntrance), 0x0e);
+        self.set_gate(0x80, entry_address(SystemCallEntrance), 0x0f);
+        self.set_gate(0x27, entry_address(MasterIRQ7), 0x0e);
     }
 }
 
-#[repr(C)]
-pub struct MachineIdtHandlers {
-    divide_error: u32,
-    debug: u32,
-    nmi: u32,
-    breakpoint: u32,
-    overflow: u32,
-    bound: u32,
-    invalid_opcode: u32,
-    device_not_available: u32,
-    double_fault: u32,
-    coprocessor_segment_overrun: u32,
-    invalid_tss: u32,
-    segment_not_present: u32,
-    stack_segment_error: u32,
-    general_protection: u32,
-    page_fault: u32,
-    coprocessor_error: u32,
-    alignment_check: u32,
-    machine_check: u32,
-    simd_exception: u32,
-    time: u32,
-    keyboard: u32,
-    disk: u32,
-    system_call: u32,
-    master_irq7: u32,
+unsafe extern "C" {
+    safe fn DivideErrorEntrance();
+    safe fn DebugEntrance();
+    safe fn NMIEntrance();
+    safe fn BreakpointEntrance();
+    safe fn OverflowEntrance();
+    safe fn BoundEntrance();
+    safe fn InvalidOpcodeEntrance();
+    safe fn DeviceNotAvailableEntrance();
+    safe fn DoubleFaultEntrance();
+    safe fn CoprocessorSegmentOverrunEntrance();
+    safe fn InvalidTSSEntrance();
+    safe fn SegmentNotPresentEntrance();
+    safe fn StackSegmentErrorEntrance();
+    safe fn GeneralProtectionEntrance();
+    safe fn PageFaultEntrance();
+    safe fn CoprocessorErrorEntrance();
+    safe fn AlignmentCheckEntrance();
+    safe fn MachineCheckEntrance();
+    safe fn SIMDExceptionEntrance();
+    safe fn KeyboardInterruptEntrance();
+    safe fn DiskInterruptEntrance();
+    safe fn MasterIRQ7();
+    #[link_name = "_ZN4Time21TimeInterruptEntranceEv"]
+    safe fn TimeInterruptEntrance();
+    #[link_name = "_ZN10SystemCall18SystemCallEntranceEv"]
+    safe fn SystemCallEntrance();
 }
 
 #[repr(C, packed)]
@@ -374,15 +375,11 @@ static GDT: SuperCell<Gdt> = SuperCell::new(Gdt::empty());
 static IDT: SuperCell<Idt> = SuperCell::new(Idt::empty());
 static TSS: SuperCell<TaskStateSegment> = SuperCell::new(TaskStateSegment::empty());
 
-#[no_mangle]
-pub extern "C" fn _init_idt(handlers: *const MachineIdtHandlers) {
-    let handlers = unsafe {
-        NonNull::new(handlers as *mut MachineIdtHandlers)
-            .expect("_init_idt null handlers")
-            .as_ref()
-    };
-    IDT.with_mut(|idt| idt.init_gates(handlers));
-}
+define_class_compat! {impl Machine {
+    pub fn init_idt() {
+        IDT.with_mut(|idt| idt.init_gates());
+    }
+}}
 
 #[no_mangle]
 pub extern "C" fn _init_gdt() {
@@ -473,5 +470,9 @@ fn address_of_mut<T>(value: &mut T) -> usize {
 }
 
 fn function_address(function: fn()) -> u32 {
+    function as *const () as usize as u32
+}
+
+fn entry_address(function: extern "C" fn()) -> u32 {
     function as *const () as usize as u32
 }

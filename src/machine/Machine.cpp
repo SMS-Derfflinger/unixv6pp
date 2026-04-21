@@ -1,7 +1,4 @@
 #include "Machine.h"
-#include "Exception.h"
-#include "TimeInterrupt.h"
-#include "SystemCall.h"
 
 Machine Machine::instance;
 
@@ -38,7 +35,7 @@ void _load_idt();
 void _load_gdt();
 void _load_task_register();
 void _enable_page_protection(const void* page_directory);
-void _init_idt(const MachineIDTHandlers* handlers);
+void Machine_init_idt();
 void _init_gdt();
 void _init_page_directory();
 void _init_user_page_table();
@@ -74,34 +71,7 @@ extern "C" void KeyboardInterruptEntrance();
 
 void Machine::InitIDT()
 {
-	MachineIDTHandlers handlers = {
-		(unsigned int)Exception::DivideErrorEntrance,
-		(unsigned int)Exception::DebugEntrance,
-		(unsigned int)Exception::NMIEntrance,
-		(unsigned int)Exception::BreakpointEntrance,
-		(unsigned int)Exception::OverflowEntrance,
-		(unsigned int)Exception::BoundEntrance,
-		(unsigned int)Exception::InvalidOpcodeEntrance,
-		(unsigned int)Exception::DeviceNotAvailableEntrance,
-		(unsigned int)Exception::DoubleFaultEntrance,
-		(unsigned int)Exception::CoprocessorSegmentOverrunEntrance,
-		(unsigned int)Exception::InvalidTSSEntrance,
-		(unsigned int)Exception::SegmentNotPresentEntrance,
-		(unsigned int)Exception::StackSegmentErrorEntrance,
-		(unsigned int)Exception::GeneralProtectionEntrance,
-		(unsigned int)Exception::PageFaultEntrance,
-		(unsigned int)Exception::CoprocessorErrorEntrance,
-		(unsigned int)Exception::AlignmentCheckEntrance,
-		(unsigned int)Exception::MachineCheckEntrance,
-		(unsigned int)Exception::SIMDExceptionEntrance,
-		(unsigned int)Time::TimeInterruptEntrance,
-		(unsigned int)KeyboardInterruptEntrance,
-		(unsigned int)DiskInterruptEntrance,
-		(unsigned int)SystemCall::SystemCallEntrance,
-		(unsigned int)MasterIRQ7
-	};
-
-	_init_idt(&handlers);
+	Machine_init_idt();
 }
 
 void Machine::InitGDT()

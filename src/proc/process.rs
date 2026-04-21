@@ -399,6 +399,8 @@ impl Process {
             self.pri = pri;
         }
 
+        // crate::println_debug!("pid{} sleep kernel chan={:#x}", self.pid, chan.channel_addr());
+
         ProcessManager::get().switch();
     }
 
@@ -407,6 +409,7 @@ impl Process {
     /// # Returns
     /// Whether we have pending signals.
     pub fn sleep_user(&mut self, chan: usize, pri: u32) -> bool {
+        // crate::println_debug!("sleep user chan={chan:#x}");
         if self.should_process() {
             return true;
         }

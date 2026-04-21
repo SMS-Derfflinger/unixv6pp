@@ -2,7 +2,7 @@ use core::fmt::{self, Write};
 
 use eonix_spin::Spin;
 
-use crate::{serial::serial_write, sync::SpinExt as _};
+use crate::{serial::serial_write, sync::{IrqContext, SpinExt as _}};
 
 struct Console;
 static CONSOLE: Spin<Console> = Spin::new(Console);
@@ -16,7 +16,7 @@ impl Write for Console {
 
 #[doc(hidden)]
 pub fn do_print(args: fmt::Arguments) {
-    CONSOLE.lock().write_fmt(args).ok();
+    CONSOLE.lock_ctx::<IrqContext>().write_fmt(args).ok();
 }
 
 #[macro_export]

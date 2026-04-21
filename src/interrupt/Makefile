@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
 
-objs := Exception.o SystemCall.o TimeInterrupt.o
+objs := SystemCall.o TimeInterrupt.o
 
 include $(abs_srctree)/scripts/Makefile
 
