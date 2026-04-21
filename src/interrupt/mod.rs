@@ -1,4 +1,5 @@
-#![allow(dead_code)]
+mod exception;
+mod interrupt;
 
 use core::arch::asm;
 

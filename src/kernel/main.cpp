@@ -231,12 +231,6 @@ extern "C" void cpp_set_kernel_time(unsigned int value)
 	Time::time = value;
 }
 
-extern "C" void cpp_enter_user_shell()
-{
-	MoveToUserStack();
-	__asm ("call *%%eax" :: "a"((unsigned long)ExecShell - 0xC0000000));
-}
-
 extern "C" void next()
 {
 	rust_kernel_next();

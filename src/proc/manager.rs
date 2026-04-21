@@ -202,6 +202,16 @@ impl ProcessManager {
         }
     }
 
+    pub fn compat_raise_non_scheduler(&mut self, signal: Signal) {
+        for proc in &mut self.procs {
+            if proc.pid > 1 {
+                continue;
+            }
+
+            proc.raise(signal);
+        }
+    }
+
     pub fn send_to_swap(
         &mut self,
         proc: &mut Process,

@@ -1,0 +1,65 @@
+use core::arch::asm;
+
+use crate::{
+    dev::{ata_driver::ata_handler, io_port::IOPort},
+    interrupt::{PtContext, PtRegs, PIC_EOI, PIC_MASTER_IO_PORT_1},
+    interrupt_entry,
+    machine::asm::{disable_interrupts, enable_interrupts},
+    proc::ProcessManager,
+    sync::IrqGuard,
+    tty::keyboard::keyboard_handle_interrupt,
+};
+
+pub fn send_master_eoi() {
+    unsafe {
+        IOPort::out_byte(PIC_MASTER_IO_PORT_1, PIC_EOI);
+    }
+}
+
+pub unsafe fn switch_to_kernel_segments() {
+    unsafe {
+        asm!(
+            "movw $0x10, %dx",
+            "movw %dx, %ds",
+            "movw %dx, %es",
+            options(att_syntax),
+        );
+    }
+}
+
+pub fn schedule_on_user_return(context: *mut PtContext) {
+    let Some(context) = (unsafe { context.as_ref() }) else {
+        return;
+    };
+
+    if !context.from_user_mode() {
+        return;
+    }
+
+    loop {
+        let ctx = IrqGuard::disable_save();
+        disable_interrupts();
+
+        if ProcessManager::get().runrun <= 0 {
+            break;
+        }
+
+        ProcessManager::get().switch();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn disk_interrupt_body(_regs: *mut PtRegs, context: *mut PtContext) {
+    ata_handler();
+    schedule_on_user_return(context);
+}
+
+#[no_mangle]
+pub extern "C" fn keyboard_interrupt_body(_regs: *mut PtRegs, context: *mut PtContext) {
+    keyboard_handle_interrupt();
+    send_master_eoi();
+    schedule_on_user_return(context);
+}
+
+interrupt_entry!(DiskInterruptEntrance, disk_interrupt_body);
+interrupt_entry!(KeyboardInterruptEntrance, keyboard_interrupt_body);

@@ -1,8 +1,6 @@
 #include "Machine.h"
 #include "Exception.h"
 #include "TimeInterrupt.h"
-#include "DiskInterrupt.h"
-#include "KeyboardInterrupt.h"
 #include "SystemCall.h"
 
 Machine Machine::instance;
@@ -71,6 +69,8 @@ void Machine::LoadTaskRegister()
 }
 
 extern "C" void MasterIRQ7();
+extern "C" void DiskInterruptEntrance();
+extern "C" void KeyboardInterruptEntrance();
 
 void Machine::InitIDT()
 {
@@ -95,8 +95,8 @@ void Machine::InitIDT()
 		(unsigned int)Exception::MachineCheckEntrance,
 		(unsigned int)Exception::SIMDExceptionEntrance,
 		(unsigned int)Time::TimeInterruptEntrance,
-		(unsigned int)KeyboardInterrupt::KeyboardInterruptEntrance,
-		(unsigned int)DiskInterrupt::DiskInterruptEntrance,
+		(unsigned int)KeyboardInterruptEntrance,
+		(unsigned int)DiskInterruptEntrance,
 		(unsigned int)SystemCall::SystemCallEntrance,
 		(unsigned int)MasterIRQ7
 	};

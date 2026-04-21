@@ -2,6 +2,8 @@ use core::arch::asm;
 
 use eonix_sync_base::LazyLock;
 
+use crate::constants::Signal;
+use crate::proc::ProcessManager;
 use crate::sync::SuperCell;
 use crate::tty::{tty_flush, tty_input_byte};
 
@@ -31,31 +33,19 @@ const M_DOWN_CAPSLOCK: u32 = 0x400;
 const M_DOWN_SCRLOCK: u32 = 0x800;
 
 const KEYMAP: [u8; 0x58] = [
-    0, 0x1b, b'1', b'2', b'3', b'4', b'5', b'6',
-    b'7', b'8', b'9', b'0', b'-', b'=', 0x08, 0x09,
-    b'q', b'w', b'e', b'r', b't', b'y', b'u', b'i',
-    b'o', b'p', b'[', b']', b'\n', 0, b'a', b's',
-    b'd', b'f', b'g', b'h', b'j', b'k', b'l', b';',
-    b'\'', b'`', 0, b'\\', b'z', b'x', b'c', b'v',
-    b'b', b'n', b'm', b',', b'.', b'/', 0, b'*',
-    0, b' ', 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, b'7',
-    b'8', b'9', b'-', b'4', b'5', b'6', b'+', b'1',
-    b'2', b'3', b'0', b'.', 0, 0, 0, 0,
+    0, 0x1b, b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'0', b'-', b'=', 0x08, 0x09,
+    b'q', b'w', b'e', b'r', b't', b'y', b'u', b'i', b'o', b'p', b'[', b']', b'\n', 0, b'a', b's',
+    b'd', b'f', b'g', b'h', b'j', b'k', b'l', b';', b'\'', b'`', 0, b'\\', b'z', b'x', b'c', b'v',
+    b'b', b'n', b'm', b',', b'.', b'/', 0, b'*', 0, b' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    b'7', b'8', b'9', b'-', b'4', b'5', b'6', b'+', b'1', b'2', b'3', b'0', b'.', 0, 0, 0, 0,
 ];
 
 const SHIFT_KEYMAP: [u8; 0x58] = [
-    0, 0x1b, b'!', b'@', b'#', b'$', b'%', b'^',
-    b'&', b'*', b'(', b')', b'_', b'+', 0x08, 0x09,
-    b'q', b'w', b'e', b'r', b't', b'y', b'u', b'i',
-    b'o', b'p', b'{', b'}', b'\n', 0, b'a', b's',
-    b'd', b'f', b'g', b'h', b'j', b'k', b'l', b':',
-    b'"', b'~', 0, b'|', b'z', b'x', b'c', b'v',
-    b'b', b'n', b'm', b'<', b'>', b'?', 0, b'*',
-    0, b' ', 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, b'-', 0, 0, 0, b'+', 0,
-    0, 0, 0, 0x7f, 0, 0, 0, 0,
+    0, 0x1b, b'!', b'@', b'#', b'$', b'%', b'^', b'&', b'*', b'(', b')', b'_', b'+', 0x08, 0x09,
+    b'q', b'w', b'e', b'r', b't', b'y', b'u', b'i', b'o', b'p', b'{', b'}', b'\n', 0, b'a', b's',
+    b'd', b'f', b'g', b'h', b'j', b'k', b'l', b':', b'"', b'~', 0, b'|', b'z', b'x', b'c', b'v',
+    b'b', b'n', b'm', b'<', b'>', b'?', 0, b'*', 0, b' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, b'-', 0, 0, 0, b'+', 0, 0, 0, 0, 0x7f, 0, 0, 0, 0,
 ];
 
 struct KeyboardState {
@@ -214,7 +204,7 @@ impl KeyboardState {
                 if self.ctrl_down() {
                     if ch == b'c' {
                         tty_flush();
-                        unsafe { keyboard_signal_ctrl_c() };
+                        ProcessManager::get().compat_raise_non_scheduler(Signal::SIGINT);
                         ch = 0;
                     } else {
                         ch = ch - b'a' + 1;
@@ -253,10 +243,6 @@ impl KeyboardState {
 
 static KEYBOARD: LazyLock<SuperCell<KeyboardState>> =
     LazyLock::new(|| SuperCell::new(KeyboardState::new()));
-
-unsafe extern "C" {
-    fn keyboard_signal_ctrl_c();
-}
 
 #[no_mangle]
 pub extern "C" fn keyboard_handle_interrupt() {
