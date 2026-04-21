@@ -1,12 +1,17 @@
 use core::ffi::CStr;
 
 use alloc::boxed::Box;
+use eonix_mm::paging::PFN;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::{PosixError, SIGMAX, Signal},
-    fs::{DirectoryEntry, IOParameter, Inode, InodeRef, InodeRefCompat, OpenFiles, inoderef_leak},
+    compat::compat_flush_page_directory,
+    constants::{PosixError, Signal, SIGMAX},
+    fs::{inoderef_leak, DirectoryEntry, IOParameter, InodeRef, InodeRefCompat, OpenFiles},
+    machine::{global_user_page_table, EntryFlags, PageTable, PageTableEntry},
+    mm::PAGE_SIZE,
     proc::Process,
+    serial::KResult,
 };
 
 #[derive(Clone, Copy)]
@@ -17,8 +22,12 @@ pub struct Terminal;
 #[repr(C)]
 #[derive(Clone)]
 pub struct MemoryDescriptor {
-    /// Opaque for now...
-    data: [usize; 6],
+    pub user_pts: Option<Box<[PageTable; 2]>>,
+    pub text: usize,
+    pub text_len: usize,
+    pub data: usize,
+    pub data_len: usize,
+    pub stack_len: usize,
 }
 
 #[repr(C)]
@@ -28,8 +37,8 @@ pub struct Userspace {
     /// Save esp and ebp AGAIN
     ssav: [Pointer; 2],
 
-    proc: *mut Process,
-    mem: MemoryDescriptor,
+    pub proc: *mut Process,
+    pub mem: MemoryDescriptor,
 
     ar0: *mut u32,
 
@@ -58,7 +67,7 @@ pub struct Userspace {
     signal_pending: bool,
 
     /// Inode of our working directory
-    cwd: Option<InodeRefCompat>,
+    pub cwd: Option<InodeRefCompat>,
     // cwd: InodeRef,
     /// Inode of our pwd's parent
     pub cwd_parent: Option<InodeRefCompat>,
@@ -74,10 +83,10 @@ pub struct Userspace {
     /// Userspace error code
     pub error: Option<PosixError>,
 
-    uid: u16,
-    gid: u16,
-    euid: u16,
-    egid: u16,
+    pub uid: u16,
+    pub gid: u16,
+    pub euid: u16,
+    pub egid: u16,
 
     pub open_files: OpenFiles,
     pub ioparam: IOParameter,
@@ -116,7 +125,7 @@ impl Userspace {
         false
     }
 
-    fn setuid(&mut self, uid: u16, suid: u16) {
+    fn setuid(&mut self, uid: u16, _suid: u16) {
         if self.euid == uid || self.is_root() {
             self.uid = uid;
             self.euid = uid;
@@ -130,7 +139,7 @@ impl Userspace {
         ((self.uid as u32) << 16) | ((self.euid as u32) & 0xff)
     }
 
-    fn setgid(&mut self, gid: u16, sgid: u16) {
+    fn setgid(&mut self, gid: u16, _sgid: u16) {
         if self.egid == gid || self.is_root() {
             self.gid = gid;
             self.egid = gid;
@@ -171,20 +180,159 @@ impl Userspace {
         self.signals[signal as usize] = func;
     }
 
+    pub fn clear_signal_handlers(&mut self) {
+        for signal in &mut self.signals {
+            *signal = 0;
+        }
+    }
+
     pub fn get_signal_handler(&self, signal: Signal) -> usize {
         self.signals[signal as usize]
     }
 }
 
 impl MemoryDescriptor {
-    pub const fn new() -> Self {
-        Self { data: [0; 6] }
+    pub const USER_SPACE_SIZE: usize = 0x800000;
+    pub const USER_SPACE_START: usize = 0;
+    pub const USER_SPACE_END: usize = Self::USER_SPACE_START + Self::USER_SPACE_SIZE;
+
+    pub const fn new_empty() -> Self {
+        Self {
+            user_pts: None,
+            text: 0,
+            text_len: 0,
+            data: 0,
+            data_len: 0,
+            stack_len: 0,
+        }
+    }
+
+    pub fn new(user_pts: Option<Box<[PageTable; 2]>>) -> Self {
+        Self {
+            user_pts,
+            text: 0,
+            text_len: 0,
+            data: 0,
+            data_len: 0,
+            stack_len: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        PAGE_SIZE + self.text_len + self.data_len + self.stack_len
+    }
+
+    pub fn end(&self) -> usize {
+        self.text + self.len()
+    }
+
+    pub fn overflow(&self) -> bool {
+        self.end() > Self::USER_SPACE_SIZE
+    }
+
+    fn user_ptes(&mut self) -> impl Iterator<Item = &mut PageTableEntry> {
+        self.user_pts.as_mut().unwrap()
+            .iter_mut().map(|tbl| tbl.iter_mut()).flatten()
+    }
+
+    fn clear_user(&mut self) {
+        for pte in self.user_ptes() {
+            pte.set(None, EntryFlags::USER);
+        }
+    }
+
+    /// Map len bytes from physical address pfn -> virtual address addr
+    ///
+    /// # Returns
+    /// The pfn following the last mapped page.
+    fn map_range(&mut self, addr: usize, len: usize, mut pfn: PFN, rw: bool) -> PFN {
+        let addr = addr - Self::USER_SPACE_START;
+        let pt_idx = addr >> 12;
+        let cnt = (len + PAGE_SIZE - 1) / PAGE_SIZE;
+
+        let mut flags = EntryFlags::PRESENT | EntryFlags::USER;
+        if rw {
+            flags |= EntryFlags::WRITE;
+        }
+
+        for pte in self.user_ptes().skip(pt_idx).take(cnt) {
+            pte.set(Some(pfn), flags);
+            pfn = pfn + 1;
+        }
+        pfn
+    }
+
+    pub fn map_to_actual_pt(&mut self, proc: &Process) {
+        let text = proc.text.as_ref().unwrap();
+        let text_pfn = text.pfn().unwrap();
+        let data_pfn = proc.addr >> 12;
+
+        self.do_map_to_actual_pt(usize::from(text_pfn), data_pfn)
+    }
+
+    fn do_map_to_actual_pt(&mut self, text_pfn: usize, data_pfn: usize) {
+        let real_pt = global_user_page_table();
+
+        let ptes = real_pt.iter_mut().map(|pt| pt.iter_mut()).flatten();
+
+        for (pte, fake_pte) in ptes.zip(self.user_ptes()) {
+            let (mut pfn, flags) = fake_pte.get();
+
+            if !flags.contains(EntryFlags::PRESENT) {
+                pte.set(None, EntryFlags::empty());
+                continue;
+            }
+
+            if flags.contains(EntryFlags::WRITE) {
+                pfn = pfn + data_pfn;
+            } else {
+                pfn = pfn + text_pfn;
+            }
+
+            pte.set(Some(pfn), flags);
+        }
+
+        real_pt[0][0].set(
+            Some(PFN::from_val(0)),
+            EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::USER,
+        );
+
+        compat_flush_page_directory();
+    }
+
+    pub fn establish_user(&mut self, proc: &Process) -> KResult<()> {
+        let text = proc.text.as_ref().unwrap();
+        let text_pfn = text.pfn().unwrap();
+        let data_pfn = proc.addr >> 12;
+
+        self.do_establish_user(usize::from(text_pfn), data_pfn)
+    }
+
+    fn do_establish_user(&mut self, text_pfn: usize, data_pfn: usize) -> KResult<()> {
+        if self.overflow() {
+            crate::println_warn!("Process address space overflow");
+            return Err(PosixError::ENOMEM);
+        }
+
+        self.clear_user();
+
+        self.map_range(self.text, self.text_len, PFN::from_val(0), false);
+        let data_end = self.map_range(self.data, self.data_len, PFN::from_val(1), true);
+        self.map_range(
+            Self::USER_SPACE_END - self.stack_len,
+            self.stack_len,
+            data_end,
+            true,
+        );
+        self.do_map_to_actual_pt(text_pfn, data_pfn);
+
+        Ok(())
     }
 }
 
 macro_rules! define_user_compat {
 { $( $rust_ident:ident: $type:ty => $c_ident:ident := $init:expr; )* } => {
-    struct SaveHandle {
+    pub struct SaveHandle {
         $(
             $rust_ident: $type,
         )*
@@ -250,7 +398,7 @@ define_user_compat! {
     };
     dentry: DirectoryEntry => get_dent_ := DirectoryEntry::new();
     cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
-    mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
+    mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new_empty();
     ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
     proc: *mut Process => get_procp_ := core::ptr::null_mut();
     cwd: Option<InodeRefCompat> => get_cdir_ := None;

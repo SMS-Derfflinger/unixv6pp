@@ -27,6 +27,9 @@ cmd_cargo = cd $(abs_srctree) && CARGO_TARGET_DIR=$(rust-output-dir) cargo +nigh
 quiet_cmd_rustc = RUSTC
 cmd_rustc = $(call expand_cmd,cargo,rustc) $(RUSTCFLAGS)
 
+quiet_cmd_check = CHECK
+cmd_check = $(call expand_cmd,cargo,check) $(RUSTCFLAGS)
+
 RUSTCFLAGS = \
 	--manifest-path Cargo.toml \
 	--target i686-none.json \
@@ -41,8 +44,11 @@ endif
 $(rust-target-dir)/librust_kernel.a: $(rust-preqs)
 	$(call cmd,rustc)
 
-PHONY += rust
+PHONY += rust check
 rust: $(rust-target-dir)/librust_kernel.a
+
+check:
+	$(call cmd,check)
 
 kernel.bin: kernel.exe
 	$(CROSS_COMPILE)objcopy -O binary $< $@

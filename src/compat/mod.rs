@@ -1,9 +1,10 @@
-use core::{ffi::CStr, pin::Pin, ptr::NonNull};
+use core::ffi::CStr;
 
-use alloc::{borrow::ToOwned, boxed::Box};
+use alloc::boxed::Box;
+use eonix_mm::address::{Addr, PAddr};
 use kernel_macros::define_class_compat;
 
-use crate::{fs::InodeRefCompat, user::Userspace};
+use crate::user::Userspace;
 
 pub fn compat_flush_page_directory() {
     unsafe {
@@ -72,3 +73,13 @@ define_class_compat! {impl Utils{
         }
     }
 }}
+
+pub fn compat_phys_copy(from: PAddr, to: PAddr, len: usize) {
+    extern "C" {
+        fn phys_copy(from: usize, to: usize, len: usize);
+    }
+
+    unsafe {
+        phys_copy(from.addr(), to.addr(), len);
+    }
+}

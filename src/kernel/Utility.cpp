@@ -104,6 +104,11 @@ void Utility::CopySeg(unsigned long src, unsigned long des)
 	FlushPageDirectory();
 }
 
+extern "C" void phys_copy(unsigned long from, unsigned long to, unsigned long len) {
+        while (len--)
+                Utility::CopySeg(from++, to++);
+}
+
 short Utility::GetMajor(const short dev)
 {
 	short major;

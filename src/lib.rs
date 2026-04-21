@@ -7,7 +7,7 @@ mod constants;
 mod dev;
 mod fs;
 mod loader;
-mod machine;
+pub mod machine;
 mod mm;
 mod print;
 pub mod proc;

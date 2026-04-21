@@ -1,8 +1,32 @@
-use core::num::NonZero;
+use core::{
+    num::NonZero,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+};
 
+use alloc::boxed::Box;
+use eonix_mm::{
+    address::{Addr, PAddr},
+    paging::{Folio, PFN},
+};
 use kernel_macros::define_class_compat;
 
-use crate::{compat::compat_user_exit, constants::{PosixError, SIGMAX, Signal}, fs::{InodeRef, InodeRefCompat}, mm::{PhysPage, USER_PAGE_MANAGER}, serial::KResult, sync::SpinExt, user::Userspace};
+use crate::{
+    compat::compat_user_exit,
+    constants::Signal,
+    dev::buffer::PhysicalBlock,
+    fs::{InodeRef, OpenFiles, GLOBAL_OPEN_FILE_TABLE},
+    machine::asm::{disable_interrupts, enable_interrupts},
+    mm::{PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
+    proc::{
+        context::TaskContext,
+        manager::{ProcessManager, SLOAD, SSWAP},
+        Channel,
+    },
+    serial::KResult,
+    sync::SpinExt,
+    user::Userspace,
+};
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,7 +41,7 @@ pub enum ProcessState {
 }
 
 #[repr(C)]
-struct TrapFrame {
+pub struct TrapFrame {
     eip: usize,
     xcs: usize,
     eflags: usize,
@@ -27,16 +51,80 @@ struct TrapFrame {
 
 #[repr(C)]
 pub struct Text {
-    disk_addr: Option<NonZero<u32>>,
+    pub disk_addr: PhysicalBlock,
+    pub len_bytes: usize,
     pages: Option<&'static mut PhysPage>,
-    len_bytes: usize,
     inode: InodeRef,
     refcount: usize,
     in_mem_count: usize,
 }
 
+pub struct TextRef(NonNull<Text>);
+
+unsafe impl Send for TextRef {}
+unsafe impl Sync for TextRef {}
+
+impl DerefMut for TextRef {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.0.as_mut() }
+    }
+}
+
+impl Deref for TextRef {
+    type Target = Text;
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl Drop for TextRef {
+    fn drop(&mut self) {
+        self.put();
+    }
+}
+
+impl TextRef {
+    pub fn clone(&mut self) -> Self {
+        self.get();
+        Self(self.0)
+    }
+}
+
 impl Text {
-    pub fn get(&mut self) {
+    pub fn new(inode: InodeRef, len: usize) -> TextRef {
+        inode.lock().i_count += 1;
+
+        extern "C" {
+            fn compat_swap_alloc(len: usize) -> PhysicalBlock;
+        }
+
+        let aligned_size = len.next_power_of_two();
+        let order = aligned_size.trailing_zeros() - 12;
+
+        let text = Box::new(Text {
+            disk_addr: unsafe { compat_swap_alloc(len) },
+            pages: USER_PAGE_MANAGER.lock().alloc_order(order),
+            len_bytes: len,
+            inode,
+            refcount: 1,
+            in_mem_count: 1,
+        });
+
+        let text_ref = TextRef(NonNull::from_ref(&text));
+        let _ = Box::into_raw(text);
+
+        text_ref
+    }
+
+    pub fn addr(&self) -> Option<usize> {
+        self.pfn().map(|pfn| PAddr::from(pfn).addr())
+    }
+
+    pub fn pfn(&self) -> Option<PFN> {
+        self.pages.as_ref().map(|pages| pages.pfn())
+    }
+
+    fn get(&mut self) {
         self.refcount += 1;
         self.in_mem_count += 1;
     }
@@ -55,7 +143,7 @@ impl Text {
         }
     }
 
-    pub fn put(&mut self) {
+    fn put(&mut self) {
         if self.in_mem_count != 0 {
             self.put_mem();
         }
@@ -71,9 +159,12 @@ impl Text {
             fn compat_swap_free(blkno: u32);
         }
 
-        let Some(blkno) = self.disk_addr.take() else { return };
         unsafe {
-            compat_swap_free(blkno.get());
+            compat_swap_free(self.disk_addr.0);
+        }
+
+        unsafe {
+            let _ = Box::from_raw(&raw mut *self);
         }
     }
 }
@@ -88,7 +179,7 @@ pub struct Process {
 
     pub addr: usize,
     pub size: u32,
-    pub textp: *mut Text,
+    pub text: Option<TextRef>,
     pub stat: ProcessState,
     pub flag: u32,
 
@@ -103,7 +194,11 @@ pub struct Process {
     pub tty: *const Terminal,
     pub sigmap: usize,
     pub pages: Option<&'static mut PhysPage>,
+    pub ctx: TaskContext,
 }
+
+unsafe impl Send for Process {}
+unsafe impl Sync for Process {}
 
 trait KResultExt {
     fn pass_to_user(self);
@@ -192,13 +287,33 @@ impl Process {
     const PUSER: u32 = 100;
 
     pub fn set_run(&mut self) {
-        extern "C" {
-            fn compat_set_run(proc: &mut Process);
+        let pm = ProcessManager::get();
+
+        self.wchan = 0;
+        self.stat = ProcessState::SRUN;
+
+        if self.pri < pm.cur_pri {
+            pm.runrun += 1;
         }
 
-        unsafe {
-            compat_set_run(self);
+        if pm.run_out != 0 && (self.flag & SLOAD) == 0 {
+            pm.run_out = 0;
+            pm.wakeup_runout();
         }
+    }
+
+    pub fn set_pri(&mut self) {
+        let mut pri = self.cpu / 16 + Self::PUSER + self.nice as u32;
+
+        if pri > 255 {
+            pri = 255;
+        }
+
+        if pri > ProcessManager::get().cur_pri {
+            ProcessManager::get().runrun += 1;
+        }
+
+        self.pri = pri;
     }
 
     pub fn raise(&mut self, signal: Signal) {
@@ -245,6 +360,180 @@ impl Process {
         }
 
         self.wchan == chan
+    }
+
+    pub fn sleep_kernel(&mut self, chan: impl Channel, pri: i32) {
+        disable_interrupts();
+        self.wchan = chan.channel_addr();
+        self.stat = ProcessState::SSLEEP;
+        self.pri = pri as u32;
+        enable_interrupts();
+
+        ProcessManager::get().switch();
+    }
+
+    /// Interruptible sleep.
+    ///
+    /// # Returns
+    /// Whether we have pending signals.
+    pub fn sleep_user(&mut self, chan: usize, pri: u32) -> bool {
+        if self.should_process() {
+            return true;
+        }
+
+        disable_interrupts();
+        self.wchan = chan;
+        self.stat = ProcessState::SWAIT;
+        self.pri = pri;
+        enable_interrupts();
+
+        if ProcessManager::get().run_in != 0 {
+            ProcessManager::get().run_in = 0;
+            ProcessManager::get().wakeup_runin();
+        }
+
+        ProcessManager::get().switch();
+
+        self.should_process()
+    }
+
+    pub fn expand(&mut self, newlen: usize) {
+        let oldlen = self.size as usize;
+        self.size = newlen as u32;
+
+        let old_addr = self.addr;
+
+        let aligned_size = newlen.next_power_of_two();
+        let order = aligned_size.trailing_zeros() - 12;
+
+        let Some(new_page) = USER_PAGE_MANAGER.lock().alloc_order(order) else {
+            ProcessManager::get().send_to_swap(self, true, NonZero::new(oldlen));
+
+            self.flag |= SSWAP;
+            ProcessManager::get().switch();
+            return;
+        };
+
+        let new_addr = new_page.phys().addr();
+        self.addr = new_addr;
+
+        let copylen = oldlen.min(newlen);
+        unsafe {
+            (new_addr as *mut u8).copy_from_nonoverlapping(old_addr as *const u8, copylen);
+        }
+
+        let page = self.pages.replace(new_page);
+        unsafe {
+            USER_PAGE_MANAGER.lock().dealloc(page.unwrap());
+        }
+
+        Userspace::get().mem.map_to_actual_pt(self);
+    }
+
+    pub fn sstack(&mut self) -> KResult<()> {
+        let change = PAGE_SIZE;
+        let mem = &mut Userspace::get().mem;
+        mem.stack_len += change;
+
+        let newlen = PAGE_SIZE + mem.data_len + mem.stack_len;
+        mem.establish_user(self)?;
+
+        self.expand(newlen);
+        let mut dst = self.addr + newlen;
+        let mut cnt = mem.stack_len - change;
+
+        while cnt != 0 {
+            cnt -= 1;
+            dst -= 1;
+            unsafe {
+                (dst as *mut u8).copy_from((dst - change) as *mut u8, 1);
+            }
+        }
+
+        mem.map_to_actual_pt(self);
+        Ok(())
+    }
+
+    pub fn sbrk(&mut self, brk: usize) -> KResult<usize> {
+        let mem = &mut Userspace::get().mem;
+        let newlen = brk - mem.data;
+
+        if brk == 0 {
+            return Ok(mem.data + mem.data_len);
+        }
+
+        mem.establish_user(self)?;
+
+        if newlen == mem.data_len {
+            return Ok(brk);
+        }
+
+        let change = newlen as isize - mem.data_len as isize;
+        mem.data_len = newlen;
+        let newlen = newlen + PAGE_SIZE + mem.stack_len;
+
+        if change < 0 {
+            let mut dst = self.addr + newlen - mem.stack_len;
+            let mut cnt = mem.stack_len;
+
+            while cnt != 0 {
+                cnt -= 1;
+                unsafe {
+                    (dst as *mut u8).copy_from((dst as isize - change) as *const u8, 1);
+                }
+                dst += 1;
+            }
+            self.expand(newlen);
+        } else {
+            self.expand(newlen);
+            let mut dst = self.addr + newlen;
+            let mut cnt = mem.stack_len;
+
+            while cnt != 0 {
+                cnt -= 1;
+                dst -= 1;
+                unsafe {
+                    (dst as *mut u8).copy_from((dst - change as usize) as *const u8, 1);
+                }
+            }
+        }
+
+        Ok(brk)
+    }
+
+    pub fn exit(&mut self) -> ! {
+        crate::println_info!("Process {} is exiting", self.pid);
+        // TODO: reset trace flag
+
+        // Ignore all signals
+        Userspace::get().clear_signal_handlers();
+        for fd in 0..OpenFiles::NOFILES {
+            let Ok(file) = Userspace::get().open_files.get_f(fd) else {
+                continue;
+            };
+            GLOBAL_OPEN_FILE_TABLE.lock().close_f(&file);
+            Userspace::get().open_files.clear_f(fd);
+        }
+
+        if let Some(_cwd) = Userspace::get().cwd.take() {
+            // TODO: put cwd
+        }
+
+        let _ = self.text.take();
+
+        // TODO: save exit status
+        unsafe {
+            USER_PAGE_MANAGER.lock().dealloc(self.pages.take().unwrap());
+        }
+
+        self.stat = ProcessState::SZOMB;
+
+        ProcessManager::get().wake_ppid(self.ppid);
+        ProcessManager::get().reparent(self.pid);
+
+        ProcessManager::get().switch();
+
+        panic!("This function should never return");
     }
 }
 

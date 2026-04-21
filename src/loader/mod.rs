@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use eonix_mm::paging::PAGE_SIZE;
 use kernel_macros::define_class_compat;
 
+use crate::fs::InodeRef;
 use crate::sync::SpinExt;
 use crate::{Ext, compat::{compat_flush_page_directory, compat_user_pt}, fs::InodeRefCompat};
 
@@ -69,15 +70,15 @@ struct DOSHeader {
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct PEParser {
-    entry: usize,
-    text: usize,
-    text_len: usize,
+    pub entry: usize,
+    pub text: usize,
+    pub text_len: usize,
 
-    data: usize,
-    data_len: usize,
+    pub data: usize,
+    pub data_len: usize,
 
-    stack_size: usize,
-    heap_size: usize,
+    pub stack_size: usize,
+    pub heap_size: usize,
 
     pe_addr: usize,
     nt_header: Option<Box<NTHeader>>,
@@ -113,7 +114,11 @@ impl PEParser {
         })
     }
 
-    pub fn relocate(&mut self, inode: InodeRefCompat, shared_text: bool) {
+    fn relocate_compat(&mut self, inode: InodeRefCompat, shared_text: bool) {
+        self.relocate(&inode.own(), shared_text);
+    }
+
+    pub fn relocate(&mut self, inode: &InodeRef, shared_text: bool) {
         let text_begin_pfn = self.text >> 12;
         let text_pages = self.text_len >> 12;
         let text_end_pfn = text_begin_pfn + text_pages;
@@ -156,7 +161,11 @@ impl PEParser {
         }
     }
 
-    pub fn load(&mut self, inode: InodeRefCompat) -> bool {
+    fn load_compat(&mut self, inode: InodeRefCompat) -> bool {
+        self.load(&inode.own())
+    }
+
+    pub fn load(&mut self, inode: &InodeRef) -> bool {
         let mut offset = 0;
         let mut dos_header = DOSHeader::default();
         inode.lock().read(dos_header.as_buffer(), offset);
@@ -210,10 +219,10 @@ define_class_compat! {impl PEParser {
     }
 
     pub fn load_header(&mut self, inode: InodeRefCompat) -> bool {
-        this.load(inode)
+        this.load_compat(inode)
     }
 
     pub fn relocate(&mut self, inode: InodeRefCompat, shared_text: bool) {
-        this.relocate(inode, shared_text);
+        this.relocate_compat(inode, shared_text);
     }
 }}

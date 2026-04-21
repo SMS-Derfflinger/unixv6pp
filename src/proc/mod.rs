@@ -2,7 +2,7 @@ mod context;
 mod manager;
 mod process;
 
-pub use process::Process;
+pub use process::{Text, Process};
 
 /// A channel that sleepers can subscribe to.
 ///
@@ -37,6 +37,7 @@ pub fn wakeup_all(channel: impl Channel) {
 }
 
 pub const PINOD: u32 = -90i32 as u32;
+pub const EXPRI: i32 = -1;
 
 pub fn sleep(channel: impl Channel, pri: u32) {
     unsafe {

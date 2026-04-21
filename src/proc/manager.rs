@@ -1,43 +1,74 @@
-use core::{num::NonZero, sync::atomic::{AtomicU32, AtomicUsize, Ordering}};
+use core::{
+    arch::naked_asm,
+    ffi::CStr,
+    num::NonZero,
+    ptr::NonNull,
+    sync::atomic::{AtomicU32, AtomicUsize, Ordering},
+};
 
-use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, ffi::CString, vec, vec::Vec};
+use eonix_mm::address::{Addr, PAddr};
+use eonix_sync_base::LazyLock;
+use kernel_macros::define_class_compat;
 
-use crate::{constants::{PosixError, Signal}, dev::{buffer::{BufFlag, PhysicalBlock}, buffer_manager::global_buffer_manager}, mm::USER_PAGE_MANAGER, proc::{Process, process::{ProcessState, Text}, wakeup_all}, serial::KResult, sync::SpinExt, user::Userspace};
+use crate::{
+    compat::compat_phys_copy,
+    constants::{PosixError, Signal},
+    dev::{
+        buffer::{BufFlag, PhysicalBlock},
+        buffer_manager::global_buffer_manager,
+    },
+    fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt, OpenFiles},
+    loader::PEParser,
+    machine::{
+        asm::{disable_interrupts, enable_interrupts},
+        switch_user_struct,
+    },
+    mm::{PAGE_SIZE, USER_PAGE_MANAGER},
+    proc::{
+        context::TaskContext,
+        process::{ProcessState, Terminal, Text},
+        wakeup_all, Channel, Process, EXPRI,
+    },
+    serial::KResult,
+    sync::{SpinExt, SuperCell},
+    user::{
+        MemoryDescriptor, Userspace, Userspace_after_fork, Userspace_before_fork, Userspace_init,
+    },
+};
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(0);
+
+pub static GLOBAL_PROC_MANAGER: LazyLock<SuperCell<ProcessManager>> =
+    LazyLock::new(|| SuperCell::new(ProcessManager::new()));
 
 pub struct ProcessImage();
 
 pub struct ProcessManager {
     procs: Vec<Box<Process>>,
-    texts: [Option<Arc<Text>>; Self::NTEXT],
 
-    cur_pri: u32,
-    runrun: u32,
-    run_in: u32,
-    run_out: u32,
+    pub cur_pri: u32,
+    pub runrun: u32,
+    pub run_in: u32,
+    pub run_out: u32,
     exe_cnt: u32,
     switch_cnt: u32,
 }
 
-pub const SLOAD: u32 = (1 << 0);
-pub const SLOCK: u32 = (1 << 2);
+pub const SLOAD: u32 = 1 << 0;
+pub const SSYS: u32 = 1 << 1;
+pub const SLOCK: u32 = 1 << 2;
+pub const SSWAP: u32 = 1 << 3;
 
 impl Process {
-    pub fn new_from(pid: u32, parent: &Self) -> Box<Self> {
-        unsafe {
-            if let Some(text) = parent.textp.as_mut() {
-                text.get();
-            }
-        }
-
+    pub fn new_from(pid: u32, parent: &mut Self) -> Box<Self> {
         Box::new(Self {
             uid: parent.uid,
             pid,
             ppid: parent.pid,
             addr: 0,
             size: parent.size,
-            textp: parent.textp,
+            text: parent.text.as_mut().map(|text| text.clone()),
             stat: ProcessState::SRUN,
             flag: SLOAD,
             pri: 0,
@@ -49,6 +80,7 @@ impl Process {
             tty: parent.tty,
             sigmap: 0,
             pages: None, // TODO
+            ctx: TaskContext::new(),
         })
     }
 }
@@ -63,7 +95,6 @@ impl ProcessManager {
     pub fn new() -> Self {
         Self {
             procs: vec![],
-            texts: [const { None }; Self::NTEXT],
             cur_pri: 0,
             runrun: 0,
             run_in: 0,
@@ -73,17 +104,73 @@ impl ProcessManager {
         }
     }
 
-    pub fn new_proc(&mut self, parent: &Process) -> Box<Process> {
-        let proc = Process::new_from(Self::assign_pid(), parent);
+    pub fn new_proc(&mut self, parent: &mut Process) -> Box<Process> {
+        let mut child = Process::new_from(Self::assign_pid(), parent);
+        let mut cur_addr = PAddr::from_val(parent.addr);
+        let cur_size = parent.size;
 
-        // TODO: get all open files
+        for fd in 0..OpenFiles::NOFILES {
+            let Ok(file) = Userspace::get().open_files.get_f(fd) else {
+                continue;
+            };
+
+            file.lock().f_count += 1;
+        }
+
         // TODO: increase cwd inode refcount
+        if let Some(cwd) = Userspace::get().cwd {
+            core::mem::forget(cwd.own());
+        }
 
-        proc
+        let mut new_mem = MemoryDescriptor::new(Userspace::get().mem.user_pts.clone());
+        {
+            let cur_mem = &Userspace::get().mem;
+            new_mem.text = cur_mem.text;
+            new_mem.text_len = cur_mem.text_len;
+            new_mem.data = cur_mem.data;
+            new_mem.data_len = cur_mem.data_len;
+            new_mem.stack_len = cur_mem.stack_len;
+        }
+
+        Userspace::get().proc = &raw mut *child;
+        let old_mem = core::mem::replace(&mut Userspace::get().mem, new_mem);
+
+        let handle = Userspace_before_fork();
+
+        let aligned_size = cur_size.next_power_of_two();
+        let order = aligned_size.trailing_zeros() - 12;
+        let new_pages = USER_PAGE_MANAGER.lock().alloc_order(order);
+
+        if let Some(pages) = new_pages {
+            let mut cnt = parent.size;
+            let mut to_addr = pages.phys();
+            child.addr = pages.phys().addr();
+            while cnt != 0 {
+                cnt -= 1;
+                compat_phys_copy(cur_addr, to_addr, 1);
+                cur_addr = cur_addr + 1;
+                to_addr = to_addr + 1;
+            }
+        } else {
+            parent.stat = ProcessState::SIDL;
+            child.addr = parent.addr;
+            self.send_to_swap(&mut child, false, None);
+            child.flag |= SSWAP;
+            parent.stat = ProcessState::SRUN;
+            // TODO: Save current context to ctx
+            return child;
+        }
+
+        Userspace_after_fork(handle);
+
+        Userspace::get().proc = &raw mut *parent;
+        core::mem::forget(core::mem::replace(&mut Userspace::get().mem, old_mem));
+
+        child
     }
 
     pub fn raise(&mut self, tty: *const Terminal, signal: Signal) {
-        for proc in &self.procs {
+        for proc in &mut self.procs {
             if proc.tty != tty {
                 continue;
             }
@@ -93,15 +180,16 @@ impl ProcessManager {
     }
 
     pub fn send_to_swap(
-        &mut self, proc: &mut Process, do_free: bool, swap_len: Option<NonZero<usize>>,
+        &mut self,
+        proc: &mut Process,
+        do_free: bool,
+        swap_len: Option<NonZero<usize>>,
     ) {
-        let swap_len = swap_len
-            .map(|l| l.get())
-            .unwrap_or(proc.size as usize);
+        let swap_len = swap_len.map(|l| l.get()).unwrap_or(proc.size as usize);
 
         let blkno = compat_alloc_swap(proc.size);
 
-        if let Some(text) = unsafe { proc.textp.as_mut() } {
+        if let Some(text) = &mut proc.text {
             text.put_mem();
         }
 
@@ -130,9 +218,9 @@ impl ProcessManager {
         }
     }
 
-    pub fn wakeup_all(&mut self, chan: usize) {
+    pub fn wakeup_all(&mut self, chan: impl Channel) {
         for proc in &mut self.procs {
-            if !proc.is_sleeping_on(chan) {
+            if !proc.is_sleeping_on(chan.channel_addr()) {
                 continue;
             }
             proc.set_run();
@@ -141,6 +229,10 @@ impl ProcessManager {
 
     fn find(&self, pid: u32) -> Option<&Box<Process>> {
         self.procs.iter().find(|p| p.pid == pid)
+    }
+
+    fn find_mut(&mut self, pid: u32) -> Option<&mut Box<Process>> {
+        self.procs.iter_mut().find(|p| p.pid == pid)
     }
 
     fn kill_pgroup(&mut self, signal: Signal) -> KResult<()> {
@@ -176,7 +268,7 @@ impl ProcessManager {
         }
 
         let curuid = Userspace::get().proc().uid;
-        let proc = self.find(pid).ok_or(PosixError::ESRCH)?;
+        let proc = self.find_mut(pid).ok_or(PosixError::ESRCH)?;
 
         if curuid != 0 && proc.uid != curuid {
             return Err(PosixError::EPERM);
@@ -184,6 +276,185 @@ impl ProcessManager {
 
         proc.raise(signal);
         Ok(())
+    }
+
+    pub fn exec(
+        &mut self,
+        proc: &mut Process,
+        path: &[u8],
+        argv: &[NonNull<i8>],
+        context: &mut TaskContext,
+    ) -> KResult<()> {
+        crate::println_info!("Process {} execing", proc.pid);
+        let inode = FileManager
+            .find(path, DirSearchMode::Open)?
+            .ok_or(PosixError::ENOENT)?;
+
+        const NEXEC: u32 = 10;
+        while self.exe_cnt >= NEXEC {
+            proc.sleep_kernel(&self.exe_cnt, EXPRI);
+        }
+        self.exe_cnt += 1;
+
+        if !inode.has_access(InodeMode::IEXEC) || !inode.is_regular() {
+            drop(inode);
+            if self.exe_cnt >= NEXEC {
+                let chan = (&self.exe_cnt).channel_addr();
+                self.wakeup_all(chan);
+            }
+            self.exe_cnt -= 1;
+            return Err(PosixError::ENOEXEC);
+        }
+
+        let mut parser = PEParser::new();
+        if !parser.load(&inode) {
+            return Err(PosixError::ENOEXEC);
+        }
+
+        let mem = &mut Userspace::get().mem;
+        mem.text = parser.text;
+        mem.text_len = parser.text_len;
+        mem.data = parser.data;
+        mem.data_len = parser.data_len;
+        mem.stack_len = parser.stack_size;
+
+        if mem.overflow() {
+            return Err(PosixError::ENOMEM);
+        }
+
+        let args: Vec<CString> = argv
+            .iter()
+            .map(|argp| unsafe { CStr::from_ptr(argp.as_ptr()) })
+            .map(|arg_str| arg_str.to_owned())
+            .collect();
+
+        proc.text.take();
+
+        // For struct Userspace
+        proc.expand(PAGE_SIZE);
+
+        // TODO: shared texts
+        let mut text = Text::new(inode.clone(), mem.text_len);
+        let shared_text = false;
+        proc.text = Some(text.clone());
+
+        let newlen = PAGE_SIZE + mem.data_len + mem.stack_len;
+        proc.expand(newlen);
+
+        mem.establish_user(proc);
+
+        parser.relocate(&inode, shared_text);
+
+        if !shared_text {
+            proc.flag |= SLOCK;
+            global_buffer_manager().swap(
+                text.disk_addr,
+                text.addr().unwrap(),
+                text.len_bytes,
+                BufFlag::B_WRITE,
+            );
+            proc.flag &= !SLOCK;
+        }
+
+        let mut stack = Stack {
+            sp: MemoryDescriptor::USER_SPACE_END as *mut usize,
+        };
+
+        // End all arguments with a null pointer.
+        let mut argv = vec![0];
+
+        // Push all arguments, reversed.
+        for arg in args.into_iter().rev() {
+            let argp = stack.push_string(arg.as_bytes_with_nul());
+            argv.push(argp);
+        }
+
+        let argc = argv.len() - 1;
+        let paddings = (4 - argv.len() % 4) % 4;
+        for _ in 0..paddings {
+            stack.push_word(0);
+        }
+
+        // `argv` is already in reverse order, push it in order will reverse it again.
+        for argp in argv {
+            stack.push_word(argp);
+        }
+
+        let sp = stack.push_word(argc);
+
+        drop(inode);
+        if self.exe_cnt >= NEXEC {
+            let chan = (&self.exe_cnt).channel_addr();
+            self.wakeup_all(chan);
+        }
+        self.exe_cnt -= 1;
+
+        Userspace::get().clear_signal_handlers();
+
+        // Check `go_userspace()`
+        context.ebx = parser.entry;
+        context.esp = (&raw const TEMPORARY_STACK[5]) as usize;
+        context.edi = sp;
+        context.eip = go_userspace as *const () as usize;
+
+        Ok(())
+    }
+
+    pub fn wait(&mut self, proc: &mut Process) {
+        crate::println_info!("Process {} finding dead son. They are:", proc.pid);
+        loop {
+            for p in &self.procs {
+                if p.ppid != proc.pid {
+                    continue;
+                }
+
+                crate::println_info!("Process {} (Status: {:?})", p.pid, p.stat);
+            }
+        }
+    }
+
+    pub fn get() -> &'static mut Self {
+        static PROCESS_MANAGER: LazyLock<SuperCell<ProcessManager>> =
+            LazyLock::new(|| SuperCell::new(ProcessManager::new()));
+
+        PROCESS_MANAGER.with_mut(|scheduler| unsafe { &mut *&raw mut *scheduler })
+    }
+
+    pub fn wakeup_runout(&mut self) {
+        let chan = (&self.run_out).channel_addr();
+        self.wakeup_all(chan);
+    }
+
+    pub fn wakeup_runin(&mut self) {
+        let chan = (&self.run_in).channel_addr();
+        self.wakeup_all(chan);
+    }
+
+    pub fn wake_ppid(&mut self, ppid: u32) {
+        let mut chan = None;
+        for proc in &mut self.procs {
+            if proc.pid != ppid {
+                continue;
+            }
+            chan = Some((&*proc).channel_addr());
+        }
+
+        self.wakeup_all(chan.unwrap());
+    }
+
+    pub fn reparent(&mut self, pid: u32) {
+        for proc in &mut self.procs {
+            if proc.ppid != pid {
+                continue;
+            }
+
+            crate::println_info!("My:{} 's child {} passed to 1#process", pid, proc.ppid);
+
+            proc.ppid = 1;
+            if proc.stat == ProcessState::SSTOP {
+                proc.set_run();
+            }
+        }
     }
 
     fn select(&mut self) -> &mut Process {
@@ -211,7 +482,7 @@ impl ProcessManager {
                 }
 
                 pri = proc.pri;
-                best = Some(proc);
+                best = Some(idx);
             }
 
             let Some(best) = best else {
@@ -223,14 +494,159 @@ impl ProcessManager {
             self.cur_pri = pri;
 
             LAST_IDX.store(idx, Ordering::Relaxed);
-            return &mut *best;
+            return &mut self.procs[best];
         }
+    }
+
+    pub fn switch(&mut self) {
+        let me = Userspace::get().proc();
+        let scheduler = &mut *self.procs[0];
+
+        unsafe {
+            disable_interrupts();
+            TaskContext::switch(&mut me.ctx, &mut scheduler.ctx);
+            enable_interrupts();
+        }
+    }
+
+    fn schedule() {
+        loop {
+            let pm = ProcessManager::get();
+            let me = Userspace::get().proc();
+            let selected = pm.select();
+
+            if (selected.flag & SSWAP) != 0 {
+                todo!("swap");
+                selected.flag &= !SSWAP;
+            }
+
+            switch_user_struct(&selected);
+            Userspace::get().mem.map_to_actual_pt(&selected);
+
+            unsafe {
+                disable_interrupts();
+                TaskContext::switch(&mut me.ctx, &mut selected.ctx);
+                enable_interrupts();
+            }
+        }
+    }
+
+    pub fn fork(&mut self) -> u32 {
+        // Create a reborrow
+        let child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
+
+        // TODO: set the child's return value to 0
+        // TODO: clear child's {c,}{s,u}time
+
+        child.pid
     }
 }
 
-fn compat_alloc_swap(len: u32) -> u32 { todo!() }
+static TEMPORARY_STACK: [usize; 6] = [0; 6];
+
+#[unsafe(naked)]
+extern "C" fn go_userspace() {
+    naked_asm!(
+        "mov %ebx, %eax", // eax = entry
+        "push $0x20",     // ss
+        "push %edi",      // esp
+        "push $0x200",    // eflags = IF
+        "push $0x18",     // cs
+        "push $0",        // eip = runtime
+        "xor %ebx, %ebx",
+        "xor %ecx, %ecx",
+        "xor %edx, %edx",
+        "xor %esi, %esi",
+        "xor %edi, %edi",
+        "xor %ebp, %ebp",
+        "iret",
+        options(att_syntax),
+    )
+}
+
+fn compat_alloc_swap(len: u32) -> u32 {
+    extern "C" {
+        fn alloc_swap(len: u32) -> u32;
+    }
+
+    unsafe { alloc_swap(len) }
+}
+
 fn halt() {
     unsafe {
         core::arch::asm!("hlt");
     }
 }
+
+struct Stack {
+    sp: *mut usize,
+}
+
+impl Stack {
+    fn top(&self) -> usize {
+        self.sp as usize
+    }
+
+    /// Push a word to the top, and return the stack pointer after the push.
+    fn push_word(&mut self, val: usize) -> usize {
+        self.sp = self.sp.wrapping_sub(1);
+        unsafe {
+            self.sp.write(val);
+        }
+
+        self.top()
+    }
+
+    /// Push a null-terminated string to the top, align the stack to 16 bytes,
+    /// and return the pointer to the string.
+    fn push_string(&mut self, string: &[u8]) -> usize {
+        self.sp = self.sp.wrapping_byte_sub(string.len());
+        let addr = self.align16();
+
+        unsafe {
+            self.sp
+                .cast::<u8>()
+                .copy_from_nonoverlapping(string.as_ptr(), string.len());
+        }
+
+        addr
+    }
+
+    /// Align the stack to 16 bytes, and return the previous stack pointer.
+    fn align16(&mut self) -> usize {
+        let ret = self.top();
+        self.sp = (self.top() & !0xf) as *mut _;
+
+        ret
+    }
+}
+
+define_class_compat! {impl ProcessManager {
+    pub fn setup_proc_zero() {
+        const PPDA_ADDR: usize = 0x400000 - 0x1000;
+
+        let mut proc = Box::new(Process {
+            uid: 0,
+            pid: ProcessManager::assign_pid(),
+            ppid: 0,
+            addr: PPDA_ADDR,
+            size: 0x100,
+            text: None,
+            stat: ProcessState::SRUN,
+            flag: SLOAD | SSYS,
+            pri: 0,
+            cpu: 0,
+            nice: 0,
+            time: 0,
+            wchan: 0,
+            pending_signal: None,
+            tty: core::ptr::null(),
+            sigmap: 0,
+            pages: None,
+            ctx: TaskContext::new(),
+        });
+
+        Userspace_init();
+        Userspace::get().proc = &raw mut *proc;
+    }
+}}

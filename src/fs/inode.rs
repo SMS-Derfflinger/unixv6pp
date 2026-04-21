@@ -76,8 +76,8 @@ pub struct Inode {
     pub i_dev: DevId,  // 外存inode所在存储设备的设备号
     pub i_number: i32, // 外存inode区中的编号
 
-    pub i_uid: i16, // 文件所有者的用户标识数
-    pub i_gid: i16, // 文件所有者的组标识数
+    pub i_uid: u16, // 文件所有者的用户标识数
+    pub i_gid: u16, // 文件所有者的组标识数
 
     pub i_size: u32,                          // 文件大小（字节）
     pub i_addr: [PhysicalBlock; I_ADDR_SIZE], // 文件逻辑块号和物理块号转换的基本索引表
@@ -187,8 +187,8 @@ impl Inode {
             i_nlink: 0,
             i_dev: DevId(-1),
             i_number: -1,
-            i_uid: -1,
-            i_gid: -1,
+            i_uid: 0,
+            i_gid: 0,
             i_size: 0,
             i_addr: [PhysicalBlock(0); I_ADDR_SIZE],
             i_lastr: -1,
@@ -197,12 +197,6 @@ impl Inode {
 
     pub fn new() -> InodeRef {
         Arc::new(Spin::new(Self::new_const()))
-    }
-
-    pub fn read_i(
-        &mut self, m_count: usize, m_offset: usize
-    ) -> Result<(), PosixError> {
-        todo!()
     }
 
     pub fn read(
@@ -269,10 +263,6 @@ impl Inode {
         }
 
         Ok(nread)
-    }
-
-    pub fn write_i(&mut self, m_count: usize, m_offset: usize) -> Result<(), PosixError> {
-        todo!()
     }
 
     pub fn write(
@@ -631,8 +621,8 @@ impl Inode {
          */
         self.i_mode = InodeMode::empty();
         self.i_nlink = 0;
-        self.i_uid = -1;
-        self.i_gid = -1;
+        self.i_uid = 0;
+        self.i_gid = 0;
         self.i_size = 0;
         self.i_lastr = -1;
         self.i_addr = [PhysicalBlock(0); 10];
@@ -660,8 +650,8 @@ impl Inode {
 pub struct DiskInode {
     pub d_mode: InodeMode,
     pub d_nlink: i32,
-    pub d_uid: i16,
-    pub d_gid: i16,
+    pub d_uid: u16,
+    pub d_gid: u16,
     pub d_size: u32,
     pub d_addr: [PhysicalBlock; 10],
     pub d_atime: i32,

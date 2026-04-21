@@ -26,7 +26,7 @@ public:
 public:
 	PageTable();
 	~PageTable();
-		
+
 public:
 	PageTableEntry m_Entrys[ENTRY_CNT_PER_PAGETABLE];
 };

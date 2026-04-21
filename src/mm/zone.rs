@@ -18,6 +18,7 @@ pub struct MemoryZone();
 static mut PAGES: MaybeUninit<[PhysPage; PAGE_COUNT]> = MaybeUninit::zeroed();
 
 fn page_array() -> &'static [PhysPage; PAGE_COUNT] {
+    #[allow(static_mut_refs)]
     unsafe { PAGES.assume_init_mut() }
 }
 
@@ -26,8 +27,7 @@ impl MemoryZone {
         let ptr = page as *const <Self as Zone>::Page;
 
         let offset = unsafe { ptr.offset_from(page_array().as_ptr()) };
-
-        match unsafe { ptr.offset_from(page_array().as_ptr()) } {
+        match offset {
             ..0 | PAGE_COUNTI.. => panic!("Overflow"),
             offset => PFN::from_val(offset as usize),
         }
@@ -51,6 +51,7 @@ impl Zone for MemoryZone {
 }
 
 pub fn init_zone() {
+    #[allow(static_mut_refs)]
     unsafe {
         for page in PAGES.assume_init_mut().iter_mut() {
             *page = PhysPage::new();

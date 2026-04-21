@@ -185,7 +185,7 @@ define_static! {
 pub type KResult<T> = Result<T, PosixError>;
 
 fn init() -> KResult<()> {
-    let (com0, com1) = unsafe {
+    let (com0, _com1) = unsafe {
         const COM0_BASE: u16 = 0x3f8;
         const COM1_BASE: u16 = 0x2f8;
         // SAFETY: The COM ports are well-known hardware addresses.
@@ -193,6 +193,8 @@ fn init() -> KResult<()> {
     };
 
     let serial = Serial::new(0, com0).unwrap();
+
+    #[allow(static_mut_refs)]
     unsafe {
         SERIAL.write(serial);
     }
@@ -201,6 +203,7 @@ fn init() -> KResult<()> {
 }
 
 pub fn serial_write_bytes(byte_iter: impl Iterator<Item = u8>) {
+    #[allow(static_mut_refs)]
     let serial = unsafe { SERIAL.assume_init_ref() };
 
     for ch in byte_iter {
@@ -213,6 +216,7 @@ pub fn serial_write(string: &str) {
 }
 
 pub fn serial_try_read_byte() -> Option<u8> {
+    #[allow(static_mut_refs)]
     let serial = unsafe { SERIAL.assume_init_ref() };
     serial.try_read()
 }

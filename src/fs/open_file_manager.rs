@@ -3,12 +3,26 @@ use eonix_sync_base::LazyLock;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    Ext, compat::compat_get_time, constants::PosixError, dev::{buffer::{Buffer, DevId, PhysicalBlock}, buffer_manager::global_buffer_manager}, fs::{
-        self, FileRef, InodeRef, InodeRefGuard, InodeRefPutExt, file::{File, FileFlags, FileRefCompat, InodeRefCompat, OpenFiles}, file_system::FileSystem, inode::{DiskInode, Inode, InodeFlag, InodeMode, fileref_leak, inoderef_leak}
-    }, proc::{Channel, PINOD, sleep, wakeup_all}, sync::SpinExt, user::Userspace
+    compat::compat_get_time,
+    constants::PosixError,
+    dev::{
+        buffer::{Buffer, DevId, PhysicalBlock},
+        buffer_manager::global_buffer_manager,
+    },
+    fs::{
+        self,
+        file::{File, FileFlags, FileRefCompat, InodeRefCompat, OpenFiles},
+        file_system::FileSystem,
+        inode::{fileref_leak, inoderef_leak, DiskInode, Inode, InodeFlag, InodeMode},
+        FileRef, InodeRef, InodeRefGuard, InodeRefPutExt,
+    },
+    proc::{sleep, wakeup_all, Channel, PINOD},
+    sync::SpinExt,
+    user::Userspace,
+    Ext,
 };
 
-static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
+pub static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
     LazyLock::new(|| Spin::new(OpenFileTable::new()));
 
 define_class_compat! {impl OpenFileTable {
@@ -137,7 +151,9 @@ impl InodeTable {
         let mut disk_inode = DiskInode::default();
         let data = &buf.as_bytes()[Self::ino_blkoff(ino)..];
 
-        disk_inode.as_buffer().copy_from_slice(&data[..size_of::<DiskInode>()]);
+        disk_inode
+            .as_buffer()
+            .copy_from_slice(&data[..size_of::<DiskInode>()]);
 
         inode.i_mode = disk_inode.d_mode;
         inode.i_nlink = disk_inode.d_nlink;
@@ -262,7 +278,7 @@ impl InodeTable {
     }
 }
 
-static GLOBAL_INODE_TABLE: LazyLock<Spin<InodeTable>> =
+pub static GLOBAL_INODE_TABLE: LazyLock<Spin<InodeTable>> =
     LazyLock::new(|| Spin::new(InodeTable::new()));
 
 define_class_compat! {impl InodeTable {

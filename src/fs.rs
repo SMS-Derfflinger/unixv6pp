@@ -54,9 +54,12 @@ impl InodeRefPutExt for InodeRef {
 }
 
 pub use file::{File, IOParameter, InodeRefCompat, OpenFiles};
-pub use file_manager::DirectoryEntry;
+pub use file_manager::{DirSearchMode, DirectoryEntry, FileManager, InodeRefExt};
 pub use file_system::SuperBlock;
-pub use inode::{inoderef_leak, Inode};
+pub use inode::{inoderef_leak, Inode, InodeMode};
+pub use open_file_manager::{GLOBAL_INODE_TABLE, GLOBAL_OPEN_FILE_TABLE};
+
+use crate::sync::SpinExt;
 
 static GLOBAL_OPENFILE_TABLE: LazyLock<Spin<OpenFileTable>> =
     LazyLock::new(|| Spin::new(OpenFileTable::new()));
@@ -65,11 +68,8 @@ fn global_open_file_table() -> SpinGuard<'static, OpenFileTable, NoContext> {
     GLOBAL_OPENFILE_TABLE.lock_ctx::<NoContext>()
 }
 
-static GLOBAL_INODE_TABLE: LazyLock<Spin<InodeTable>> =
-    LazyLock::new(|| Spin::new(InodeTable::new()));
-
 fn global_inode_table() -> SpinGuard<'static, InodeTable, NoContext> {
-    GLOBAL_INODE_TABLE.lock_ctx::<NoContext>()
+    GLOBAL_INODE_TABLE.lock()
 }
 
 static GLOBAL_FILE_SYSTEM: LazyLock<Spin<FileSystem>> =

@@ -113,11 +113,6 @@ impl FileSystem {
 
     pub const INODE_NUMBER_PER_SECTOR: usize = 8;
     pub const INODE_ZONE_START_SECTOR: usize = 514;
-    pub const INODE_ZONE_SIZE: usize = 510;
-
-    pub const DATA_ZONE_START_SECTOR: usize = 1024;
-    pub const DATA_ZONE_SIZE: usize = 0x7400;
-    pub const DATA_ZONE_END_SECTOR: usize = Self::DATA_ZONE_START_SECTOR + Self::DATA_ZONE_SIZE;
 
     fn install_loaded_super_block(&mut self, loaded_super_block: &SuperBlock, time: i32) {
         let mut super_block = *loaded_super_block;

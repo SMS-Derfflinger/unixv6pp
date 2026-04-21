@@ -8,6 +8,10 @@ use core::ptr::NonNull;
 
 use crate::sync::SuperCell;
 
+pub use page_table::{
+    global_user_page_table, switch_user_struct, EntryFlags, PageTable, PageTableEntry,
+};
+
 const DESCRIPTOR_COUNT: usize = 256;
 const KERNEL_DATA_SEGMENT_SELECTOR: u32 = 0x10;
 const USER_CODE_SEGMENT_SELECTOR: u32 = 0x18 | 0x3;
@@ -213,9 +217,17 @@ impl Idt {
 
         for number in 0..DESCRIPTOR_COUNT {
             if number < 32 {
-                self.set_gate(number, function_address(idt_default_exception_handler), 0x0f);
+                self.set_gate(
+                    number,
+                    function_address(idt_default_exception_handler),
+                    0x0f,
+                );
             } else {
-                self.set_gate(number, function_address(idt_default_interrupt_handler), 0x0e);
+                self.set_gate(
+                    number,
+                    function_address(idt_default_interrupt_handler),
+                    0x0e,
+                );
             }
         }
 
