@@ -11,7 +11,6 @@
 #include "DMA.h"
 #include "OpenFileManager.h"
 #include "CMOSTime.h"
-#include "./Lib.h"
 
 #include "libyrosstd/sys/types.h"
 
