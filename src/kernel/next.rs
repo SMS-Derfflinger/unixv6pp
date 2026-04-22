@@ -131,8 +131,8 @@ fn init_vesa() {
             VESA_SCREEN_VADDR,
             pitch as usize * height as usize,
         );
-        vesa_init(mode_info.cast::<VbeModeInfo>());
     }
+    vesa_init(mode_info.cast::<VbeModeInfo>());
 }
 
 fn init_kernel_time() {

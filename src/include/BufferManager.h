@@ -2,7 +2,6 @@
 #define BUFFER_MANAGER_H
 
 #include "Buf.h"
-#include "DeviceManager.h"
 
 extern "C" void buffer_manager_initialize();
 extern "C" Buf* buffer_get_blk(short dev, int blkno);

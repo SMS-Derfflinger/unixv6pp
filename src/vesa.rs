@@ -416,12 +416,11 @@ pub fn vesa_put_pixel(x: i32, y: i32, color: i32) {
     });
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn vesa_init(mode_info: *const VbeModeInfo) {
+pub fn vesa_init(mode_info: *const VbeModeInfo) {
     if mode_info.is_null() {
         return;
     }
 
-    let mode_info = core::ptr::read_unaligned(mode_info);
+    let mode_info = unsafe { core::ptr::read_unaligned(mode_info) };
     VESA_CONSOLE.with_mut(|console| console.init(mode_info));
 }

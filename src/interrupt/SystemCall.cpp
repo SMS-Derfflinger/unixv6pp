@@ -1,8 +1,6 @@
 #include "SystemCall.h"
 #include "User.h"
 #include "Kernel.h"
-#include "Regs.h"
-#include "Video.h"
 
 extern "C" {
 unsigned int get_time();

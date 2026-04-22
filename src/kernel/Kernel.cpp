@@ -1,9 +1,6 @@
 #include "Kernel.h"
-#include "Machine.h"
 #include "Video.h"
-#include "New.h"
 #include "Utility.h"
-#include "OpenFileManager.h"
 #include "Regs.h"
 
 Kernel Kernel::instance;

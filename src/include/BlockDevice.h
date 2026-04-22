@@ -2,7 +2,6 @@
 #define BLOCK_DEVICE_H
 
 #include "Buf.h"
-#include "Utility.h"
 
 /*
  * 块设备基类，各类块设备都从此基类继承。
