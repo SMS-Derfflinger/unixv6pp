@@ -531,6 +531,8 @@ impl Process {
     }
 
     pub fn exit(&mut self) -> ! {
+        assert_ne!(self.pid, 0, "Trying to kill process #0...");
+
         crate::println_info!("Process {} is exiting", self.pid);
         // TODO: reset trace flag
 
