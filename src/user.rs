@@ -22,7 +22,7 @@ pub struct Terminal;
 #[repr(C)]
 #[derive(Clone)]
 pub struct MemoryDescriptor {
-    pub user_pts: Option<Box<[PageTable; 2]>>,
+    pub user_pts: Box<[PageTable; 2]>,
     pub text: usize,
     pub text_len: usize,
     pub data: usize,
@@ -196,20 +196,9 @@ impl MemoryDescriptor {
     pub const USER_SPACE_START: usize = 0;
     pub const USER_SPACE_END: usize = Self::USER_SPACE_START + Self::USER_SPACE_SIZE;
 
-    pub const fn new_empty() -> Self {
+    pub fn new() -> Self {
         Self {
-            user_pts: None,
-            text: 0,
-            text_len: 0,
-            data: 0,
-            data_len: 0,
-            stack_len: 0,
-        }
-    }
-
-    pub fn new(user_pts: Option<Box<[PageTable; 2]>>) -> Self {
-        Self {
-            user_pts: Some(user_pts.unwrap_or_else(|| unsafe { Box::new_zeroed().assume_init() })),
+            user_pts: unsafe { Box::new_zeroed().assume_init() },
             text: 0,
             text_len: 0,
             data: 0,
@@ -231,8 +220,7 @@ impl MemoryDescriptor {
     }
 
     fn user_ptes(&mut self) -> impl Iterator<Item = &mut PageTableEntry> {
-        self.user_pts.as_mut().unwrap()
-            .iter_mut().map(|tbl| tbl.iter_mut()).flatten()
+        self.user_pts.iter_mut().map(|tbl| tbl.iter_mut()).flatten()
     }
 
     fn clear_user(&mut self) {
@@ -263,7 +251,7 @@ impl MemoryDescriptor {
     }
 
     pub fn map_to_actual_pt(&mut self, proc: &Process) {
-        let text = proc.text.as_ref().unwrap();
+        let Some(text) = &proc.text else { return };
         let text_pfn = text.pfn().unwrap();
         let data_pfn = proc.addr >> 12;
 
@@ -398,7 +386,7 @@ define_user_compat! {
     };
     dentry: DirectoryEntry => get_dent_ := DirectoryEntry::new();
     cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
-    mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new_empty();
+    mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
     ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
     proc: *mut Process => get_procp_ := core::ptr::null_mut();
     cwd: Option<InodeRefCompat> => get_cdir_ := None;

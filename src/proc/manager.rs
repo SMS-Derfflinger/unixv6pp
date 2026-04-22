@@ -12,7 +12,7 @@ use eonix_sync_base::LazyLock;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    compat::compat_phys_copy,
+    compat::{compat_phys_copy, compat_swap_alloc},
     constants::{PosixError, Signal},
     dev::{
         buffer::{BufFlag, PhysicalBlock},
@@ -22,12 +22,12 @@ use crate::{
     loader::PEParser,
     machine::{
         asm::{disable_interrupts, enable_interrupts},
-        switch_user_struct,
+        set_tss_esp0, switch_user_struct,
     },
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
-        process::{KResultExt, ProcessState, Terminal, Text},
+        process::{KResultExt, KernelStack, ProcessState, Terminal, Text},
         Channel, Process, EXPRI,
     },
     serial::KResult,
@@ -62,7 +62,10 @@ pub const SSWAP: u32 = 1 << 3;
 
 impl Process {
     pub fn new_from(pid: u32, parent: &mut Self) -> Box<Self> {
-        Box::new(Self {
+        let kstack = KernelStack::new();
+        let stack_top = kstack.top();
+
+        let mut child = Box::new(Self {
             uid: parent.uid,
             pid,
             ppid: parent.pid,
@@ -79,9 +82,15 @@ impl Process {
             pending_signal: None,
             tty: parent.tty,
             sigmap: 0,
-            pages: None, // TODO
+            pages: None,
             ctx: TaskContext::new(),
-        })
+            kstack: Some(kstack),
+        });
+
+        // 设置子进程的内核栈指针，使其在被调度时能正确使用自己的栈
+        child.ctx.esp = stack_top;
+
+        child
     }
 }
 
@@ -122,7 +131,7 @@ impl ProcessManager {
             core::mem::forget(cwd.own());
         }
 
-        let mut new_mem = MemoryDescriptor::new(Userspace::get().mem.user_pts.clone());
+        let mut new_mem = Userspace::get().mem.clone();
         {
             let cur_mem = &Userspace::get().mem;
             new_mem.text = cur_mem.text;
@@ -187,7 +196,7 @@ impl ProcessManager {
     ) {
         let swap_len = swap_len.map(|l| l.get()).unwrap_or(proc.size as usize);
 
-        let blkno = compat_alloc_swap(proc.size);
+        let blkno = compat_swap_alloc(proc.size as usize);
 
         if let Some(text) = &mut proc.text {
             text.put_mem();
@@ -195,7 +204,7 @@ impl ProcessManager {
 
         proc.flag |= SLOCK;
         global_buffer_manager()
-            .swap(PhysicalBlock(blkno), proc.addr, swap_len, BufFlag::B_WRITE)
+            .swap(blkno, proc.addr, swap_len, BufFlag::B_WRITE)
             .expect("Swap I/O Error");
 
         if do_free {
@@ -206,7 +215,7 @@ impl ProcessManager {
         }
 
         // (flag & SLOAD) => addr == blkno
-        proc.addr = blkno as usize;
+        proc.addr = blkno.0 as usize;
         proc.flag &= !(SLOAD | SLOCK);
 
         // Clear time since last swapin / swapout
@@ -279,13 +288,7 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn exec(
-        &mut self,
-        proc: &mut Process,
-        path: &[u8],
-        argv: &[NonNull<i8>],
-        context: &mut TaskContext,
-    ) -> KResult<()> {
+    pub fn exec(&mut self, proc: &mut Process, path: &[u8], argv: &[NonNull<i8>]) -> KResult<()> {
         crate::println_info!("Process {} execing", proc.pid);
         let inode = FileManager
             .find(path, DirSearchMode::Open)?
@@ -393,10 +396,10 @@ impl ProcessManager {
         Userspace::get().clear_signal_handlers();
 
         // Check `go_userspace()`
-        context.ebx = parser.entry;
-        context.esp = (&raw const TEMPORARY_STACK[5]) as usize;
-        context.edi = sp;
-        context.eip = go_userspace as *const () as usize;
+        proc.ctx.ebx = parser.entry;
+        proc.ctx.esp = (&raw const TEMPORARY_STACK[5]) as usize;
+        proc.ctx.edi = sp;
+        proc.ctx.eip = go_userspace as *const () as usize;
 
         Ok(())
     }
@@ -558,6 +561,11 @@ impl ProcessManager {
             switch_user_struct(&selected);
             Userspace::get().mem.map_to_actual_pt(&selected);
 
+            // 更新 TSS esp0，使得从用户态陷入内核态时使用目标进程的内核栈
+            if let Some(ref kstack) = selected.kstack {
+                set_tss_esp0(kstack.top() as u32);
+            }
+
             unsafe {
                 disable_interrupts();
                 TaskContext::switch(&mut me.ctx, &mut selected.ctx);
@@ -573,7 +581,9 @@ impl ProcessManager {
         // TODO: set the child's return value to 0
         // TODO: clear child's {c,}{s,u}time
 
-        child.pid
+        let pid = child.pid;
+        self.procs.push(child);
+        pid
     }
 }
 
@@ -597,14 +607,6 @@ extern "C" fn go_userspace() {
         "iret",
         options(att_syntax),
     )
-}
-
-fn compat_alloc_swap(len: u32) -> u32 {
-    extern "C" {
-        fn alloc_swap(len: u32) -> u32;
-    }
-
-    unsafe { alloc_swap(len) }
 }
 
 fn halt() {
@@ -660,6 +662,8 @@ define_class_compat! {impl ProcessManager {
     pub fn setup_proc_zero() {
         const PPDA_ADDR: usize = 0x400000 - 0x1000;
 
+        // 0 号进程的内核栈在 main.cpp 的 main0() 中通过 KernelStack_new() 分配，
+        // 0 号进程是调度器（SSYS），永远运行在内核态，不需要通过 TSS esp0 切换栈。
         let mut proc = Box::new(Process {
             uid: 0,
             pid: ProcessManager::assign_pid(),
@@ -679,6 +683,7 @@ define_class_compat! {impl ProcessManager {
             sigmap: 0,
             pages: None,
             ctx: TaskContext::new(),
+            kstack: None,
         });
 
         Userspace_init();
@@ -760,7 +765,8 @@ define_class_compat! {impl ProcessManager {
         let pm = ProcessManager::get();
         let proc = Userspace::get().proc();
         let path_ptr = Userspace::get().args[0] as *const u8;
-        let argv_ptr = Userspace::get().args[1] as *const NonNull<i8>;
+        let argc = Userspace::get().args[1];
+        let argv_ptr = Userspace::get().args[2] as *const NonNull<i8>;
 
         // 从用户空间读取路径
         let path = unsafe {
@@ -768,19 +774,12 @@ define_class_compat! {impl ProcessManager {
             cstr.to_bytes()
         };
 
-        // 从用户空间读取 argv
-        let mut argv = alloc::vec::Vec::new();
-        unsafe {
-            let mut p = argv_ptr;
-            while !(*p).as_ptr().is_null() {
-                argv.push(*p);
-                p = p.add(1);
-            }
-        }
+        let argv = unsafe {
+            core::slice::from_raw_parts(argv_ptr, argc)
+        };
 
-        // 使用 raw pointer 避免双重可变借用
-        let ctx = unsafe { &mut *(&raw mut proc.ctx) };
-        pm.exec(proc, path, &argv, ctx).pass_to_user();
+        crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
+        pm.exec(proc, path, argv).pass_to_user();
     }
 
     /// Kill() 的 Rust 实现 - 终止进程

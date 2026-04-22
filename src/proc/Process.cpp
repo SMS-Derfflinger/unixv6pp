@@ -14,7 +14,7 @@ extern "C" {
 	void Process_sleep_kernel(Process*, unsigned long, int);
 }
 
-extern "C" int alloc_swap(unsigned long len) {
+extern "C" int compat_swap_alloc(unsigned long len) {
         return Kernel::Instance().GetSwapperManager().AllocSwap(len);
 }
 

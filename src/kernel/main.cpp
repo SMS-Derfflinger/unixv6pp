@@ -150,7 +150,7 @@ void main0(void)
 		"mov %0, %%ebp \n\t \
 		 mov %0, %%esp \n\t \
 		 jmp $0x8, $next"
-		: : "g"(stack + 0xC0000000)
+		: : "r"(stack)
 	);
 
 	__asm ("ud2");

@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use eonix_mm::address::{Addr, PAddr};
 use kernel_macros::define_class_compat;
 
-use crate::user::Userspace;
+use crate::{dev::buffer::PhysicalBlock, user::Userspace};
 
 pub fn compat_flush_page_directory() {
     unsafe {
@@ -71,5 +71,23 @@ pub fn compat_phys_copy(from: PAddr, to: PAddr, len: usize) {
 
     unsafe {
         phys_copy(from.addr(), to.addr(), len);
+    }
+}
+
+pub fn compat_swap_alloc(len: usize) -> PhysicalBlock {
+    extern "C" {
+        fn compat_swap_alloc(len: u32) -> u32;
+    }
+
+    PhysicalBlock(unsafe { compat_swap_alloc(len as u32) })
+}
+
+pub fn compat_swap_free(blkno: u32) {
+    extern "C" {
+        fn compat_swap_free(blkno: u32);
+    }
+
+    unsafe {
+        compat_swap_free(blkno);
     }
 }

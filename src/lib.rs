@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-mod compat;
+pub mod compat;
 mod constants;
 mod dev;
 mod fs;

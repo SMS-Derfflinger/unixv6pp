@@ -12,6 +12,7 @@ use eonix_mm::{
 use kernel_macros::define_class_compat;
 
 use crate::{
+    compat::{compat_swap_alloc, compat_swap_free},
     constants::Signal,
     dev::buffer::PhysicalBlock,
     fs::{GLOBAL_OPEN_FILE_TABLE, InodeRef, OpenFiles},
@@ -91,15 +92,11 @@ impl Text {
     pub fn new(inode: InodeRef, len: usize) -> TextRef {
         inode.lock().i_count += 1;
 
-        extern "C" {
-            fn compat_swap_alloc(len: usize) -> PhysicalBlock;
-        }
-
         let aligned_size = len.next_power_of_two();
         let order = aligned_size.trailing_zeros() - 12;
 
         let text = Box::new(Text {
-            disk_addr: unsafe { compat_swap_alloc(len) },
+            disk_addr: compat_swap_alloc(len),
             pages: USER_PAGE_MANAGER.lock().alloc_order(order),
             len_bytes: len,
             inode,
@@ -152,13 +149,7 @@ impl Text {
             return;
         }
 
-        extern "C" {
-            fn compat_swap_free(blkno: u32);
-        }
-
-        unsafe {
-            compat_swap_free(self.disk_addr.0);
-        }
+        compat_swap_free(self.disk_addr.0);
 
         unsafe {
             let _ = Box::from_raw(&raw mut *self);
@@ -172,18 +163,35 @@ pub struct KernelStack {
     pages: Option<&'static mut PhysPage>,
 }
 
+/// 内核栈大小：order=3 即 2^3 = 8 页 = 32KB
+const KSTACK_ORDER: u32 = 3;
+const KSTACK_SIZE: usize = (1 << KSTACK_ORDER as usize) * PAGE_SIZE;
+
 impl KernelStack {
     pub fn new() -> Self {
         Self {
-            pages: Some(KERNEL_PAGE_MANAGER.lock().alloc_order(3).expect("Out of memory")),
+            pages: Some(
+                KERNEL_PAGE_MANAGER
+                    .lock()
+                    .alloc_order(KSTACK_ORDER)
+                    .expect("Out of kernel memory for stack"),
+            ),
         }
+    }
+
+    /// 返回内核栈顶的虚拟地址（栈从高地址向低地址增长）
+    pub fn top(&self) -> usize {
+        let phys = self.pages.as_ref().unwrap().phys();
+        crate::mm::phys_to_virt(phys) as usize + KSTACK_SIZE
     }
 }
 
 impl Drop for KernelStack {
     fn drop(&mut self) {
-        unsafe {
-            KERNEL_PAGE_MANAGER.lock().dealloc(self.pages.take().unwrap());
+        if let Some(pages) = self.pages.take() {
+            unsafe {
+                KERNEL_PAGE_MANAGER.lock().dealloc(pages);
+            }
         }
     }
 }
@@ -212,6 +220,9 @@ pub struct Process {
     pub sigmap: usize,
     pub pages: Option<&'static mut PhysPage>,
     pub ctx: TaskContext,
+
+    /// 每个进程独立的内核栈
+    pub kstack: Option<KernelStack>,
 }
 
 unsafe impl Send for Process {}
@@ -439,9 +450,10 @@ impl Process {
             (new_addr as *mut u8).copy_from_nonoverlapping(old_addr as *const u8, copylen);
         }
 
-        let page = self.pages.replace(new_page);
-        unsafe {
-            USER_PAGE_MANAGER.lock().dealloc(page.unwrap());
+        if let Some(pages) = self.pages.replace(new_page) {
+            unsafe {
+                USER_PAGE_MANAGER.lock().dealloc(pages);
+            }
         }
 
         Userspace::get().mem.map_to_actual_pt(self);
@@ -604,8 +616,8 @@ define_class_compat! {impl Process {
 define_class_compat! {impl KernelStack {
     pub fn new() -> *mut u8 {
         let stack = KernelStack::new();
-        let addr = stack.pages.as_ref().unwrap().phys().addr() as *mut u8;
+        let top = stack.top() as *mut u8;
         core::mem::forget(stack);
-        addr.wrapping_add((1 << 3) * PAGE_SIZE)
+        top
     }
 }}

@@ -456,6 +456,13 @@ fn task_state_segment_address() -> usize {
     TSS.with_mut(address_of_mut)
 }
 
+/// 更新 TSS 的 esp0 字段，使得从用户态陷入内核态时使用正确的内核栈
+pub fn set_tss_esp0(esp0: u32) {
+    TSS.with_mut(|tss| {
+        tss.esp0 = esp0;
+    });
+}
+
 fn address_of<T>(value: &T) -> usize {
     value as *const T as usize
 }
