@@ -18,7 +18,7 @@ struct pt_regs{
 	unsigned int eax;
 };
 
-/* 
+/*
  * 此部分数据结构是中断发生时刻，由中断隐指令保护入栈的寄存器
  * 包括eip，cs，eflags； 如果发生特权级变化，导致堆栈切换的话，
  * 应指令保护入栈的还有切换前堆栈的SS:ESP；此结构体所有字段都
@@ -40,7 +40,7 @@ struct pte_context{
 	unsigned int eflags;
 	unsigned int esp;
 	unsigned int xss;
-};						
+};
 
 #define SaveContext() \
 	__asm__ __volatile__("	cld; \
@@ -59,20 +59,20 @@ struct pte_context{
 							pushl %%edx; \
 							lea 0x4(%%esp), %%edx; \
 							pushl %%edx"::);
-							
-							
+
+
 /* 装载核心态数据段，堆栈段描述符，在SaveContext()之后切换进入核心态 */
 #define SwitchToKernel() \
 	__asm__ __volatile__("	mov $0x10,	%%dx;	\
 							mov	%%dx,	%%ds;	\
 							mov %%dx,	%%es"::);
-							
+
 
 /* 保存现场完成之后调用中断(陷入)处理函数。*/
 #define CallHandler(Class, Handler) \
 	__asm__ __volatile__("	call *%%eax" :: "a" (Class::Handler) );
-	
-	
+
+
 #define RestoreContext() \
 	__asm__ __volatile__("	addl $0x8, %%esp; \
 							popl %%gs;	\
@@ -86,25 +86,25 @@ struct pte_context{
 							popl %%edi; \
 							popl %%ebp; \
 							popl %%eax;"::);
-							
+
 #define Leave()	\
 	__asm__ __volatile__("	leave"	:: );
-							
-							
+
+
 #define InterruptReturn() \
 	__asm__ __volatile__("	iret"	:: );
-							
-							
+
+
 #define GetContext(pContext)	\
 	__asm__ __volatile__ ("	movl %%ebp, %0;		\
 							addl $0x4, %0 "		\
 							: "+m" (pContext) );
-							
+
 #define GetContextErrcode(pContext)	\
 	__asm__ __volatile__ ("	movl %%ebp, %0;		\
 							addl $0x8, %0 "		\
 							: "+m" (pContext) );
-							
+
 #define MoveToUserStack()	\
 		__asm__ __volatile__("	movl $0x800000,%%eax;	\
 								pushl $0x23;			\
