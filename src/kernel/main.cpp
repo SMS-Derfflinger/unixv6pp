@@ -186,6 +186,20 @@ extern "C" void ExecShell()
 	return;
 }
 
+extern "C" void InitProcessEntry()
+{
+	Machine::Instance().InitUserPageTable();
+	FlushPageDirectory();
+
+	clear_screan();
+
+	/* 1#进程回用户态，执行exec("shell.exe")系统调用 */
+	MoveToUserStack();
+	__asm ("call *%%eax" :: "a"((unsigned long)ExecShell - 0xC0000000));
+
+	Utility::Panic("InitProcessEntry returned");
+}
+
 #if 0
 /* 此函数test文件夹中的代码会引用，但貌似可以删除，记得把它删掉*/
 extern "C" void Delay()
@@ -327,7 +341,7 @@ extern "C" void next()
 
 #ifdef ENABLE_SPLASH
 	// show splash.
-	splash();
+	// splash();
 #endif
 
 
@@ -340,24 +354,14 @@ extern "C" void next()
 
     //us.u_MemoryDescriptor.Release();
 
-	int pid = Kernel::Instance().GetProcessManager().NewProc();         /* 0#进程创建1#进程 */
-	if( 0 == pid )     /* 0#进程执行Sched()，成为系统中永远运行在核心态的唯一进程  */
+	int pid = Kernel::Instance().GetProcessManager().NewInitProc();     /* 0#进程创建1#进程 */
+	if( pid <= 0 )
 	{
-		// us.u_procp->p_ttyp = NULL;
-		Kernel::Instance().GetProcessManager().Sched();
+		Utility::Panic("NewInitProc failed");
 	}
-	else               /* 1#进程执行应用程序shell.exe,是普通进程  */
-	{
-		Machine::Instance().InitUserPageTable();      //这是直接写0x202,0x203页表，没相对虚实地址映射表一样okay！
-		FlushPageDirectory();
 
-		//CRT::ClearScreen();
-        clear_screan();
-
-		/* 1#进程回用户态，执行exec("shell.exe")系统调用*/
-		MoveToUserStack();
-		__asm ("call *%%eax" :: "a"((unsigned long)ExecShell - 0xC0000000));   //要访问用户栈，所以一定要有映射！
-	}
+	/* 0#进程执行Sched()，成为系统中永远运行在核心态的唯一进程 */
+	Kernel::Instance().GetProcessManager().Sched();
 }
 
 

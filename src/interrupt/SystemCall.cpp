@@ -140,7 +140,7 @@ void SystemCall::SystemCallEntrance()
 }
 
 void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
-{	
+{
 	User& u = Kernel::Instance().GetUser();
 	/* reference: User_get_ar0() = &r0 @line 2701 */
 
@@ -153,6 +153,8 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 		return;
 	}
 
+        User_get_ssav()[0] = (unsigned long)regs;
+        User_get_ssav()[1] = (unsigned long)context;
 	User_get_ar0() = &regs->eax;
 
 	if(regs->eax == 20)

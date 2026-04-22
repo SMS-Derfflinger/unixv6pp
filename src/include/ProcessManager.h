@@ -87,6 +87,8 @@ public:
 	 */
 	int NewProc();
 
+	int NewInitProc();
+
 	int Swtch();
 
 	/*

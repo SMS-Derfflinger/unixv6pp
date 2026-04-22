@@ -83,6 +83,12 @@ int ProcessManager::NewProc()
 	return ProcessManager_new_proc();
 }
 
+extern "C" int ProcessManager_new_init_proc();
+int ProcessManager::NewInitProc()
+{
+	return ProcessManager_new_init_proc();
+}
+
 extern "C" void ProcessManager_setup_proc_zero();
 void ProcessManager::SetupProcessZero()
 {

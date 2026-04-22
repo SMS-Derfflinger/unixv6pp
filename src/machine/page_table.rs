@@ -201,6 +201,7 @@ pub extern "C" fn _user_page_table_array() -> *mut PageTable {
 pub fn switch_user_struct(proc: &Process) {
     let pfn = PFN::from(PAddr::from_val(proc.addr));
     kernel_page_table_mut()[1023].set(Some(pfn), EntryFlags::PRESENT | EntryFlags::WRITE);
+    compat_flush_page_directory();
 }
 
 fn page_directory_mut() -> &'static mut PageDirectory {

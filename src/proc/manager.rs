@@ -1,6 +1,7 @@
 use core::{
     arch::naked_asm,
     ffi::CStr,
+    mem::size_of,
     num::NonZero,
     ptr::NonNull,
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
@@ -14,10 +15,7 @@ use kernel_macros::define_class_compat;
 use crate::{
     compat::{compat_phys_copy, compat_swap_alloc},
     constants::{PosixError, Signal},
-    dev::{
-        buffer::{BufFlag, PhysicalBlock},
-        buffer_manager::global_buffer_manager,
-    },
+    dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt, OpenFiles},
     loader::PEParser,
     machine::{
@@ -26,16 +24,16 @@ use crate::{
     },
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
-        context::TaskContext,
-        process::{KResultExt, KernelStack, ProcessState, Terminal, Text},
-        Channel, Process, EXPRI,
+        Channel, EXPRI, Process, context::TaskContext, process::{KResultExt, KernelStack, ProcessState, Terminal, Text, TrapFrame}
     },
     serial::KResult,
     sync::{SpinExt, SuperCell},
-    user::{
-        MemoryDescriptor, Userspace, Userspace_after_fork, Userspace_before_fork, Userspace_init,
-    },
+    user::{MemoryDescriptor, Userspace, Userspace_init},
 };
+
+unsafe extern "C" {
+    fn InitProcessEntry();
+}
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(0);
 
@@ -47,7 +45,7 @@ pub struct ProcessImage();
 pub struct ProcessManager {
     procs: Vec<Box<Process>>,
 
-    pub cur_pri: u32,
+    pub cur_pri: i32,
     pub runrun: u32,
     pub run_in: u32,
     pub run_out: u32,
@@ -59,6 +57,20 @@ pub const SLOAD: u32 = 1 << 0;
 pub const SSYS: u32 = 1 << 1;
 pub const SLOCK: u32 = 1 << 2;
 pub const SSWAP: u32 = 1 << 3;
+
+#[repr(C)]
+struct Registers {
+    _we_dont_care: [u32; 4],
+    ebx: usize,
+    ecx: usize,
+    edx: usize,
+    esi: usize,
+    edi: usize,
+    _ebp: usize,
+    eax: usize,
+    _frame: [u8; 0x18],
+    ebp: usize,
+}
 
 impl Process {
     pub fn new_from(pid: u32, parent: &mut Self) -> Box<Self> {
@@ -113,13 +125,27 @@ impl ProcessManager {
         }
     }
 
-    pub fn new_proc(&mut self, parent: &mut Process) -> Box<Process> {
+    fn set_kernel_entry_context(child: &mut Process, entry: unsafe extern "C" fn()) {
+        let stack_top = child.kstack.as_ref().unwrap().top();
+
+        child.ctx.eip = entry as usize;
+        child.ctx.esp = stack_top;
+        child.ctx.ebp = stack_top;
+        child.ctx.ebx = 0;
+        child.ctx.esi = 0;
+        child.ctx.edi = 0;
+    }
+
+    fn new_proc(&mut self, parent: &mut Process) -> Box<Process> {
         let mut child = Process::new_from(Self::assign_pid(), parent);
         let mut cur_addr = PAddr::from_val(parent.addr);
         let cur_size = parent.size;
 
+        let mut new_user = Box::new(Userspace::get().clone());
+        new_user.proc = &raw mut *child;
+
         for fd in 0..OpenFiles::NOFILES {
-            let Ok(file) = Userspace::get().open_files.get_f(fd) else {
+            let Ok(file) = new_user.open_files.get_f(fd) else {
                 continue;
             };
 
@@ -127,28 +153,19 @@ impl ProcessManager {
         }
 
         // TODO: increase cwd inode refcount
-        if let Some(cwd) = Userspace::get().cwd {
+        if let Some(cwd) = new_user.cwd {
             core::mem::forget(cwd.own());
         }
 
-        let mut new_mem = Userspace::get().mem.clone();
-        {
-            let cur_mem = &Userspace::get().mem;
-            new_mem.text = cur_mem.text;
-            new_mem.text_len = cur_mem.text_len;
-            new_mem.data = cur_mem.data;
-            new_mem.data_len = cur_mem.data_len;
-            new_mem.stack_len = cur_mem.stack_len;
+        if let Some(cwd) = new_user.cwd_parent {
+            core::mem::forget(cwd.own());
         }
-
-        Userspace::get().proc = &raw mut *child;
-        let old_mem = core::mem::replace(&mut Userspace::get().mem, new_mem);
-
-        let handle = Userspace_before_fork();
 
         let aligned_size = cur_size.next_power_of_two();
         let order = aligned_size.trailing_zeros() - 12;
         let new_pages = USER_PAGE_MANAGER.lock().alloc_order(order);
+
+        Userspace::replace(&mut new_user);
 
         if let Some(pages) = new_pages {
             let mut cnt = parent.size;
@@ -166,15 +183,11 @@ impl ProcessManager {
             self.send_to_swap(&mut child, false, None);
             child.flag |= SSWAP;
             parent.stat = ProcessState::SRUN;
-            // TODO: Save current context to ctx
-            return child;
         }
 
-        Userspace_after_fork(handle);
+        Userspace::replace(&mut new_user);
 
-        Userspace::get().proc = &raw mut *parent;
-        core::mem::forget(core::mem::replace(&mut Userspace::get().mem, old_mem));
-
+        core::mem::forget(new_user);
         child
     }
 
@@ -502,16 +515,18 @@ impl ProcessManager {
         loop {
             let mut pri = 256;
             let mut best = None;
-            let mut idx = 0;
             let last = LAST_IDX.load(Ordering::Relaxed);
             let total = self.procs.len();
 
             self.runrun = 0;
             for i in 0..total {
-                idx = (last + i) % total;
+                let idx = (last + 1 + i) % total;
                 let proc = &mut self.procs[idx];
 
-                if proc.stat != ProcessState::SRUN || (proc.flag & SLOAD) != 0 {
+                if proc.stat != ProcessState::SRUN
+                    || (proc.flag & SLOAD) == 0
+                    || (proc.flag & SSYS) != 0
+                {
                     continue;
                 }
 
@@ -531,7 +546,7 @@ impl ProcessManager {
             self.switch_cnt = self.switch_cnt.wrapping_add(1);
             self.cur_pri = pri;
 
-            LAST_IDX.store(idx, Ordering::Relaxed);
+            LAST_IDX.store(best, Ordering::Relaxed);
             return &mut self.procs[best];
         }
     }
@@ -539,6 +554,8 @@ impl ProcessManager {
     pub fn switch(&mut self) {
         let me = Userspace::get().proc();
         let scheduler = &mut *self.procs[0];
+
+        switch_user_struct(&scheduler);
 
         unsafe {
             disable_interrupts();
@@ -574,14 +591,70 @@ impl ProcessManager {
         }
     }
 
+    fn set_fork_return_context(child: &mut Process) {
+        let regs = Userspace::get().ssav[0].0 as *const Registers;
+        let ctx = Userspace::get().ssav[1].0 as *const TrapFrame;
+
+        let regs = unsafe { &*regs };
+        let ctx = unsafe { &*ctx };
+        let mut stack = Stack {
+            sp: child.kstack.as_ref().unwrap().top() as *mut usize,
+        };
+
+        stack.push_word(ctx.xss);
+        stack.push_word(ctx.esp as usize);
+        stack.push_word(ctx.eflags);
+        stack.push_word(ctx.xcs);
+        stack.push_word(ctx.eip);
+        stack.push_word(regs.ecx);
+        let top = stack.push_word(regs.edx);
+
+        child.ctx.eip = Self::fork_ret as usize;
+        child.ctx.esp = top;
+        child.ctx.ebp = regs.ebp;
+        child.ctx.ebx = regs.ebx;
+        child.ctx.esi = regs.esi;
+        child.ctx.edi = regs.edi;
+    }
+
+    #[unsafe(no_mangle)]
+    #[unsafe(naked)]
+    extern "C" fn fork_ret() -> ! {
+        naked_asm!(
+            "xor %eax, %eax",
+            "pop %edx",
+            "pop %ecx",
+            "iret",
+            options(att_syntax),
+        )
+    }
+
     pub fn fork(&mut self) -> u32 {
         // Create a reborrow
-        let child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
+        let mut child = self.new_proc(Userspace::get().proc());
 
         // TODO: set the child's return value to 0
         // TODO: clear child's {c,}{s,u}time
 
         let pid = child.pid;
+        Self::set_fork_return_context(&mut child);
+        self.procs.push(child);
+        pid
+    }
+
+    pub fn new_proc_compat(&mut self) -> u32 {
+        let child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
+
+        let pid = child.pid;
+        self.procs.push(child);
+        pid
+    }
+
+    pub fn new_init_proc(&mut self) -> u32 {
+        let mut child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
+
+        let pid = child.pid;
+        Self::set_kernel_entry_context(&mut child, InitProcessEntry);
         self.procs.push(child);
         pid
     }
@@ -757,7 +830,8 @@ define_class_compat! {impl ProcessManager {
     /// Fork() 的 Rust 实现 - 进程创建
     pub fn fork() {
         let pm = ProcessManager::get();
-        pm.fork();
+        let retval = pm.fork();
+        Userspace::get().set_user_retval(retval);
     }
 
     /// Exec() 的 Rust 实现 - 进程图像改换
@@ -799,7 +873,12 @@ define_class_compat! {impl ProcessManager {
     /// NewProc() 的 Rust 实现 - 创建新进程并返回 pid
     pub fn new_proc() -> i32 {
         let pm = ProcessManager::get();
-        pm.fork() as i32
+        pm.new_proc_compat() as i32
+    }
+
+    pub fn new_init_proc() -> i32 {
+        let pm = ProcessManager::get();
+        pm.new_init_proc() as i32
     }
 
     /// XSwap() 的 Rust 实现 - 进程换出

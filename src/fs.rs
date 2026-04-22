@@ -59,7 +59,7 @@ pub use file_system::SuperBlock;
 pub use inode::{inoderef_leak, Inode, InodeMode};
 pub use open_file_manager::{GLOBAL_INODE_TABLE, GLOBAL_OPEN_FILE_TABLE};
 
-use crate::sync::SpinExt;
+use crate::sync::{KernelSpinGuard, SpinExt};
 
 static GLOBAL_OPENFILE_TABLE: LazyLock<Spin<OpenFileTable>> =
     LazyLock::new(|| Spin::new(OpenFileTable::new()));
@@ -68,7 +68,7 @@ fn global_open_file_table() -> SpinGuard<'static, OpenFileTable, NoContext> {
     GLOBAL_OPENFILE_TABLE.lock_ctx::<NoContext>()
 }
 
-fn global_inode_table() -> SpinGuard<'static, InodeTable, NoContext> {
+fn global_inode_table() -> KernelSpinGuard<'static, InodeTable> {
     GLOBAL_INODE_TABLE.lock()
 }
 

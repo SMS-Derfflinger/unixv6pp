@@ -12,7 +12,7 @@ use eonix_mm::{
 use kernel_macros::define_class_compat;
 
 use crate::{
-    compat::{compat_swap_alloc, compat_swap_free},
+    compat::{compat_phys_copy, compat_swap_alloc, compat_swap_free},
     constants::Signal,
     dev::buffer::PhysicalBlock,
     fs::{GLOBAL_OPEN_FILE_TABLE, InodeRef, OpenFiles},
@@ -40,11 +40,11 @@ pub enum ProcessState {
 
 #[repr(C)]
 pub struct TrapFrame {
-    eip: usize,
-    xcs: usize,
-    eflags: usize,
-    esp: *mut usize,
-    xss: usize,
+    pub eip: usize,
+    pub xcs: usize,
+    pub eflags: usize,
+    pub esp: *mut usize,
+    pub xss: usize,
 }
 
 #[repr(C)]
@@ -208,7 +208,7 @@ pub struct Process {
     pub stat: ProcessState,
     pub flag: u32,
 
-    pub pri: u32,
+    pub pri: i32,
     pub cpu: u32,
     pub nice: i32,
     pub time: u32,
@@ -337,11 +337,11 @@ impl Process {
             pri = 255;
         }
 
-        if pri > ProcessManager::get().cur_pri {
+        if pri as i32 > ProcessManager::get().cur_pri {
             ProcessManager::get().runrun += 1;
         }
 
-        self.pri = pri;
+        self.pri = pri as i32;
     }
 
     pub fn raise(&mut self, signal: Signal) {
@@ -354,8 +354,8 @@ impl Process {
 
         self.pending_signal = Some(signal);
 
-        if self.pri > Self::PUSER {
-            self.pri = Self::PUSER;
+        if self.pri > Self::PUSER as i32 {
+            self.pri = Self::PUSER as i32;
         }
 
         if self.stat == ProcessState::SWAIT {
@@ -394,7 +394,7 @@ impl Process {
         disable_interrupts();
         self.wchan = chan.channel_addr();
         self.stat = ProcessState::SSLEEP;
-        self.pri = pri as u32;
+        self.pri = pri;
         enable_interrupts();
 
         ProcessManager::get().switch();
@@ -412,7 +412,7 @@ impl Process {
         disable_interrupts();
         self.wchan = chan;
         self.stat = ProcessState::SWAIT;
-        self.pri = pri;
+        self.pri = pri as i32;
         enable_interrupts();
 
         if ProcessManager::get().run_in != 0 {
@@ -442,13 +442,11 @@ impl Process {
             return;
         };
 
-        let new_addr = new_page.phys().addr();
-        self.addr = new_addr;
+        let new_addr = new_page.phys();
+        self.addr = new_addr.addr();
 
         let copylen = oldlen.min(newlen);
-        unsafe {
-            (new_addr as *mut u8).copy_from_nonoverlapping(old_addr as *const u8, copylen);
-        }
+        compat_phys_copy(PAddr::from_val(old_addr), new_addr, copylen);
 
         if let Some(pages) = self.pages.replace(new_page) {
             unsafe {

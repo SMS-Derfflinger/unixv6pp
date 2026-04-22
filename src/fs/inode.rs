@@ -13,12 +13,12 @@ use crate::{
         global_file_system, FileRef, IOParameter, InodeRef,
     },
     proc::{Channel, ProcessManager},
-    sync::SpinExt,
+    sync::{KernelSpinGuard, SpinExt},
     user::Userspace,
 };
 use alloc::sync::Arc;
 use bitflags::bitflags;
-use eonix_spin::{NoContext, Spin, SpinGuard};
+use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 bitflags! {
@@ -597,7 +597,7 @@ impl Inode {
         ProcessManager::get().wakeup_all(&*self);
     }
 
-    fn lock_pri(me: &Spin<Self>, pri: u32) -> SpinGuard<'_, Inode, NoContext> {
+    fn lock_pri(me: &Spin<Self>, pri: u32) -> KernelSpinGuard<'_, Inode> {
         loop {
             let mut inode = me.lock();
             if !inode.i_flag.contains(InodeFlag::ILOCK) {
@@ -617,11 +617,11 @@ impl Inode {
         }
     }
 
-    pub fn lock_file(me: &Spin<Self>) -> SpinGuard<'_, Inode, NoContext> {
+    pub fn lock_file(me: &Spin<Self>) -> KernelSpinGuard<'_, Inode> {
         Self::lock_pri(me, PRIBIO as u32)
     }
 
-    pub fn lock_pipe(me: &Spin<Self>) -> SpinGuard<'_, Inode, NoContext> {
+    pub fn lock_pipe(me: &Spin<Self>) -> KernelSpinGuard<'_, Inode> {
         Self::lock_pri(me, PPIPE)
     }
 

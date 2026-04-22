@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy)]
-pub struct Pointer(usize);
+pub struct Pointer(pub usize);
 
 pub struct Terminal;
 
@@ -31,16 +31,17 @@ pub struct MemoryDescriptor {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Userspace {
     /// Save esp and ebp
     rsav: [Pointer; 2],
     /// Save esp and ebp AGAIN
-    ssav: [Pointer; 2],
+    pub ssav: [Pointer; 2],
 
     pub proc: *mut Process,
     pub mem: MemoryDescriptor,
 
-    ar0: *mut u32,
+    pub ar0: *mut u32,
 
     /// Used by syscall handlers
     pub args: [usize; 5],
@@ -96,6 +97,43 @@ impl Userspace {
     pub fn get() -> &'static mut Self {
         const RUST_USER_ADDRESS: usize = 0xc03ff000;
         unsafe { &mut *(RUST_USER_ADDRESS as *mut Self) }
+    }
+
+    pub fn replace(swap: &mut Box<Self>) {
+        core::mem::swap(swap.as_mut(), Userspace::get());
+    }
+
+    pub fn new() -> Self {
+        Self {
+            signal_pending: false,
+            signals: [0; SIGMAX],
+            open_files: OpenFiles::new(),
+            ioparam: IOParameter::new(),
+            utime: 0,
+            stime: 0,
+            children_utime: 0,
+            children_stime: 0,
+            uid: 0,
+            euid: 0,
+            gid: 0,
+            egid: 0,
+            args: [0; 5],
+            dirp: core::ptr::null_mut(),
+            cwd_full: {
+                let mut arr = [0; 128]; arr[0] = b'/'; arr
+            },
+            dentry: DirectoryEntry::new(),
+            cwd_name: [0; 28],
+            mem: MemoryDescriptor::new(),
+            ar0: core::ptr::null_mut(),
+            proc: core::ptr::null_mut(),
+            cwd: None,
+            cwd_parent: None,
+            error: None,
+            rsav: [Pointer(0); 2],
+            ssav: [Pointer(0); 2],
+            qsav: [Pointer(0); 2],
+        }
     }
 
     pub fn set_error(&mut self, errno: PosixError) {
@@ -191,14 +229,23 @@ impl Userspace {
     }
 }
 
+impl Drop for MemoryDescriptor {
+    fn drop(&mut self) {
+        crate::println_debug!("drop: {:p}", &self.user_pts);
+    }
+}
+
 impl MemoryDescriptor {
     pub const USER_SPACE_SIZE: usize = 0x800000;
     pub const USER_SPACE_START: usize = 0;
     pub const USER_SPACE_END: usize = Self::USER_SPACE_START + Self::USER_SPACE_SIZE;
 
     pub fn new() -> Self {
+        let user_pts = unsafe { Box::new_zeroed().assume_init() };
+        crate::println_debug!("alloc: {:p}", &user_pts);
+
         Self {
-            user_pts: unsafe { Box::new_zeroed().assume_init() },
+            user_pts,
             text: 0,
             text_len: 0,
             data: 0,
@@ -320,31 +367,7 @@ impl MemoryDescriptor {
 
 macro_rules! define_user_compat {
 { $( $rust_ident:ident: $type:ty => $c_ident:ident := $init:expr; )* } => {
-    pub struct SaveHandle {
-        $(
-            $rust_ident: $type,
-        )*
-    }
-
     define_class_compat!{impl Userspace {
-        pub fn before_fork() -> Box<SaveHandle> {
-            let user = Userspace::get();
-
-            Box::new(SaveHandle {
-                $(
-                    $rust_ident: user.$rust_ident.clone(),
-                )*
-            })
-        }
-
-        pub fn after_fork(handle: Box<SaveHandle>) {
-            let user = Userspace::get();
-
-            $(
-                user.$rust_ident = handle.$rust_ident;
-            )*
-        }
-
         pub fn init() {
             let user = Userspace::get();
 
