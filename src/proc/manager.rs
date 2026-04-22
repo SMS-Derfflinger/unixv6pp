@@ -49,7 +49,7 @@ pub struct ProcessManager {
     pub run_in: u32,
     pub run_out: u32,
     exe_cnt: u32,
-    switch_cnt: u32,
+    pub switch_cnt: u32,
 }
 
 pub const SLOAD: u32 = 1 << 0;

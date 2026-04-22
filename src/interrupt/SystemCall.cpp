@@ -5,87 +5,12 @@
 #include "Video.h"
 
 extern "C" {
-unsigned int _diagnose_rows();
-void _diagnose_enable_rows(unsigned int rows);
-void _diagnose_disable_rows();
 unsigned int get_time();
 void time_set(unsigned int value);
 unsigned int time_tout();
 void time_set_tout(unsigned int value);
 unsigned long time_tout_address();
 }
-
-
-/* 系统调用入口表的定义
- * 参照UNIX V6中sysent.c中对系统调用入口表sysent的定义 @line 2910 
- */
-SystemCallTableEntry SystemCall::m_SystemEntranceTable[SYSTEM_CALL_NUM] = 
-{
-	{ 0, &Sys_NullSystemCall },		/* 0 = indir	*/
-	{ 1, &Sys_Rexit },				/* 1 = rexit	*/
-	{ 0, &Sys_Fork 	},				/* 2 = fork	*/
-	{ 3, &Sys_Read 	},				/* 3 = read	*/
-	{ 3, &Sys_Write	},				/* 4 = write	*/
-	{ 2, &Sys_Open	},				/* 5 = open	*/
-	{ 1, &Sys_Close	},				/* 6 = close	*/
-	{ 1, &Sys_Wait	},				/* 7 = wait	*/
-	{ 2, &Sys_Creat	},				/* 8 = creat	*/
-	{ 2, &Sys_Link	},				/* 9 = link	*/
-	{ 1, &Sys_UnLink},				/* 10 = unlink	*/
-	{ 3, &Sys_Exec	},				/* 11 = Exec 	*/
-	{ 1, &Sys_ChDir	},				/* 12 = chdir	*/
-	{ 0, &Sys_GTime	},				/* 13 = time 	*/
-	{ 3, &Sys_MkNod },				/* 14 = mknod	*/
-	{ 2, &Sys_ChMod	},				/* 15 = chmod	*/
-	{ 3, &Sys_ChOwn	},				/* 16 = chown	*/
-	{ 1, &Sys_SBreak},				/* 17 = sbreak	*/
-	{ 2, &Sys_Stat	},				/* 18 = stat 		*/
-	{ 3, &Sys_Seek	},				/* 19 = seek	*/
-	{ 0, &Sys_Getpid},				/* 20 = getpid	*/
-	{ 3, &Sys_Smount	},			/* 21 = mount	*/
-	{ 1, &Sys_Sumount	},			/* 22 = umount	*/
-	{ 1, &Sys_Setuid	},			/* 23 = setuid	*/
-	{ 0, &Sys_Getuid	},			/* 24 = getuid	*/
-	{ 1, &Sys_Stime		},			/* 25 = stime	*/
-	{ 3, &Sys_Ptrace	},			/* 26 = ptrace	*/
-	{ 0, &Sys_Nosys	},				/* 27 = nosys	*/
-	{ 2, &Sys_FStat	},				/* 28 = fstat	*/
-	{ 1, &Sys_Trace	},				/* 29 = trace	*/
-	{ 0, &Sys_NullSystemCall },		/* 30 = smdate; inoperative */
-	{ 2, &Sys_Stty	},				/* 31 = stty	*/
-	{ 2, &Sys_Gtty	},				/* 32 = gtty	*/
-	{ 0, &Sys_Nosys	},				/* 33 = nosys	*/
-	{ 1, &Sys_Nice	},				/* 34 = nice	*/
-	{ 1, &Sys_Sslep	},				/* 35 = sleep	*/
-	{ 0, &Sys_Sync	},				/* 36 = sync	*/
-	{ 2, &Sys_Kill	},				/* 37 = kill		*/
-	{ 0, &Sys_Getswit},				/* 38 = switch	*/
-	{ 1, &Sys_Pwd	},				/* 39 = pwd	*/
-	{ 0, &Sys_Nosys	},				/* 40 = nosys	*/
-	{ 1, &Sys_Dup	},				/* 41 = dup		*/
-	{ 1, &Sys_Pipe	},				/* 42 = pipe 	*/
-	{ 1, &Sys_Times	},				/* 43 = times	*/
-	{ 4, &Sys_Profil},				/* 44 = prof	*/
-	{ 0, &Sys_Nosys	},				/* 45 = nosys	*/
-	{ 1, &Sys_Setgid},				/* 46 = setgid	*/
-	{ 0, &Sys_Getgid},				/* 47 = getgid	*/
-	{ 2, &Sys_Ssig	},				/* 48 = sig	*/
-	{ 0, &Sys_Nosys	},				/* 49 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 50 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 51 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 52 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 53 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 54 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 55 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 56 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 57= nosys	*/
-	{ 0, &Sys_Nosys	},				/* 58 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 59 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 60 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 61 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 62 = nosys	*/
-	{ 0, &Sys_Nosys	},				/* 63 = nosys	*/
-};
 
 SystemCall::SystemCall()
 {
@@ -110,30 +35,23 @@ void SystemCall::Trap1(int (*func)())
 	User_get_intflg() = 0;
 }
 
-unsigned int SystemCall::GetCallArgCount(unsigned int number)
-{
-	if ( number >= SYSTEM_CALL_NUM )
-	{
-		return 0;
-	}
-
-	return m_SystemEntranceTable[number].count;
-}
-
 void SystemCall::Trap1ByNumber(unsigned int number)
 {
-	if ( number >= SYSTEM_CALL_NUM )
+	switch ( number )
 	{
+	case 7: Trap1(Sys_Wait); return;
+	case 11: Trap1(Sys_Exec); return;
+	case 17: Trap1(Sys_SBreak); return;
+	case 31: Trap1(Sys_Stty); return;
+	case 32: Trap1(Sys_Gtty); return;
+	case 34: Trap1(Sys_Nice); return;
+	case 35: Trap1(Sys_Sslep); return;
+	case 37: Trap1(Sys_Kill); return;
+	case 48: Trap1(Sys_Ssig); return;
+	default:
 		User_get_error() = User::ENOSYS;
 		return;
 	}
-
-	Trap1(m_SystemEntranceTable[number].call);
-}
-
-extern "C" unsigned int cpp_system_call_arg_count(unsigned int number)
-{
-	return SystemCall::GetCallArgCount(number);
 }
 
 extern "C" void cpp_system_call_trap1(unsigned int number)
@@ -141,110 +59,11 @@ extern "C" void cpp_system_call_trap1(unsigned int number)
 	SystemCall::Trap1ByNumber(number);
 }
 
-/*	27, 49 - 63 = nosys		count = 0	*/
-int SystemCall::Sys_Nosys()
-{
-	/* 尚未分配的系统调用表项执行此空函数 */
-	User& u = Kernel::Instance().GetUser();
-	User_get_error() = User::ENOSYS;
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	0 = indir	count = 0	*/
-int SystemCall::Sys_NullSystemCall()
-{
-	/* This function should NEVER be called ! */
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	1 = rexit	count = 0	*/
-int SystemCall::Sys_Rexit()
-{
-	User& u = Kernel::Instance().GetUser();
-	User_get_procp()->Exit();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	2 = fork	count = 0	*/
-int SystemCall::Sys_Fork()
-{
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	procMgr.Fork();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	3 = read	count = 2	*/
-int SystemCall::Sys_Read()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Read();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	4 = write	count = 2	*/
-int SystemCall::Sys_Write()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Write();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	5 = open	count = 2	*/
-int SystemCall::Sys_Open()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Open();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	6 = close	count = 0	*/
-int SystemCall::Sys_Close()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Close();
-
-	return 0;	/* GCC likes it ! */
-}
-
 /*	7 = wait	count = 0	*/
 int SystemCall::Sys_Wait()
 {
 	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
 	procMgr.Wait();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	8 = creat	count = 2	*/
-int SystemCall::Sys_Creat()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Creat();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	9 = link	count = 2	*/
-int SystemCall::Sys_Link()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Link();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	10 = unlink	count = 1	*/
-int SystemCall::Sys_UnLink()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.UnLink();
 
 	return 0;	/* GCC likes it ! */
 }
@@ -258,174 +77,11 @@ int SystemCall::Sys_Exec()
 	return 0;	/* GCC likes it ! */
 }
 
-/*	12 = chdir	count = 1	*/
-int SystemCall::Sys_ChDir()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.ChDir();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	13 = gtime	count = 0	*/
-int SystemCall::Sys_GTime()
-{
-	User& u = Kernel::Instance().GetUser();
-	User_get_ar0()[User::EAX] = get_time();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	14 = mknod	count = 3	*/
-int SystemCall::Sys_MkNod()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.MkNod();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	15 = chmod	count = 2	*/
-int SystemCall::Sys_ChMod()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.ChMod();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	16 = chown	count = 2	*/
-int SystemCall::Sys_ChOwn()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.ChOwn();
-
-	return 0;	/* GCC likes it ! */
-}
-
 /*	17 = sbreak	count = 1	*/
 int SystemCall::Sys_SBreak()
 {
 	User& u = Kernel::Instance().GetUser();
 	User_get_procp()->SBreak();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	18 = stat	count = 2	*/
-int SystemCall::Sys_Stat()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Stat();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	19 = seek	count = 2	*/
-int SystemCall::Sys_Seek()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Seek();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	20 = getpid	count = 0	*/
-int SystemCall::Sys_Getpid()
-{
-	User& u = Kernel::Instance().GetUser();
-	User_get_ar0()[User::EAX] = User_get_procp()->p_pid;
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	21 = mount	count = 3	*/
-int SystemCall::Sys_Smount()
-{
-	return 0;	/* GCC likes it ! */
-}
-
-/*	22 = umount  count = 1	*/
-int SystemCall::Sys_Sumount()
-{
-	return 0;	/* GCC likes it ! */
-}
-
-/*	23 = setuid	count = 0	*/
-int SystemCall::Sys_Setuid()
-{
-	User& u = Kernel::Instance().GetUser();
-	short uid = User_get_arg()[0];
-
-	if ( User_get_ruid() == uid || Userspace_is_root() )
-	{
-		User_get_uid() = uid;
-		User_get_procp()->p_uid = uid;
-		User_get_ruid() = uid;
-	}
-	else
-	{
-		User_get_error() = User::EPERM;
-	}
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	24 = getuid	count = 0	*/
-int SystemCall::Sys_Getuid()
-{
-	User& u = Kernel::Instance().GetUser();
-        unsigned int uid;
-
-	uid = (User_get_uid() << 16);
-	uid |= (User_get_ruid() & 0xFF);
-	User_get_ar0()[User::EAX] = uid;
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	25 = stime	count = 0	*/
-int SystemCall::Sys_Stime()
-{
-	User& u = Kernel::Instance().GetUser();
-
-	/* 仅超级用户才具有设置系统时间的权限 */
-	if (Userspace_is_root())
-	{
-		time_set(User_get_ar0()[User::EAX]);
-	}
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	26 = ptrace	count = 3	*/
-int SystemCall::Sys_Ptrace()
-{
-	return 0;	/* GCC likes it ! */
-}
-
-/*	28 = fstat	count = 1	*/
-int SystemCall::Sys_FStat()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.FStat();
-
-	return 0;	/* GCC likes it ! */
-}
-
-int SystemCall::Sys_Trace()
-{
-	User& u = Kernel::Instance().GetUser();
-
-	if (_diagnose_rows() == 0) /* if Diagnose not enabled */
-	{
-		_diagnose_enable_rows(User_get_arg()[0]);	/* Diagnose类调试输出的总行数 */
-	}
-	else /* if enabled already */
-	{
-		_diagnose_disable_rows();	/* 停止Diagnose类调试输出 */
-	}
-	User_get_ar0()[User::EAX] = _diagnose_rows();
 
 	return 0;	/* GCC likes it ! */
 }
@@ -532,109 +188,11 @@ int SystemCall::Sys_Sslep()
 	return 0;	/* GCC likes it ! */
 }
 
-/*	36 = sync	count	= 0	*/
-int SystemCall::Sys_Sync()
-{
-	Kernel::Instance().GetFileSystem().Update();
-
-	return 0;	/* GCC likes it ! */
-}
-
 /*	37 = kill	count = 1	*/
 int SystemCall::Sys_Kill()
 {
 	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
 	procMgr.Kill();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	38 = switch	count = 0	*/
-int SystemCall::Sys_Getswit()
-{
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	User& u = Kernel::Instance().GetUser();
-
-	User_get_ar0()[User::EAX] = procMgr.SwtchNum;
-	return 0;	/* GCC likes it ! */
-}
-
-/*	39 = pwd	count = 1	*/
-int SystemCall::Sys_Pwd()
-{
-	User& u = Kernel::Instance().GetUser();
-	strcpy(User_get_dirp(), User_get_curdir());
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	41 = dup	count = 0	*/
-int SystemCall::Sys_Dup()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Dup();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	42 = pipe	count = 0	*/
-int SystemCall::Sys_Pipe()
-{
-	FileManager& fileMgr = Kernel::Instance().GetFileManager();
-	fileMgr.Pipe();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	43 = times	count = 1	*/
-int SystemCall::Sys_Times()
-{
-	User& u = Kernel::Instance().GetUser();
-
-	struct tms* ptms = (struct tms *)User_get_arg()[0];
-	
-	ptms->utime = User_get_utime();
-	ptms->stime = User_get_stime();
-	ptms->cutime = User_get_cutime();
-	ptms->cstime = User_get_cstime();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	44 = prof	count = 4	*/
-int SystemCall::Sys_Profil()
-{
-	return 0;	/* GCC likes it ! */
-}
-
-/*	46 = setgid	count = 0	*/
-int SystemCall::Sys_Setgid()
-{
-	User& u = Kernel::Instance().GetUser();
-	short gid = User_get_arg()[0];
-
-	if ( User_get_rgid() == gid || Userspace_is_root() )
-	{
-		User_get_gid() = gid;
-		User_get_rgid() = gid;
-	}
-	else
-	{
-		User_get_error() = User::EPERM;
-	}
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	47 = getgid	count = 0	*/
-int SystemCall::Sys_Getgid()
-{
-	User& u = Kernel::Instance().GetUser();
-	unsigned int gid;
-
-	gid = (User_get_gid() << 16);
-	gid |= (User_get_rgid() & 0xFF);
-	User_get_ar0()[User::EAX] = gid;
 
 	return 0;	/* GCC likes it ! */
 }

@@ -34,25 +34,22 @@ pub extern "C" fn _diagnose_write_cstr(message: *const u8) {
 
 #[no_mangle]
 pub extern "C" fn _diagnose_clear_screen() {
-    let rows = _diagnose_rows();
+    let rows = diagnose_rows();
     ROW.with_mut(|row| *row = SCREEN_ROWS - rows);
     COLUMN.with_mut(|column| *column = 0);
 }
 
-#[no_mangle]
-pub extern "C" fn _diagnose_rows() -> u32 {
+pub fn diagnose_rows() -> u32 {
     ROWS.with(|rows| *rows)
 }
 
-#[no_mangle]
-pub extern "C" fn _diagnose_enable_rows(rows: u32) {
+pub fn diagnose_enable_rows(rows: u32) {
     ROWS.with_mut(|diagnose_rows| *diagnose_rows = rows);
     ROW.with_mut(|row| *row = SCREEN_ROWS - rows);
     COLUMN.with_mut(|column| *column = 0);
 }
 
-#[no_mangle]
-pub extern "C" fn _diagnose_disable_rows() {
+pub fn diagnose_disable_rows() {
     _diagnose_clear_screen();
     ROWS.with_mut(|rows| *rows = 0);
     ROW.with_mut(|row| *row = SCREEN_ROWS);

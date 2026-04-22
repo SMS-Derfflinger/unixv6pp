@@ -54,9 +54,9 @@ pub struct Userspace {
     pub stime: u32,
 
     /// Sum of all children's user time
-    children_utime: u32,
+    pub children_utime: u32,
     /// Sum of all children's sys time
-    children_stime: u32,
+    pub children_stime: u32,
 
     /// Pending signals
     signals: [usize; SIGMAX],
@@ -79,7 +79,7 @@ pub struct Userspace {
     /// Last component of pwd
     cwd_name: [u8; 28],
     /// Full path of pwd
-    cwd_full: [u8; 128],
+    pub cwd_full: [u8; 128],
 
     /// Userspace error code
     pub error: Option<PosixError>,
@@ -154,7 +154,7 @@ impl Userspace {
         &mut self.ioparam
     }
 
-    fn is_root(&mut self) -> bool {
+    pub fn is_root(&mut self) -> bool {
         if self.uid == 0 {
             return true;
         }
@@ -163,7 +163,7 @@ impl Userspace {
         false
     }
 
-    fn setuid(&mut self, uid: u16, _suid: u16) {
+    pub fn setuid(&mut self, uid: u16, _suid: u16) {
         if self.euid == uid || self.is_root() {
             self.uid = uid;
             self.euid = uid;
@@ -173,11 +173,11 @@ impl Userspace {
         }
     }
 
-    fn getuid(&self) -> u32 {
+    pub fn getuid(&self) -> u32 {
         ((self.uid as u32) << 16) | ((self.euid as u32) & 0xff)
     }
 
-    fn setgid(&mut self, gid: u16, _sgid: u16) {
+    pub fn setgid(&mut self, gid: u16, _sgid: u16) {
         if self.egid == gid || self.is_root() {
             self.gid = gid;
             self.egid = gid;
@@ -186,7 +186,7 @@ impl Userspace {
         }
     }
 
-    fn getgid(&self) -> u32 {
+    pub fn getgid(&self) -> u32 {
         ((self.gid as u32) << 16) | ((self.egid as u32) & 0xff)
     }
 

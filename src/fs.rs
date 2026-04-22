@@ -78,3 +78,76 @@ static GLOBAL_FILE_SYSTEM: LazyLock<Spin<FileSystem>> =
 pub(crate) fn global_file_system() -> SpinGuard<'static, FileSystem, NoContext> {
     GLOBAL_FILE_SYSTEM.lock_ctx::<NoContext>()
 }
+
+// TODO
+fn with_file_manager(f: extern "C" fn()) {
+    f();
+}
+
+pub(crate) fn syscall_read() {
+    with_file_manager(file_manager::FileManager_read);
+}
+
+pub(crate) fn syscall_write() {
+    with_file_manager(file_manager::FileManager_write);
+}
+
+pub(crate) fn syscall_open() {
+    with_file_manager(file_manager::FileManager_open);
+}
+
+pub(crate) fn syscall_close() {
+    with_file_manager(file_manager::FileManager_close);
+}
+
+pub(crate) fn syscall_creat() {
+    with_file_manager(file_manager::FileManager_creat);
+}
+
+pub(crate) fn syscall_link() {
+    with_file_manager(file_manager::FileManager_link);
+}
+
+pub(crate) fn syscall_unlink() {
+    with_file_manager(file_manager::FileManager_unlink);
+}
+
+pub(crate) fn syscall_chdir() {
+    with_file_manager(file_manager::FileManager_chdir);
+}
+
+pub(crate) fn syscall_mknod() {
+    with_file_manager(file_manager::FileManager_mknod);
+}
+
+pub(crate) fn syscall_chmod() {
+    with_file_manager(file_manager::FileManager_chmod);
+}
+
+pub(crate) fn syscall_chown() {
+    with_file_manager(file_manager::FileManager_chown);
+}
+
+pub(crate) fn syscall_stat() {
+    with_file_manager(file_manager::FileManager_stat);
+}
+
+pub(crate) fn syscall_seek() {
+    with_file_manager(file_manager::FileManager_seek);
+}
+
+pub(crate) fn syscall_fstat() {
+    with_file_manager(file_manager::FileManager_fstat);
+}
+
+pub(crate) fn syscall_sync() {
+    global_file_system().update();
+}
+
+pub(crate) fn syscall_dup() {
+    with_file_manager(file_manager::FileManager_dup);
+}
+
+pub(crate) fn syscall_pipe() {
+    with_file_manager(file_manager::FileManager_pipe);
+}

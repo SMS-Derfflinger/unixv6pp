@@ -1,25 +1,7 @@
 #ifndef SYSTEM_CALL_H
 #define SYSTEM_CALL_H
 
-/* 
- * SystemCallTableEntry结构是系统
- * 调用处理程序入口表的表项。
- * 
- * 对应在UnixV6代码中的sysent结构
- * struct sysent		@line 2667
- * {
- *	int count;
- *	int (*call)();
- * }
- */
-/*系统调用入口表表项的定义*/
-struct SystemCallTableEntry
-{
-	unsigned int	count;			//系统调用的参数个数
-			 int	(*call)();		//相应系统调用处理函数的指针
-};
-
-/* 
+/*
  * UNIX V6中使用编译后trap指令码的低6bit作为index查找入口表，这依靠
  * trap指令能够针对不同系统调用产生不同指令码。而X86平台上的int指令
  * 无法做到产生不同的指令码，因而通过eax寄存器传入系统调用号作为index。
@@ -47,7 +29,6 @@ public:
 	 */
 	static void Trap1(int (*func)());
 
-	static unsigned int GetCallArgCount(unsigned int number);
 	static void Trap1ByNumber(unsigned int number);
 
 private:
@@ -62,98 +43,21 @@ private:
 	 * 程序。
 	 */
 
-	/*	0 = indir	count = 0	*/
-	static int Sys_NullSystemCall();	/*在V6中用作间接系统调用，x86上不需要，不会被调用到的空函数 */
-
 	/*	1 = rexit	count = 0	*/
 	static int Sys_Rexit();
 
 	/*	2 = fork	count = 0	*/
 	static int Sys_Fork();
-	
-	/*	3 = read	count = 2	*/
-	static int Sys_Read();
-	
-	/*	4 = write	count = 2	*/
-	static int Sys_Write();
-	
-	/*	5 = open	count = 2	*/
-	static int Sys_Open();
-	
-	/*	6 = close	count = 0	*/
-	static int Sys_Close();
-	
+
 	/*	7 = wait	count = 0	*/
 	static int Sys_Wait();
-	
-	/*	8 = creat	count = 2	*/
-	static int Sys_Creat();
-	
-	/*	9 = link	count = 2	*/
-	static int Sys_Link();
-	
-	/*	10 = unlink	count = 1	*/
-	static int Sys_UnLink();
-	
+
 	/*	11 = exec	count = 2	*/
 	static int Sys_Exec();
-	
-	/*	12 = chdir	count = 1	*/
-	static int Sys_ChDir();
-	
-	/*	13 = gtime	count = 0	*/
-	static int	Sys_GTime();
-	
-	/*	14 = mknod	count = 3	*/
-	static int Sys_MkNod();
-	
-	/*	15 = chmod	count = 2	*/
-	static int Sys_ChMod();
-	
-	/*	16 = chown	count = 2	*/
-	static int Sys_ChOwn();
-	
+
 	/*	17 = sbreak	count = 1	*/
 	static int Sys_SBreak();
-	
-	/*	18 = stat	count = 2	*/
-	static int Sys_Stat();
-	
-	/*	19 = seek	count = 2	*/
-	static int Sys_Seek();
-	
-	/*	20 = getpid	count = 0	*/
-	static int Sys_Getpid();
-	
-	/*	21 = mount	count = 3	*/
-	static int Sys_Smount();
-	
-	/*	22 = umount  count = 1	*/
-	static int Sys_Sumount();
-	
-	/*	23 = setuid	count = 0	*/
-	static int Sys_Setuid();
-	
-	/*	24 = getuid	count = 0	*/
-	static int Sys_Getuid();
-	
-	/*	25 = stime	count = 0	*/
-	static int Sys_Stime();
-	
-	/*	26 = ptrace	count = 3	*/
-	static int Sys_Ptrace();
-	
-	/*	27 = nosys	count = 0	*/
-	static int Sys_Nosys();		/* 表示当前系统调用号保留未使用，用作将来扩展 */
-	
-	/*	28 = fstat	count = 1	*/
-	static int Sys_FStat();
-	
-	/*	29 = trace	count = 1	*/
-	static int Sys_Trace();
-	
-	/*	30 =  smdate; inoperative	count = 1	handler = nullsys	*/
-	
+
 	/*	31 = stty	count = 1	*/
 	static int Sys_Stty();
 	
@@ -167,50 +71,16 @@ private:
 	
 	/*	35 = sleep	count = 0	*/
 	static int Sys_Sslep();		/* Don't Confused with sleep(chan, pri) */
-	
-	/*	36 = sync	count	= 0	*/
-	static int Sys_Sync();
-	
+
 	/*	37 = kill	count = 1	*/
 	static int Sys_Kill();
-	
-	/*	38 = switch	count = 0	*/
-	static int Sys_Getswit();
-	
-	/*	39 = pwd	count = 1	*/
-	static int Sys_Pwd();
-	
-	/*	40 = nosys	count = 0	*/
-	
-	/*	41 = dup	count = 0	*/
-	static int Sys_Dup();
-	
-	/*	42 = pipe	count = 0	*/
-	static int Sys_Pipe();
-	
-	/*	43 = times	count = 1	*/
-	static int Sys_Times();
-	
-	/*	44 = prof	count = 4	*/
-	static int Sys_Profil();
-	
-	/*	45 = nosys	count = 0	*/
-	
-	/*	46 = setgid	count = 0	*/
-	static int Sys_Setgid();
-	
-	/*	47 = getgid	count = 0	*/
-	static int Sys_Getgid();
-	
+
 	/*	48 = sig	count = 2	*/
 	static int Sys_Ssig();
 	
 	/*	49 ~ 63 = nosys	count = 0	*/	
 
 
-private:
-	/*系统调用入口表的声明*/
-	static SystemCallTableEntry m_SystemEntranceTable[SYSTEM_CALL_NUM];
 };
 
 #endif

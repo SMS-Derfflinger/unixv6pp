@@ -1,4 +1,4 @@
-mod diagnose;
+pub mod diagnose;
 mod next;
 mod splash;
 mod syscall;
