@@ -46,15 +46,12 @@ Kernel& Kernel::Instance()
 	return Kernel::instance;
 }
 
-extern "C" void init_page_managers(void);
-
 void Kernel::InitMemory()
 {
 	this->m_KernelPageManager = &g_KernelPageManager;
 	this->m_UserPageManager = &g_UserPageManager;
 
 	Diagnose::Write("Initilize Memory...");
-        init_page_managers();
 	Diagnose::Write("Ok.\n");
 
 	this->m_SwapperManager = &g_SwapperManager;

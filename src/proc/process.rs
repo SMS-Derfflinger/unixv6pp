@@ -14,13 +14,11 @@ use kernel_macros::define_class_compat;
 use crate::{
     constants::Signal,
     dev::buffer::PhysicalBlock,
-    fs::{InodeRef, OpenFiles, GLOBAL_OPEN_FILE_TABLE},
+    fs::{GLOBAL_OPEN_FILE_TABLE, InodeRef, OpenFiles},
     machine::asm::{disable_interrupts, enable_interrupts},
-    mm::{PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
+    mm::{KERNEL_PAGE_MANAGER, PAGE_SIZE, PhysPage, USER_PAGE_MANAGER},
     proc::{
-        context::TaskContext,
-        manager::{ProcessManager, SLOAD, SSWAP},
-        Channel,
+        Channel, context::TaskContext, manager::{ProcessManager, SLOAD, SSWAP}
     },
     serial::KResult,
     sync::SpinExt,
@@ -170,6 +168,26 @@ impl Text {
 
 pub struct Terminal;
 
+pub struct KernelStack {
+    pages: Option<&'static mut PhysPage>,
+}
+
+impl KernelStack {
+    pub fn new() -> Self {
+        Self {
+            pages: Some(KERNEL_PAGE_MANAGER.lock().alloc_order(3).expect("Out of memory")),
+        }
+    }
+}
+
+impl Drop for KernelStack {
+    fn drop(&mut self) {
+        unsafe {
+            KERNEL_PAGE_MANAGER.lock().dealloc(self.pages.take().unwrap());
+        }
+    }
+}
+
 #[repr(C)]
 pub struct Process {
     pub uid: u16,
@@ -199,11 +217,11 @@ pub struct Process {
 unsafe impl Send for Process {}
 unsafe impl Sync for Process {}
 
-trait KResultExt {
+pub(crate) trait KResultExt {
     fn pass_to_user(self);
 }
 
-trait NativeWord {
+pub(crate) trait NativeWord {
     fn into_word(self) -> usize;
 }
 
@@ -559,5 +577,35 @@ define_class_compat! {impl Process {
     pub fn set_nice(&mut self) {
         let nice = Userspace::get().args[0] as i32;
         this.set_nice(nice);
+    }
+
+    pub fn set_pri(&mut self) {
+        this.set_pri();
+    }
+
+    pub fn exit(&mut self) {
+        this.exit();
+    }
+
+    pub fn sstack(&mut self) {
+        this.sstack().pass_to_user();
+    }
+
+    pub fn sbrk(&mut self) {
+        let brk = Userspace::get().args[0];
+        this.sbrk(brk).pass_to_user();
+    }
+
+    pub fn sleep_kernel(&mut self, chan: usize, pri: i32) {
+        this.sleep_kernel(chan, pri);
+    }
+}}
+
+define_class_compat! {impl KernelStack {
+    pub fn new() -> *mut u8 {
+        let stack = KernelStack::new();
+        let addr = stack.pages.as_ref().unwrap().phys().addr() as *mut u8;
+        core::mem::forget(stack);
+        addr.wrapping_add((1 << 3) * PAGE_SIZE)
     }
 }}

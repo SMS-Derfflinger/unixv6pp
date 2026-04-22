@@ -209,7 +209,7 @@ impl MemoryDescriptor {
 
     pub fn new(user_pts: Option<Box<[PageTable; 2]>>) -> Self {
         Self {
-            user_pts,
+            user_pts: Some(user_pts.unwrap_or_else(|| unsafe { Box::new_zeroed().assume_init() })),
             text: 0,
             text_len: 0,
             data: 0,

@@ -2,23 +2,18 @@
 
 #include "Utility.h"
 #include "Video.h"
-#include "Simple.h"
 #include "IOPort.h"
 #include "Chip8253.h"
 #include "Chip8259A.h"
 #include "Machine.h"
 #include "Assembly.h"
 #include "Kernel.h"
-#include "SystemCall.h"
-#include "Exception.h"
 #include "DMA.h"
 #include "TimeInterrupt.h"
-#include "PEParser.h"
 #include "CMOSTime.h"
 #include "./Lib.h"
 
 #include "libyrosstd/sys/types.h"
-#include "libyrosstd/string.h"
 
 bool isInit = false;
 
@@ -35,9 +30,9 @@ void clear_screan();
 extern "C" void MasterIRQ7()
 {
 	SaveContext();
-	
+
 	Diagnose::Write("IRQ7 from Master 8259A!\n");
-	
+
 	//需要在中断处理程序末尾先8259A发送EOI命令
 	//实验发现：有没有下面IOPort::OutByte(0x27, 0x20);这句运行效果都一样，本来以为
 	//发送EOI命令之后会有后续的IRQ7中断进入， 但试下来结果是IRQ7只会产生一次。
@@ -55,18 +50,18 @@ static void callCtors()
 {
 	extern void (*__CTOR_LIST__)();
 	extern void (* __CTOR_END__)();
-	
-	
+
+
 	void (**constructor)() = &__CTOR_LIST__;
 
-	
-	//constructor++;   
+
+	//constructor++;
 		/*  (可以先看一下链接脚本：Link.ld)
 		Link script中修改过后，这里的total已经不是constructor的个数了，
 		_CTOR_LIST__的第一个单元开始就是global/static对象的constructor，
-		所以不用 constructor++; 
+		所以不用 constructor++;
 		*/
-	
+
 	while(constructor != &__CTOR_END__) //total不是constructor的数量，而是用于检测是否到了_CTOR_LIST__的末尾
 	{
 		(*constructor)();
@@ -92,9 +87,9 @@ static void callDtors()
 {
 	extern void (* __DTOR_LIST__)();
 	extern void (* __DTOR_END__)();
-	
+
 	void (**deconstructor)() = &__DTOR_LIST__;
-	
+
 	while(deconstructor != &__DTOR_END__)
 	{
 		(*deconstructor)();
@@ -103,13 +98,16 @@ static void callDtors()
 }
 
 
+extern "C" void init_page_managers(void);
+extern "C" unsigned long KernelStack_new(void);
+
 void main0(void)
 {
 	Machine& machine = Machine::Instance();
 
 	Chip8253::Init(60);	//初始化时钟中断芯片
 	Chip8259A::Init();
-	Chip8259A::IrqEnable(Chip8259A::IRQ_TIMER);		
+	Chip8259A::IrqEnable(Chip8259A::IRQ_TIMER);
 	DMA::Init();
 	Chip8259A::IrqEnable(Chip8259A::IRQ_IDE);
 	Chip8259A::IrqEnable(Chip8259A::IRQ_SLAVE);
@@ -120,13 +118,13 @@ void main0(void)
 	machine.InitGDT();
 	machine.LoadGDT();
 	//init idt
-	machine.InitIDT();	
+	machine.InitIDT();
 	machine.LoadIDT();
 
 	machine.InitPageDirectory();    // 初始化页目录、核心态页表
 	Machine::Instance().InitUserPageTable();     // 初始化用户态页表
 	machine.EnablePageProtection();    //开启分页模式
-	/* 
+	/*
 	 * InitPageDirectory()中将线性地址0-4M映射到物理内存
 	 * 0-4M是为保证此注释以下至本函数结尾的代码正确执行！
 	 *
@@ -134,6 +132,9 @@ void main0(void)
 	 * 分段单元给出的线性地址是[0,4M)。开启分页模式后，一定要有这段空间的映射关系，否则，通不过。
 	 * [4M，8M)空间用户区，不应该被映射，所以先空着，InitUserPageTable(),base填0。
 	 */
+
+        init_page_managers();
+	auto stack = KernelStack_new();
 
 	//使用0x10段寄存器
 	__asm
@@ -145,14 +146,13 @@ void main0(void)
 		);
 
 	//将初始化堆栈设置为0xc0400000，这里破坏了封装性，考虑使用更好的方法
-	__asm
-		(
-		" \
-		mov $0xc0400000, %ebp \n\t \
-		mov $0xc0400000, %esp \n\t \
-		jmp $0x8, $next"
-		);
-	
+	asm volatile(
+		"mov %0, %%ebp \n\t \
+		 mov %0, %%esp \n\t \
+		 jmp $0x8, $next"
+		: : "g"(stack + 0xC0000000)
+	);
+
 	__asm ("ud2");
 }
 
@@ -250,7 +250,7 @@ int splash();
 
 extern "C" void next()
 {
-	
+
 #ifdef USE_VESA
 	    intptr_t vesaModeInfoAddr = Machine::KERNEL_SPACE_START_ADDRESS + 0x7e00;
 		auto& vesaModeInfo = * (vesa_compat::VbeModeInfo*) vesaModeInfoAddr;
@@ -262,9 +262,9 @@ extern "C" void next()
 		);
 
 		vesa_init(&vesaModeInfo);
-	
+
 #endif
-	
+
 
 	//这个时候0M-4M的内存映射已经不被使用了，所以要重新映射用户态的页表，为用户态程序运行做好准备
 	//Machine::Instance().InitUserPageTable();

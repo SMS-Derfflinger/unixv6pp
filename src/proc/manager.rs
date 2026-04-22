@@ -27,7 +27,7 @@ use crate::{
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
-        process::{ProcessState, Terminal, Text},
+        process::{KResultExt, ProcessState, Terminal, Text},
         Channel, Process, EXPRI,
     },
     serial::KResult,
@@ -404,12 +404,46 @@ impl ProcessManager {
     pub fn wait(&mut self, proc: &mut Process) {
         crate::println_info!("Process {} finding dead son. They are:", proc.pid);
         loop {
-            for p in &self.procs {
+            let mut has_child = false;
+            for p in &mut self.procs {
                 if p.ppid != proc.pid {
                     continue;
                 }
 
                 crate::println_info!("Process {} (Status: {:?})", p.pid, p.stat);
+                has_child = true;
+
+                if p.stat == ProcessState::SZOMB {
+                    // wait() 系统调用返回子进程的 pid
+                    Userspace::get().set_user_retval(p.pid);
+
+                    // 清理僵尸进程
+                    p.stat = ProcessState::SNULL;
+                    p.pid = 0;
+                    p.ppid = 0;
+                    p.pending_signal = None;
+                    p.flag = 0;
+
+                    // greatbridf: don't consider child time accounting for now.
+                    // maybe add them back later...
+
+                    crate::println_info!("end wait");
+                    return;
+                }
+            }
+
+            if has_child {
+                // 睡眠等待直至子进程结束
+                crate::println_info!("wait until child process Exit!");
+                let chan = (proc as *const Process) as usize;
+                const PWAIT: u32 = 40;
+                proc.sleep_user(chan, PWAIT);
+                crate::println_info!("end sleep");
+                continue;
+            } else {
+                // 不存在需要等待结束的子进程
+                Userspace::get().set_error(PosixError::ECHILD);
+                break;
             }
         }
     }
@@ -631,7 +665,7 @@ define_class_compat! {impl ProcessManager {
             pid: ProcessManager::assign_pid(),
             ppid: 0,
             addr: PPDA_ADDR,
-            size: 0x100,
+            size: 0x1000,
             text: None,
             stat: ProcessState::SRUN,
             flag: SLOAD | SSYS,
@@ -649,5 +683,137 @@ define_class_compat! {impl ProcessManager {
 
         Userspace_init();
         Userspace::get().proc = &raw mut *proc;
+
+        ProcessManager::get().procs.push(proc);
+    }
+
+    /// Sched() 的 Rust 实现 - 0# 进程的调度循环
+    /// 原 C++ 版本负责进程换入换出，现在直接使用 Rust 的 schedule() 循环
+    pub fn sched() {
+        ProcessManager::schedule();
+    }
+
+    /// Wait() 的 Rust 实现 - 父进程等待子进程结束
+    pub fn wait() {
+        let pm = ProcessManager::get();
+        let proc = Userspace::get().proc();
+        pm.wait(proc);
+    }
+
+    /// 唤醒所有因 chan 而睡眠的进程（供 C++ 调用）
+    pub fn wakeup_all_chan(chan: usize) {
+        ProcessManager::get().wakeup_all(chan);
+    }
+
+    /// 唤醒等待 run_in 的进程（供 C++ 调用）
+    pub fn wakeup_runin() {
+        ProcessManager::get().wakeup_runin();
+    }
+
+    /// 时钟中断每秒末尾调用：更新所有进程的 p_time, p_cpu, p_pri
+    pub fn clock_tick_processes(schmag: u32) {
+        let pm = ProcessManager::get();
+        for proc in &mut pm.procs {
+            if proc.stat == ProcessState::SNULL {
+                continue;
+            }
+
+            proc.time = core::cmp::min(proc.time + 1, 127);
+
+            if proc.cpu > schmag {
+                proc.cpu -= schmag;
+            } else {
+                proc.cpu = 0;
+            }
+
+            if proc.pri > 100 {
+                // PUSER = 100
+                proc.set_pri();
+            }
+        }
+    }
+
+    /// Ctrl+C 信号处理：向所有 pid > 1 的进程发送 SIGINT
+    pub fn signal_ctrl_c() {
+        let pm = ProcessManager::get();
+        for proc in &mut pm.procs {
+            if proc.pid > 1 {
+                proc.raise(Signal::SIGINT);
+            }
+        }
+    }
+
+    /// Swtch() 的 Rust 实现 - 进程切换
+    pub fn swtch() -> i32 {
+        ProcessManager::get().switch();
+        0
+    }
+
+    /// Fork() 的 Rust 实现 - 进程创建
+    pub fn fork() {
+        let pm = ProcessManager::get();
+        pm.fork();
+    }
+
+    /// Exec() 的 Rust 实现 - 进程图像改换
+    pub fn exec() {
+        let pm = ProcessManager::get();
+        let proc = Userspace::get().proc();
+        let path_ptr = Userspace::get().args[0] as *const u8;
+        let argv_ptr = Userspace::get().args[1] as *const NonNull<i8>;
+
+        // 从用户空间读取路径
+        let path = unsafe {
+            let cstr = core::ffi::CStr::from_ptr(path_ptr as *const i8);
+            cstr.to_bytes()
+        };
+
+        // 从用户空间读取 argv
+        let mut argv = alloc::vec::Vec::new();
+        unsafe {
+            let mut p = argv_ptr;
+            while !(*p).as_ptr().is_null() {
+                argv.push(*p);
+                p = p.add(1);
+            }
+        }
+
+        // 使用 raw pointer 避免双重可变借用
+        let ctx = unsafe { &mut *(&raw mut proc.ctx) };
+        pm.exec(proc, path, &argv, ctx).pass_to_user();
+    }
+
+    /// Kill() 的 Rust 实现 - 终止进程
+    pub fn kill() {
+        let pm = ProcessManager::get();
+        let pid = Userspace::get().args[0] as u32;
+        let signal_num = Userspace::get().args[1] as u32;
+        let signal = unsafe { core::mem::transmute::<u32, Signal>(signal_num) };
+        pm.kill(pid, signal).pass_to_user();
+    }
+
+    /// NewProc() 的 Rust 实现 - 创建新进程并返回 pid
+    pub fn new_proc() -> i32 {
+        let pm = ProcessManager::get();
+        pm.fork() as i32
+    }
+
+    /// XSwap() 的 Rust 实现 - 进程换出
+    pub fn xswap(proc: *mut Process, free_mem: bool, size: i32) {
+        let pm = ProcessManager::get();
+        let proc = unsafe { &mut *proc };
+        let swap_len = if size == 0 {
+            None
+        } else {
+            NonZero::new(size as usize)
+        };
+        pm.send_to_swap(proc, free_mem, swap_len);
+    }
+
+    /// Select() 的 Rust 实现 - 选择最适合运行的进程
+    pub fn select() -> *mut Process {
+        let pm = ProcessManager::get();
+        let proc = pm.select();
+        proc as *mut Process
     }
 }}

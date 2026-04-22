@@ -5,6 +5,10 @@
 #include "Chip8259A.h"
 #include "Video.h"
 
+extern "C" void ProcessManager_clock_tick_processes(int schmag);
+extern "C" void ProcessManager_wakeup_all_chan(unsigned long chan);
+extern "C" void ProcessManager_wakeup_runin();
+
 int Time::lbolt = 0;
 unsigned int Time::time = 0;
 unsigned int Time::tout = 0;
@@ -101,39 +105,16 @@ void Time::Clock( struct pt_regs* regs, struct pt_context* context )
 		if ( Time::time == Time::tout )
 		{
 			/* 唤醒延时睡眠的进程 */
-			procMgr.WakeUpAll((unsigned long)&Time::tout);
+			ProcessManager_wakeup_all_chan((unsigned long)&Time::tout);
 		}
 
-		/* 重算所有进程的p_time, p_cpu,以及优先数p_pri */
-		for( int i = 0; i < ProcessManager::NPROC; i++ )
-		{
-			Process* pProcess = &procMgr.process[i];
-			if ( pProcess->p_stat != Process::SNULL )
-			{
-				pProcess->p_time = Utility::Min(++pProcess->p_time, 127);
-
-				if ( pProcess->p_cpu > SCHMAG )
-				{
-					pProcess->p_cpu -= SCHMAG;
-				}
-				else
-				{
-					pProcess->p_cpu = 0;
-				}
-				if ( pProcess->p_pri > ProcessManager::PUSER )
-				{
-					pProcess->SetPri();
-					//Diagnose::Write("PID = %d, p_cpu = %d, p_pri = %d\n", pProcess->p_pid, pProcess->p_cpu, pProcess->p_pri);
-				}
-			}
-		}
-		//Diagnose::Write("curpri = %d\n", procMgr.CurPri);
-		//Diagnose::Write("System Time: %d\n", Time::time);
+		/* 重算所有进程的p_time, p_cpu,以及优先数p_pri（已迁移至Rust） */
+		ProcessManager_clock_tick_processes(SCHMAG);
 
 		if ( procMgr.RunIn != 0 )
 		{
 			procMgr.RunIn = 0;
-			procMgr.WakeUpAll((unsigned long)&procMgr.RunIn);
+			ProcessManager_wakeup_runin();
 		}
 
 		/* 如果中断前为用户态，则考虑进行信号处理 */

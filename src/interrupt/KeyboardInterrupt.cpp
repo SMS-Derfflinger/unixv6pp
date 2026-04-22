@@ -4,16 +4,11 @@
 #include "IOPort.h"
 #include "Chip8259A.h"
 
+extern "C" void ProcessManager_signal_ctrl_c();
+
 extern "C" void keyboard_signal_ctrl_c()
 {
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	for ( int killed = 0; killed < ProcessManager::NPROC ; killed++ )
-	{
-		if ( procMgr.process[killed].p_pid > 1 )
-		{
-			procMgr.process[killed].PSignal(User::SIGINT);
-		}
-	}
+	ProcessManager_signal_ctrl_c();
 }
 
 extern "C" void keyboard_handle_interrupt();
@@ -41,7 +36,7 @@ void KeyboardInterrupt::KeyboardInterruptEntrance()
 		while(true)
 		{
 			X86Assembly::CLI();	/* 处理机优先级升为7级 */
-			
+
 			if(Kernel::Instance().GetProcessManager().RunRun > 0)
 			{
 				X86Assembly::STI();	/* 处理机优先级降为0级 */
@@ -53,7 +48,7 @@ void KeyboardInterrupt::KeyboardInterruptEntrance()
 			}
 		}
 	}
-	
+
 	RestoreContext();		/* 恢复现场 */
 
 	Leave();				/* 手工销毁栈帧 */
