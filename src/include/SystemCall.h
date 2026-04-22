@@ -41,29 +41,14 @@ public:
 	~SystemCall();
 
 public:
-	/* 偏移地址存放在IDT[0x80]陷入门中的系统调用入口函数
-	 *
-	 *	UNIX V6中的陷入"入口函数"的名字叫trap(@line 752)，但它是用汇编写的，
-	 * 与C函数trap(dev, sp, r1, nps, r0, pc, ps)同名，负责保存现场，将dev，
-	 * sp等参数压入核心栈，然后调用C语言写的trap(dev, sp, r1, nps, r0, pc, ps)
-	 * 
-	 * "汇编trap" @line 0755负责的还包括：等陷入处理子程序返回以后，判断
-	 * 是否需要swtch()，以及恢复现场的工作。
-	 */
-	static void SystemCallEntrance();
-
-	/* 对应UNIX V6中的trap(dev, sp, r1, nps, r0, pc, ps)函数,
-	 * 主要参照V6中系统调用的switch分支：case 6+USER: // sys call
-	 * 其它的异常在X86平台上由INT 0-31的handler处理，不像V6那样
-	 * 在trap(dev,...)中通过switch来区分不同的陷入(异常)。
-	 */
-	static void Trap(struct pt_regs* regs, struct pt_context* context);
-
 	/* 对应UNIX V6中的trap1( int (*f)() )函数@line 2841
 	 * 此函数由trap(dev,...)函数调用，trap(dev,...)函数
 	 * 提供从入口表中获取的函数指针，作为参数传递给trap1( int (*f)());
 	 */
 	static void Trap1(int (*func)());
+
+	static unsigned int GetCallArgCount(unsigned int number);
+	static void Trap1ByNumber(unsigned int number);
 
 private:
 	/* 下面的函数对应系统调用入口表中的处理程序入口地址,

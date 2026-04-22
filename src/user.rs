@@ -65,7 +65,7 @@ pub struct Userspace {
     qsav: [Pointer; 2],
 
     /// Do we have pending signals?
-    signal_pending: bool,
+    pub signal_pending: bool,
 
     /// Inode of our working directory
     pub cwd: Option<InodeRefCompat>,

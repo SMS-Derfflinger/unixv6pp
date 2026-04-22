@@ -97,139 +97,6 @@ SystemCall::~SystemCall()
 	//nothing to do here
 }
 
-void SystemCall::SystemCallEntrance()
-{
-	SaveContext();
-
-	SwitchToKernel();
-
-	CallHandler(SystemCall, Trap);
-
-	/* 获取由中断隐指令(即硬件实施)压入核心栈的pt_context。
-	 * 这样就可以访问context.xcs中的OLD_CPL，判断先前态
-	 * 是用户态还是核心态。
-	 */
-	struct pt_context *context;
-	__asm__ __volatile__ ("	movl %%ebp, %0; addl $0x4, %0 " : "+m" (context) );
-
-	/* 这部分代码用高级语言实现恢复现场和中断返回 @line 0785 */
-	/* V6中本身的逻辑是：
-	 * if(中断前==用户态) {
-	 * 		执行设备(陷入)处理子程序； 判断runrun， swtch()等等；	}
-	 * else  {  //中断前==核心态  
-	 * 		改先前态为用户态； 执行设备(陷入)处理子程序；恢复现场，退出至前一层中断；}
-	 * 
-	 * 由于体系结构的不同(x86的PSW不记录先前态)，x86上通过判断核心栈CS中OLD_CPL == 0x3；
-	 * 判断先前是用户态或者核心态。
-	 * 
-	 * 无论中断前==用户态or核心态，都一定执行处理子程序，那么就无需在调用Trap之前判断判断
-	 * 判断中断前是用户态or核心态，因为两种情况下都要执行Trap()。
-	 */
-	if( context->xcs & USER_MODE ) /*先前为用户态*/
-	{
-		while(true)
-		{
-			X86Assembly::CLI();	/* 处理机优先级升为7级 */
-			
-			if(Kernel::Instance().GetProcessManager().RunRun > 0)
-			{
-				X86Assembly::STI();	/* 处理机优先级降为0级 */
-				Kernel::Instance().GetProcessManager().Swtch();
-			}
-			else
-			{
-				break;	/* 如果runrun == 0，则退栈回到用户态继续用户程序的执行 */
-			}
-		}
-	}
-	RestoreContext();	//SysCallRestore();	/* 此后EAX中存放系统调用返回值，防止一切可能的修改 */
-	
-	Leave();				/* 手工销毁栈帧 */
-
-	InterruptReturn();		/* 退出中断 */
-}
-
-void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
-{
-	User& u = Kernel::Instance().GetUser();
-	/* reference: User_get_ar0() = &r0 @line 2701 */
-
-	/* 新加进的代码。判断有无接收到信号，如接收到信号则进行响应 */
-	if ( User_get_procp()->IsSig() )
-	{
-		User_get_procp()->PSig(context);
-		User_get_error() = User::EINTR;
-		regs->eax = -User_get_error();
-		return;
-	}
-
-        User_get_ssav()[0] = (unsigned long)regs;
-        User_get_ssav()[1] = (unsigned long)context;
-	User_get_ar0() = &regs->eax;
-
-	if(regs->eax == 20)
-		regs->eax = 20;
-
-	/* 
-	 * 清空可能由于前一次系统调用失败而设置的错误码, User_get_error()中如果有
-	 * 出错码的话，即便后面的程序完全正确，内核也会进入错误路径 **!!!!**
-	 */
-	User_get_error() = User::NOERROR;
-
-	SystemCallTableEntry *callp = &m_SystemEntranceTable[regs->eax];
-
-	//Diagnose::Write("eax = %d, callp: count = %d, address = %x\n", regs->eax, callp->count, callp->call);
-
-	/* 根据callp->count将系统调用的传入参数从寄存器放入User_get_arg()[5] */
-	unsigned int * syscall_arg = (unsigned int *)&regs->ebx;
-	for( unsigned int i = 0; i < callp->count; i++ )
-	{
-		User_get_arg()[i] = (int)(*syscall_arg++);
-	}
-
-	/* User_get_dirp()一般用于指向系统调用的pathname参数 */
-	User_get_dirp() = (char *)User_get_arg()[0];
-
-	/* 
-	 * context指向核心栈上硬件保护现场部分，这样处理是因为Exec()系统调用
-	 * 需要Fake一个退出环境，使之退出到ring3时，开始执行user code。目前所有
-	 * 系统调用都是不会用到User_get_arg()[4]的。
-	 */
-	User_get_arg()[4] = (int)context;
-	
-	Trap1(callp->call);		/* 系统调用处理子程序，如fork(), read()等等 */
-
-	/* 
-	 * 如果系统调用期间受到信号打断，那么将不会执行Trap1()函数
-	 * 中User_get_intflg() = 0，而直接返回至Trap()函数当前位置
-	 */
-	if ( User_get_intflg() != 0 )
-	{
-		User_get_error() = User::EINTR;
-	}
-
-	/* 注: Unix V6++将系统调用出错结果返回给用户程序的方式和V6(通过PSW中的EBIT)有所区别!
-	 * 如果系统调用期间出错，即User_get_error()被设置，那么需要通过reg.eax返回-User_get_error()，
-	 * 从而和成功执行的系统调用返回>=0的值区别开来，继而出错的系统调用(即经由EAX寄存器
-	 * 返回-User_get_error())将出错码存放在用户态全局变量errno中，对于用户程序统统返回-1表示出错。
-	 */
-
-	if( User::NOERROR != User_get_error() )
-	{
-		regs->eax = -User_get_error();
-		Diagnose::Write("regs->eax = %d , User_get_error() = %d\n",regs->eax,User_get_error());
-	}
-
-	/* 判断有无接收到信号，如接收到信号则进行响应 */
-	if ( User_get_procp()->IsSig() )
-	{
-		User_get_procp()->PSig(context);
-	}
-
-	/* Trap()末尾重算当前进程优先数 */
-	User_get_procp()->SetPri();
-}
-
 void SystemCall::Trap1(int (*func)())
 {
 	User& u = Kernel::Instance().GetUser();
@@ -241,6 +108,37 @@ void SystemCall::Trap1(int (*func)())
 	SaveU(User_get_qsav());
 	func();
 	User_get_intflg() = 0;
+}
+
+unsigned int SystemCall::GetCallArgCount(unsigned int number)
+{
+	if ( number >= SYSTEM_CALL_NUM )
+	{
+		return 0;
+	}
+
+	return m_SystemEntranceTable[number].count;
+}
+
+void SystemCall::Trap1ByNumber(unsigned int number)
+{
+	if ( number >= SYSTEM_CALL_NUM )
+	{
+		User_get_error() = User::ENOSYS;
+		return;
+	}
+
+	Trap1(m_SystemEntranceTable[number].call);
+}
+
+extern "C" unsigned int cpp_system_call_arg_count(unsigned int number)
+{
+	return SystemCall::GetCallArgCount(number);
+}
+
+extern "C" void cpp_system_call_trap1(unsigned int number)
+{
+	SystemCall::Trap1ByNumber(number);
 }
 
 /*	27, 49 - 63 = nosys		count = 0	*/
