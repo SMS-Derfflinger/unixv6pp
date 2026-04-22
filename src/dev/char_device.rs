@@ -1,10 +1,12 @@
+use core::ptr::NonNull;
+
 use eonix_sync_base::LazyLock;
 
 use crate::{
     constants::PosixError,
     machine::asm::{disable_interrupts, enable_interrupts},
     sync::SuperCell,
-    tty::{console_tty, sleep_on_input_channel},
+    tty::{console_tty, TTIPRI},
     user::Userspace,
 };
 
@@ -54,8 +56,9 @@ impl CharDevice for ConsoleDevice {
         self.state.with_mut(|state| {
             state.is_open = true;
         });
-        unsafe {
-            char_device_fuck_tty();
+        let tty = &mut Userspace::get().proc().tty;
+        if tty.is_null() {
+            *tty = NonNull::dangling().as_ptr();
         }
         console_tty().with_mut(|tty| tty.open());
         Ok(())
@@ -76,7 +79,7 @@ impl CharDevice for ConsoleDevice {
             }
 
             let chan = console_tty().with(|tty| tty.read_wait_channel());
-            sleep_on_input_channel(chan);
+            Userspace::get().proc().sleep_user(chan, TTIPRI);
 
             enable_interrupts();
         }

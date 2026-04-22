@@ -3,6 +3,7 @@ mod manager;
 mod process;
 
 pub use process::{Text, Process};
+pub use manager::ProcessManager;
 
 /// A channel that sleepers can subscribe to.
 ///
@@ -25,22 +26,5 @@ impl Channel for usize {
     }
 }
 
-extern "C" {
-    fn _wakeup_all(channel_addr: usize);
-    fn _sleep(channel_addr: usize, pri: u32);
-}
-
-pub fn wakeup_all(channel: impl Channel) {
-    unsafe {
-        _wakeup_all(channel.channel_addr());
-    }
-}
-
-pub const PINOD: u32 = -90i32 as u32;
+pub const PINOD: i32 = -90;
 pub const EXPRI: i32 = -1;
-
-pub fn sleep(channel: impl Channel, pri: u32) {
-    unsafe {
-        _sleep(channel.channel_addr(), pri);
-    }
-}

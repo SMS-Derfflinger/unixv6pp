@@ -1,14 +1,25 @@
 use crate::{
-    constants::PosixError, dev::{
-        block_device::block_device_for_dev, buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock}, buffer_manager::{PPIPE, PRIBIO, global_buffer_manager}, char_device::{char_device_for_dev, char_device_read, char_device_write}
-    }, fs::{
-        self, FileRef, IOParameter, InodeRef, file::{FileFlags, FileRefCompat, InodeRefCompat}, file_system::FileSystem, global_file_system
-    }, proc::{Channel, sleep, wakeup_all}, sync::SpinExt, user::Userspace
+    constants::PosixError,
+    dev::{
+        block_device::block_device_for_dev,
+        buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
+        buffer_manager::{global_buffer_manager, PPIPE, PRIBIO},
+        char_device::{char_device_for_dev, char_device_read, char_device_write},
+    },
+    fs::{
+        self,
+        file::{FileFlags, FileRefCompat, InodeRefCompat},
+        file_system::FileSystem,
+        global_file_system, FileRef, IOParameter, InodeRef,
+    },
+    proc::{Channel, ProcessManager},
+    sync::SpinExt,
+    user::Userspace,
 };
 use alloc::sync::Arc;
 use bitflags::bitflags;
-use kernel_macros::define_class_compat;
 use eonix_spin::{NoContext, Spin, SpinGuard};
+use kernel_macros::define_class_compat;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,9 +210,7 @@ impl Inode {
         Arc::new(Spin::new(Self::new_const()))
     }
 
-    pub fn read(
-        &mut self, mut buffer: &mut [u8], mut offset: usize
-    ) -> Result<usize, PosixError> {
+    pub fn read(&mut self, mut buffer: &mut [u8], mut offset: usize) -> Result<usize, PosixError> {
         if buffer.len() == 0 {
             return Ok(0);
         }
@@ -234,8 +243,7 @@ impl Inode {
                 }
                 nbytes = nbytes.min(remain as usize);
 
-                let Some(blk) = self.get_blk(
-                    LogicalBlock(lbn as u32), &mut rablock) else {
+                let Some(blk) = self.get_blk(LogicalBlock(lbn as u32), &mut rablock) else {
                     return Ok(nread);
                 };
 
@@ -265,9 +273,7 @@ impl Inode {
         Ok(nread)
     }
 
-    pub fn write(
-        &mut self, mut buffer: &[u8], mut offset: usize
-    ) -> Result<usize, PosixError> {
+    pub fn write(&mut self, mut buffer: &[u8], mut offset: usize) -> Result<usize, PosixError> {
         self.i_flag |= InodeFlag::IACC | InodeFlag::IUPD;
 
         let is_blk = (self.i_mode & InodeMode::IFMT) == InodeMode::IFBLK;
@@ -376,7 +382,9 @@ impl Inode {
     }
 
     pub fn get_blk(
-        &mut self, LogicalBlock(lbn): LogicalBlock, ra: &mut Option<PhysicalBlock>,
+        &mut self,
+        LogicalBlock(lbn): LogicalBlock,
+        ra: &mut Option<PhysicalBlock>,
     ) -> Option<Buffer> {
         const LBN_SMALL: u32 = 6;
         const LBN_SMALL_OFF: u32 = 6;
@@ -442,7 +450,9 @@ impl Inode {
         match self.i_mode & InodeMode::IFMT {
             InodeMode::IFCHR => {
                 let device = char_device_for_dev(dev).ok_or(PosixError::ENXIO)?;
-                device.open(dev, mode as i32).map_err(|_| PosixError::ENXIO)?;
+                device
+                    .open(dev, mode as i32)
+                    .map_err(|_| PosixError::ENXIO)?;
             }
             InodeMode::IFBLK => {
                 let device = block_device_for_dev(dev).ok_or(PosixError::ENXIO)?;
@@ -483,12 +493,17 @@ impl Inode {
             return;
         }
 
-        if global_file_system().get_fs(self.i_dev).is_ok_and(|sb| sb.lock().is_readonly()) {
+        if global_file_system()
+            .get_fs(self.i_dev)
+            .is_ok_and(|sb| sb.lock().is_readonly())
+        {
             return;
         }
 
-        let sector = PhysicalBlock(FileSystem::INODE_ZONE_START_SECTOR as u32
-            + self.i_number as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32);
+        let sector = PhysicalBlock(
+            FileSystem::INODE_ZONE_START_SECTOR as u32
+                + self.i_number as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32,
+        );
         let mut buf = global_buffer_manager().bread(self.i_dev, sector).unwrap();
 
         let disk_inode = DiskInode {
@@ -529,7 +544,9 @@ impl Inode {
             return;
         }
 
-        let buf = global_buffer_manager().bread(self.i_dev, table_blk).unwrap();
+        let buf = global_buffer_manager()
+            .bread(self.i_dev, table_blk)
+            .unwrap();
         let table = &buf.as_slice::<PhysicalBlock>()[..128];
 
         for blk in table.iter().cloned() {
@@ -577,7 +594,7 @@ impl Inode {
         if self.i_flag.contains(InodeFlag::IWANT) {
             self.i_flag.remove(InodeFlag::IWANT);
         }
-        wakeup_all(&*self);
+        ProcessManager::get().wakeup_all(&*self);
     }
 
     fn lock_pri(me: &Spin<Self>, pri: u32) -> SpinGuard<'_, Inode, NoContext> {
@@ -592,7 +609,11 @@ impl Inode {
             let chan = (&*inode).channel_addr();
 
             drop(inode);
-            sleep(chan, pri);
+            if (pri as i32) < 0 {
+                Userspace::get().proc().sleep_kernel(chan, pri as i32);
+            } else {
+                Userspace::get().proc().sleep_user(chan, pri);
+            }
         }
     }
 
@@ -631,17 +652,13 @@ impl Inode {
     pub fn channel_read(&self) -> impl Channel + use<'_> {
         let ptr = self as *const Self;
 
-        unsafe {
-            &*ptr.add(2)
-        }
+        unsafe { &*ptr.add(2) }
     }
 
     pub fn channel_write(&self) -> impl Channel + use<'_> {
         let ptr = self as *const Self;
 
-        unsafe {
-            &*ptr.add(1)
-        }
+        unsafe { &*ptr.add(1) }
     }
 }
 

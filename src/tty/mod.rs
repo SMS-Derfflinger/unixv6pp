@@ -2,7 +2,7 @@ use eonix_sync_base::LazyLock;
 
 use core::{arch::asm, ptr::write_volatile};
 
-use crate::{sync::SuperCell, vesa};
+use crate::{proc::ProcessManager, sync::SuperCell, vesa};
 
 pub mod keyboard;
 
@@ -23,12 +23,7 @@ const LCASE: u32 = 0x04;
 const ISOPEN: u32 = 0x01;
 const CARR_ON: u32 = 0x02;
 
-const TTIPRI: i32 = 10;
-
-unsafe extern "C" {
-    fn cpp_process_sleep(chan: usize, pri: i32);
-    fn cpp_process_wakeup_all(chan: usize);
-}
+pub const TTIPRI: u32 = 10;
 
 #[derive(Clone, Copy)]
 struct TtyQueue {
@@ -319,9 +314,7 @@ impl Tty {
         if self.flags & RAW != 0 || ch == b'\n' || ch == CEOT {
             self.rawq.put_char(0x07);
             self.delct += 1;
-            unsafe {
-                cpp_process_wakeup_all(self.read_wait_channel());
-            }
+            ProcessManager::get().wakeup_all(self.read_wait_channel());
         }
 
         if self.flags & ECHO != 0 {
@@ -409,12 +402,6 @@ static CONSOLE_TTY: LazyLock<SuperCell<Tty>> = LazyLock::new(|| SuperCell::new(T
 
 pub fn console_tty() -> &'static SuperCell<Tty> {
     &CONSOLE_TTY
-}
-
-pub fn sleep_on_input_channel(chan: usize) {
-    unsafe {
-        cpp_process_sleep(chan, TTIPRI);
-    }
 }
 
 #[no_mangle]

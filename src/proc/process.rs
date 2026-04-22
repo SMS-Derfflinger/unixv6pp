@@ -12,7 +12,6 @@ use eonix_mm::{
 use kernel_macros::define_class_compat;
 
 use crate::{
-    compat::compat_user_exit,
     constants::Signal,
     dev::buffer::PhysicalBlock,
     fs::{InodeRef, OpenFiles, GLOBAL_OPEN_FILE_TABLE},
@@ -257,7 +256,7 @@ impl Process {
     pub fn process_signal(&mut self, context: &mut TrapFrame) {
         let Some(pending) = self.pending_signal.take() else {
             crate::println_warn!("Signal UNKNOWN");
-            compat_user_exit();
+            self.exit();
         };
 
         Userspace::get().clear_error();

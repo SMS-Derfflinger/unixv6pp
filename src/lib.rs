@@ -13,7 +13,7 @@ mod print;
 pub mod proc;
 mod serial;
 pub mod sync;
-mod tty;
+pub mod tty;
 mod user;
 mod vesa;
 

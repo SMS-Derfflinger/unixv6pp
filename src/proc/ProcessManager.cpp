@@ -1,13 +1,8 @@
 #include "ProcessManager.h"
-#include "Machine.h"
 #include "User.h"
 #include "Kernel.h"
 #include "Video.h"
 #include "Utility.h"
-#include "PEParser.h"
-#include "Regs.h"
-#include "New.h"
-#include "MemoryDescriptor.h"
 
 unsigned int ProcessManager::m_NextUniquePid = 0;
 

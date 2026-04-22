@@ -16,7 +16,7 @@ use crate::{
         inode::{fileref_leak, inoderef_leak, DiskInode, Inode, InodeFlag, InodeMode},
         FileRef, InodeRef, InodeRefGuard, InodeRefPutExt,
     },
-    proc::{sleep, wakeup_all, Channel, PINOD},
+    proc::{Channel, ProcessManager, PINOD},
     sync::SpinExt,
     user::Userspace,
     Ext,
@@ -98,8 +98,8 @@ impl OpenFileTable {
         let inode = unsafe { inoderef.deref_compat() };
 
         inode.i_mode &= !(InodeMode::IREAD | InodeMode::IWRITE);
-        wakeup_all(inode.channel_read());
-        wakeup_all(inode.channel_write());
+        ProcessManager::get().wakeup_all(inode.channel_read());
+        ProcessManager::get().wakeup_all(inode.channel_write());
     }
 
     pub fn close_f(&mut self, fileref: &FileRef) {
@@ -181,7 +181,7 @@ impl InodeTable {
                 inode.i_flag.insert(InodeFlag::IWANT);
                 let chan = (&*inode).channel_addr();
                 drop(inode);
-                sleep(chan, PINOD);
+                Userspace::get().proc().sleep_kernel(chan, PINOD);
                 continue;
             }
 

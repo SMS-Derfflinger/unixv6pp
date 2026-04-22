@@ -137,9 +137,6 @@ public:
 
 	/* Members */
 public:
-	Process process[NPROC];
-	Text text[NTEXT];
-
 	int CurPri;		/* 现运行占用CPU时优先数 */
 	int RunRun;		/* 强迫调度标志 */
 	int RunIn;		/* 内存中无合适进程可以调出至盘交换区 */

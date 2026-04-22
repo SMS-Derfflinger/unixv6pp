@@ -9,16 +9,8 @@ extern "C" {
 	void Process_raise(Process*, int);
 }
 
-extern "C" void _sleep(unsigned long chan, int pri) {
-        User_get_procp()->Sleep(chan, pri);
-}
-
 extern "C" int alloc_swap(unsigned long len) {
         return Kernel::Instance().GetSwapperManager().AllocSwap(len);
-}
-
-extern "C" void compat_set_run(Process* proc) {
-	proc->SetRun();
 }
 
 void Process::PSignal( int signal )
@@ -35,10 +27,6 @@ int Process::IsSig()
 extern "C" void runtime();
 extern "C" void SignalHandler();
 */
-
-extern "C" void user_exit() {
-	User_get_procp()->Exit();
-}
 
 void Process::PSig(struct pt_context* pContext) {
 	Process_process_signal(this, pContext);

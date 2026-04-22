@@ -17,7 +17,7 @@ use crate::{
         inode::{inoderef_leak, InodeFlag, InodeMode},
         File, FileRef, Inode, InodeRef, InodeRefCompat, InodeRefGuard, InodeRefPutExt,
     },
-    proc::{sleep, wakeup_all, Channel, Process},
+    proc::{Channel, Process, ProcessManager},
     sync::SpinExt,
     user::Userspace,
 };
@@ -362,7 +362,7 @@ impl FileManager {
                     if inode.i_mode.contains(InodeMode::IWRITE) {
                         inode.i_mode.remove(InodeMode::IWRITE);
                         let chan = inode.channel_write().channel_addr();
-                        wakeup_all(chan);
+                        ProcessManager::get().wakeup_all(chan);
                     }
                 }
 
@@ -377,7 +377,7 @@ impl FileManager {
                 inode.i_mode.insert(InodeMode::IREAD);
                 let chan = inode.channel_read().channel_addr();
                 drop(inode);
-                sleep(chan, PPIPE);
+                Userspace::get().proc().sleep_user(chan, PPIPE);
                 continue;
             }
 
@@ -421,7 +421,7 @@ impl FileManager {
                 inode.i_mode.insert(InodeMode::IWRITE);
                 let chan = inode.channel_write().channel_addr();
                 inode.prele();
-                sleep(chan, PPIPE);
+                Userspace::get().proc().sleep_user(chan, PPIPE);
                 continue;
             }
 
@@ -442,7 +442,7 @@ impl FileManager {
             inode.prele();
 
             if wake_read {
-                wakeup_all(chan);
+                ProcessManager::get().wakeup_all(chan);
             }
         }
     }

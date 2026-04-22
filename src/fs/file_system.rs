@@ -5,13 +5,21 @@ use eonix_spin::Spin;
 use kernel_macros::define_class_compat;
 
 use crate::{
-    constants::PosixError, compat::compat_get_time, dev::{
+    compat::compat_get_time,
+    constants::PosixError,
+    dev::{
         buffer::{Buf, DevId, PhysicalBlock},
         buffer_manager::global_buffer_manager,
         device_manager::ROOTDEV,
-    }, fs::{
-        self, InodeRef, InodeRefCompat, SuperBlockRef, inode::{DiskInode, Inode, inoderef_leak}
-    }, proc::{PINOD, sleep, wakeup_all}, sync::SpinExt, user::Userspace
+    },
+    fs::{
+        self,
+        inode::{inoderef_leak, DiskInode, Inode},
+        InodeRef, InodeRefCompat, SuperBlockRef,
+    },
+    proc::{ProcessManager, PINOD},
+    sync::SpinExt,
+    user::Userspace,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,7 +194,10 @@ impl FileSystem {
                 )
                 .map_err(|_| FileSystemError::BufferUnavailable)?;
 
-            for disk_inode in buf.as_slice::<DiskInode>().iter().take(Self::INODE_NUMBER_PER_SECTOR)
+            for disk_inode in buf
+                .as_slice::<DiskInode>()
+                .iter()
+                .take(Self::INODE_NUMBER_PER_SECTOR)
             {
                 ino += 1;
 
@@ -379,7 +390,7 @@ impl FileSystem {
         let flock_addr = (&raw const sb.s_flock) as usize;
         while sb.is_flock() {
             drop(sb);
-            sleep(flock_addr, PINOD);
+            Userspace::get().proc().sleep_kernel(flock_addr, PINOD);
             sb = spb.lock();
         }
 
@@ -417,7 +428,7 @@ impl FileSystem {
                 spb.lock().s_flock = 0;
             }
 
-            wakeup_all(flock_addr);
+            ProcessManager::get().wakeup_all(flock_addr);
             refill_result?;
             sb = spb.lock();
         }
@@ -440,7 +451,7 @@ impl FileSystem {
         let flock_addr = (&raw const sb.s_flock) as usize;
         while sb.is_flock() {
             drop(sb);
-            sleep(flock_addr, PINOD);
+            Userspace::get().proc().sleep_kernel(flock_addr, PINOD);
             sb = spb.lock();
         }
 
@@ -464,8 +475,7 @@ impl FileSystem {
                 .map_err(|_| FileSystemError::BufferUnavailable)
                 .and_then(|buf| {
                     unsafe {
-                        let table =
-                            core::slice::from_raw_parts_mut((*buf).b_addr as *mut i32, 101);
+                        let table = core::slice::from_raw_parts_mut((*buf).b_addr as *mut i32, 101);
                         table[0] = nfree;
                         table[1..101].copy_from_slice(&free);
                     }
@@ -478,7 +488,7 @@ impl FileSystem {
             sb = spb.lock();
             sb.s_nfree = 0;
             sb.s_flock = 0;
-            wakeup_all(flock_addr);
+            ProcessManager::get().wakeup_all(flock_addr);
             write_result?;
         }
 

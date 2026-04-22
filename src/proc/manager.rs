@@ -28,7 +28,7 @@ use crate::{
     proc::{
         context::TaskContext,
         process::{ProcessState, Terminal, Text},
-        wakeup_all, Channel, Process, EXPRI,
+        Channel, Process, EXPRI,
     },
     serial::KResult,
     sync::{SpinExt, SuperCell},
@@ -214,7 +214,8 @@ impl ProcessManager {
 
         if self.run_out != 0 {
             self.run_out = 0;
-            wakeup_all(&self.run_out);
+            let chan = (&self.run_out).channel_addr();
+            self.wakeup_all(chan);
         }
     }
 

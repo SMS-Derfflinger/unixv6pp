@@ -1,5 +1,6 @@
 use crate::dev::buffer::Buffer;
 use crate::machine::asm::{disable_interrupts, enable_interrupts};
+use crate::proc::ProcessManager;
 use crate::sync::SuperCell;
 use crate::{constants::PosixError, user::Userspace};
 
@@ -633,28 +634,11 @@ pub(crate) fn global_buffer_manager() -> &'static mut BufferManager {
 }
 
 unsafe fn sleep_on(chan: usize, pri: i32) {
-    process_sleep(chan, pri);
+    Userspace::get().proc().sleep_kernel(chan, pri);
 }
 
 unsafe fn wakeup_all(chan: usize) {
-    process_wakeup_all(chan);
-}
-
-unsafe extern "C" {
-    fn cpp_process_sleep(chan: usize, pri: i32);
-    fn cpp_process_wakeup_all(chan: usize);
-}
-
-pub fn process_sleep(chan: usize, pri: i32) {
-    unsafe {
-        cpp_process_sleep(chan, pri);
-    }
-}
-
-pub fn process_wakeup_all(chan: usize) {
-    unsafe {
-        cpp_process_wakeup_all(chan);
-    }
+    ProcessManager::get().wakeup_all(chan);
 }
 
 fn set_buffer_error(err: BufferError) {
