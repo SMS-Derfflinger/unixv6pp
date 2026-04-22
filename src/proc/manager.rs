@@ -593,10 +593,10 @@ static TEMPORARY_STACK: [usize; 6] = [0; 6];
 extern "C" fn go_userspace() {
     naked_asm!(
         "mov %ebx, %eax", // eax = entry
-        "push $0x20",     // ss
+        "push $0x23",     // ss
         "push %edi",      // esp
         "push $0x200",    // eflags = IF
-        "push $0x18",     // cs
+        "push $0x1b",     // cs
         "push $0",        // eip = runtime
         "xor %ebx, %ebx",
         "xor %ecx, %ecx",
@@ -780,6 +780,11 @@ define_class_compat! {impl ProcessManager {
 
         crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
         pm.exec(proc, path, argv).pass_to_user();
+
+        let mut ctx = TaskContext::new();
+        unsafe {
+            TaskContext::switch(&mut ctx, &mut proc.ctx);
+        }
     }
 
     /// Kill() 的 Rust 实现 - 终止进程
