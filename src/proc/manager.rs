@@ -1,7 +1,6 @@
 use core::{
     arch::naked_asm,
     ffi::CStr,
-    mem::size_of,
     num::NonZero,
     ptr::NonNull,
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
@@ -24,7 +23,9 @@ use crate::{
     },
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
-        Channel, EXPRI, Process, context::TaskContext, process::{KResultExt, KernelStack, ProcessState, Terminal, Text, TrapFrame}
+        context::TaskContext,
+        process::{KResultExt, KernelStack, ProcessState, Terminal, Text, TrapFrame},
+        Channel, Process, EXPRI,
     },
     serial::KResult,
     sync::{SpinExt, SuperCell},
@@ -487,7 +488,7 @@ impl ProcessManager {
             if proc.pid != ppid {
                 continue;
             }
-            chan = Some((&*proc).channel_addr());
+            chan = Some(proc.as_ref().channel_addr());
         }
 
         self.wakeup_all(chan.unwrap());
