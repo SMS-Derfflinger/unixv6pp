@@ -469,15 +469,13 @@ impl Process {
         mem.establish_user(self)?;
 
         self.expand(newlen);
-        let mut dst = self.addr + newlen;
+        let mut dst = PAddr::from_val(self.addr + newlen);
         let mut cnt = mem.stack_len - change;
 
         while cnt != 0 {
             cnt -= 1;
-            dst -= 1;
-            unsafe {
-                (dst as *mut u8).copy_from((dst - change) as *mut u8, 1);
-            }
+            dst = dst - 1;
+            compat_phys_copy(dst - change, dst, 1);
         }
 
         mem.map_to_actual_pt(self);
@@ -503,28 +501,25 @@ impl Process {
         let newlen = newlen + PAGE_SIZE + mem.stack_len;
 
         if change < 0 {
-            let mut dst = self.addr + newlen - mem.stack_len;
+            let change_abs = -change as usize;
+            let mut dst = PAddr::from_val(self.addr + newlen - mem.stack_len);
             let mut cnt = mem.stack_len;
 
             while cnt != 0 {
                 cnt -= 1;
-                unsafe {
-                    (dst as *mut u8).copy_from((dst as isize - change) as *const u8, 1);
-                }
-                dst += 1;
+                compat_phys_copy(dst + change_abs, dst, 1);
+                dst = dst + 1;
             }
             self.expand(newlen);
         } else {
             self.expand(newlen);
-            let mut dst = self.addr + newlen;
+            let mut dst = PAddr::from_val(self.addr + newlen);
             let mut cnt = mem.stack_len;
 
             while cnt != 0 {
                 cnt -= 1;
-                dst -= 1;
-                unsafe {
-                    (dst as *mut u8).copy_from((dst - change as usize) as *const u8, 1);
-                }
+                dst = dst - 1;
+                compat_phys_copy(dst - change as usize, dst, 1);
             }
         }
 
