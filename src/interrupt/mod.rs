@@ -13,18 +13,16 @@ const PIC_MASTER_IO_PORT_1: u16 = 0x20;
 const PIC_EOI: u8 = 0x20;
 
 #[repr(C)]
-pub struct PtRegs {
-    pub pad1: u32,
-    pub pad2: u32,
-    pub xds: u32,
-    pub xes: u32,
-    pub ebx: u32,
-    pub ecx: u32,
-    pub edx: u32,
-    pub esi: u32,
-    pub edi: u32,
-    pub ebp: u32,
-    pub eax: u32,
+pub struct Registers {
+    _we_dont_care: [u32; 4],
+    pub ebx: usize,
+    pub ecx: usize,
+    pub edx: usize,
+    pub esi: usize,
+    pub edi: usize,
+    _ebp: usize,
+    pub eax: usize,
+    pub ebp: usize,
 }
 
 #[repr(C)]

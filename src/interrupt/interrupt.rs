@@ -1,6 +1,6 @@
 use crate::{
     dev::{ata_driver::ata_handler, io_port::IOPort},
-    interrupt::{PtContext, PtRegs, PIC_EOI, PIC_MASTER_IO_PORT_1},
+    interrupt::{PtContext, Registers, PIC_EOI, PIC_MASTER_IO_PORT_1},
     interrupt_entry,
     machine::asm::disable_interrupts,
     proc::ProcessManager,
@@ -36,13 +36,13 @@ pub fn schedule_on_user_return(context: *mut PtContext) {
 }
 
 #[no_mangle]
-pub extern "C" fn disk_interrupt_body(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn disk_interrupt_body(_regs: *mut Registers, context: *mut PtContext) {
     ata_handler();
     schedule_on_user_return(context);
 }
 
 #[no_mangle]
-pub extern "C" fn keyboard_interrupt_body(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn keyboard_interrupt_body(_regs: *mut Registers, context: *mut PtContext) {
     keyboard_handle_interrupt();
     send_master_eoi();
     schedule_on_user_return(context);

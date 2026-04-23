@@ -1,5 +1,5 @@
 use crate::{
-    interrupt::{PtContext, PtRegs, interrupt::schedule_on_user_return, send_master_eoi},
+    interrupt::{PtContext, Registers, interrupt::schedule_on_user_return, send_master_eoi},
     interrupt_entry,
     machine::asm::enable_interrupts,
     proc::{ProcessManager, ProcessState},
@@ -13,7 +13,7 @@ static mut TIME: u32 = 0;
 static mut TOUT: u32 = 0;
 
 #[no_mangle]
-pub extern "C" fn time_interrupt_body(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn time_interrupt_body(_regs: *mut Registers, context: *mut PtContext) {
     clock(context);
     schedule_on_user_return(context);
 }

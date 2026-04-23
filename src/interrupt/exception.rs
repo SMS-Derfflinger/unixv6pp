@@ -1,5 +1,5 @@
 use crate::{
-    interrupt::{PtContext, PtRegs, PteContext},
+    interrupt::{PtContext, Registers, PteContext},
     interrupt_entry, interrupt_entry_with_error_code,
 };
 
@@ -12,7 +12,7 @@ const SIGSEGV: i32 = 11;
 
 unsafe extern "C" {
     safe fn cpp_exception_handle(context: *mut PtContext, signal: i32, message: *const u8);
-    safe fn cpp_exception_page_fault(regs: *mut PtRegs, context: *mut PteContext);
+    safe fn cpp_exception_page_fault(regs: *mut Registers, context: *mut PteContext);
 }
 
 fn handle_exception(context: *mut PtContext, signal: i32, message: &'static [u8]) {
@@ -28,97 +28,97 @@ fn handle_exception_with_error_code(context: *mut PteContext, signal: i32, messa
 }
 
 #[no_mangle]
-pub extern "C" fn divide_error(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn divide_error(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGFPE, b"Divide Exception!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn debug(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn debug(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGTRAP, b"Debug Exception!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn nmi(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn nmi(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGNUL, b"Non-maskable Interrupt!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn breakpoint(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn breakpoint(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGTRAP, b"Breakpoint Exception!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn overflow(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn overflow(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGSEGV, b"Overflow Exception!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn bound(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn bound(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGSEGV, b"Bound Range Exceeded!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn invalid_opcode(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn invalid_opcode(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGILL, b"Invalid Opcode!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn device_not_available(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn device_not_available(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGSEGV, b"Device Not Available!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn double_fault(_regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn double_fault(_regs: *mut Registers, context: *mut PteContext) {
     handle_exception_with_error_code(context, SIGSEGV, b"Double Fault Exception!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn coprocessor_segment_overrun(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn coprocessor_segment_overrun(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGFPE, b"Coprocessor Segment Overrun!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn invalid_tss(_regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn invalid_tss(_regs: *mut Registers, context: *mut PteContext) {
     handle_exception_with_error_code(context, SIGSEGV, b"Invalid TSS!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn segment_not_present(_regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn segment_not_present(_regs: *mut Registers, context: *mut PteContext) {
     handle_exception_with_error_code(context, SIGBUS, b"Segment Not Present!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn stack_segment_error(_regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn stack_segment_error(_regs: *mut Registers, context: *mut PteContext) {
     handle_exception_with_error_code(context, SIGBUS, b"Stack Segment Error!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn general_protection(_regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn general_protection(_regs: *mut Registers, context: *mut PteContext) {
     handle_exception_with_error_code(context, SIGSEGV, b"General Protection!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn page_fault(regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn page_fault(regs: *mut Registers, context: *mut PteContext) {
     cpp_exception_page_fault(regs, context);
 }
 
 #[no_mangle]
-pub extern "C" fn coprocessor_error(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn coprocessor_error(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGFPE, b"Coprocessor Error!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn alignment_check(_regs: *mut PtRegs, context: *mut PteContext) {
+pub extern "C" fn alignment_check(_regs: *mut Registers, context: *mut PteContext) {
     handle_exception_with_error_code(context, SIGBUS, b"Alignment Check!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn machine_check(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn machine_check(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGNUL, b"Machine Check!\0");
 }
 
 #[no_mangle]
-pub extern "C" fn simd_exception(_regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn simd_exception(_regs: *mut Registers, context: *mut PtContext) {
     handle_exception(context, SIGFPE, b"SIMD Float Point Exception!\0");
 }
 

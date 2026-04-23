@@ -27,6 +27,7 @@ use crate::{
     serial::KResult,
     sync::{IrqGuard, SpinExt, SuperCell},
     user::{MemoryDescriptor, Userspace, Userspace_init},
+    interrupt::Registers,
 };
 
 unsafe extern "C" {
@@ -55,20 +56,6 @@ pub const SLOAD: u32 = 1 << 0;
 pub const SSYS: u32 = 1 << 1;
 pub const SLOCK: u32 = 1 << 2;
 pub const SSWAP: u32 = 1 << 3;
-
-#[repr(C)]
-struct Registers {
-    _we_dont_care: [u32; 4],
-    ebx: usize,
-    ecx: usize,
-    edx: usize,
-    esi: usize,
-    edi: usize,
-    _ebp: usize,
-    eax: usize,
-    _frame: [u8; 0x18],
-    ebp: usize,
-}
 
 impl Process {
     pub fn new_from(pid: u32, parent: &mut Self) -> Box<Self> {

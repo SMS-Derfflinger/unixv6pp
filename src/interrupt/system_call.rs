@@ -1,6 +1,6 @@
 use crate::{
     constants::PosixError,
-    interrupt::{PtContext, PtRegs},
+    interrupt::{PtContext, Registers},
     interrupt_entry,
     user::{Pointer, Userspace},
 };
@@ -14,12 +14,12 @@ unsafe extern "C" {
 }
 
 #[no_mangle]
-pub extern "C" fn system_call_body(regs: *mut PtRegs, context: *mut PtContext) {
+pub extern "C" fn system_call_body(regs: *mut Registers, context: *mut PtContext) {
     trap(regs, context);
     crate::interrupt::interrupt::schedule_on_user_return(context);
 }
 
-fn trap(regs: *mut PtRegs, context: *mut PtContext) {
+fn trap(regs: *mut Registers, context: *mut PtContext) {
     let Some(regs) = (unsafe { regs.as_mut() }) else {
         return;
     };
@@ -29,32 +29,32 @@ fn trap(regs: *mut PtRegs, context: *mut PtContext) {
             .proc()
             .process_signal(unsafe { &mut *(context as *mut _) });
         Userspace::get().error = Some(PosixError::EINTR);
-        regs.eax = -(PosixError::EINTR as i32) as u32;
+        regs.eax = -(PosixError::EINTR as i32) as usize;
         return;
     }
 
     Userspace::get().ssav[0] = Pointer((&raw mut *regs) as usize);
     Userspace::get().ssav[1] = Pointer(context as usize);
-    Userspace::get().ar0 = &raw mut regs.eax;
+    Userspace::get().ar0 = &raw mut regs.eax as *mut _;
     Userspace::get().error = None;
 
     let number = regs.eax;
     let count = if (number as usize) < SYSTEM_CALL_NUM {
-        cpp_system_call_arg_count(number)
+        cpp_system_call_arg_count(number as u32)
     } else {
         0
     };
     copy_args(regs, context, count as usize);
 
-    cpp_system_call_trap1(number);
+    cpp_system_call_trap1(number as u32);
 
     if Userspace::get().signal_pending {
         Userspace::get().error = Some(PosixError::EINTR);
-        regs.eax = -(PosixError::EINTR as i32) as u32;
+        regs.eax = -(PosixError::EINTR as i32) as usize;
     }
 
     if let Some(err) = Userspace::get().error {
-        regs.eax = -(err as i32) as u32;
+        regs.eax = -(err as i32) as usize;
         crate::println_info!("regs->eax={:#x} error={err:?}", regs.eax);
     }
 
@@ -67,7 +67,7 @@ fn trap(regs: *mut PtRegs, context: *mut PtContext) {
     Userspace::get().proc().set_pri();
 }
 
-fn copy_args(regs: &PtRegs, context: *mut PtContext, count: usize) {
+fn copy_args(regs: &Registers, context: *mut PtContext, count: usize) {
     let args = &mut Userspace::get().args;
     let syscall_args = [regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi];
 
