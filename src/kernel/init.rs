@@ -1,17 +1,11 @@
-use core::{arch::asm, mem::MaybeUninit, ptr};
+use core::{mem::MaybeUninit, ptr};
 
 use crate::{
-    interrupt::set_time,
-    kernel::kernel::rust_kernel_initialize,
-    machine::asm::enable_interrupts,
-    println,
-    proc::ProcessManager,
-    vesa::{vesa_init, VbeModeInfo},
+    dev::{buffer::DevId, device_manager::ROOTDEV}, fs::{GLOBAL_INODE_TABLE, InodeFlag, inoderef_leak}, interrupt::set_time, kernel::kernel::rust_kernel_initialize, machine::asm::enable_interrupts, println, proc::ProcessManager, sync::SpinExt, user::Userspace, vesa::{VbeModeInfo, vesa_init}
 };
 
 use super::{
     diagnose::_diagnose_trace_on,
-    splash::splash,
     syscall::_lib_open,
     utility::{_make_kernel_time, SystemTime},
 };
@@ -76,7 +70,6 @@ unsafe extern "C" {
 
     fn FileSystem_load_super_block() -> bool;
 
-    fn cpp_init_root_cdir();
     fn cpp_set_kernel_time(value: u32);
 
     fn runtime();
@@ -103,8 +96,12 @@ pub extern "C" fn rust_kernel_next() {
     println!("Unix V6++ FileSystem Loaded......OK");
     println!("test ");
 
-    unsafe {
-        cpp_init_root_cdir();
+    {
+        let iref = GLOBAL_INODE_TABLE.lock().i_get(DevId(ROOTDEV), 1).unwrap();
+        let mut inode = iref.lock();
+        inode.i_flag.remove(InodeFlag::ILOCK);
+        drop(inode);
+        Userspace::get().cwd = Some(inoderef_leak(iref.into_inner()));
     }
 
     open_tty();

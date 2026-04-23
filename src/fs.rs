@@ -56,7 +56,7 @@ impl InodeRefPutExt for InodeRef {
 pub use file::{File, IOParameter, InodeRefCompat, OpenFiles};
 pub use file_manager::{DirSearchMode, DirectoryEntry, FileManager, InodeRefExt};
 pub use file_system::SuperBlock;
-pub use inode::{inoderef_leak, Inode, InodeMode};
+pub use inode::{inoderef_leak, Inode, InodeMode, InodeFlag};
 pub use open_file_manager::{GLOBAL_INODE_TABLE, GLOBAL_OPEN_FILE_TABLE};
 
 use crate::sync::{KernelSpinGuard, SpinExt};

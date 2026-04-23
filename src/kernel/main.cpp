@@ -197,29 +197,6 @@ extern "C" void InitProcessEntry()
 	Utility::Panic("InitProcessEntry returned");
 }
 
-#if 0
-/* 此函数test文件夹中的代码会引用，但貌似可以删除，记得把它删掉*/
-extern "C" void Delay()
-{
-	for ( int i = 0; i < 50; i++ )
-		for ( int j = 0; j < 10000; j++ )
-		{
-			int a;
-			int b;
-			int c=a+b;
-			c++;
-		}
-}
-#endif
-
-extern "C" void cpp_init_root_cdir()
-{
-        // ROOTDEV
-	User_get_cdir() = InodeTable_get(0, 1);
-	User_get_cdir()->i_flag &= (~Inode::ILOCK);
-}
-
-
 extern "C" void kernelBridge() {  // called by sector2.asm
 	initBss();
 	callCtors();
