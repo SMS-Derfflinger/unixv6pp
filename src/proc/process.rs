@@ -549,8 +549,10 @@ impl Process {
         let _ = self.text.take();
 
         // TODO: save exit status
-        unsafe {
-            USER_PAGE_MANAGER.lock().dealloc(self.pages.take().unwrap());
+        if let Some(pages) = self.pages.take() {
+            unsafe {
+                USER_PAGE_MANAGER.lock().dealloc(pages);
+            }
         }
 
         self.stat = ProcessState::SZOMB;
