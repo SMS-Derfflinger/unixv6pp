@@ -1,10 +1,8 @@
-use core::arch::asm;
-
 use crate::{
     dev::{ata_driver::ata_handler, io_port::IOPort},
     interrupt::{PtContext, PtRegs, PIC_EOI, PIC_MASTER_IO_PORT_1},
     interrupt_entry,
-    machine::asm::{disable_interrupts, enable_interrupts},
+    machine::asm::disable_interrupts,
     proc::ProcessManager,
     sync::IrqGuard,
     tty::keyboard::keyboard_handle_interrupt,
@@ -13,17 +11,6 @@ use crate::{
 pub fn send_master_eoi() {
     unsafe {
         IOPort::out_byte(PIC_MASTER_IO_PORT_1, PIC_EOI);
-    }
-}
-
-pub unsafe fn switch_to_kernel_segments() {
-    unsafe {
-        asm!(
-            "movw $0x10, %dx",
-            "movw %dx, %ds",
-            "movw %dx, %es",
-            options(att_syntax),
-        );
     }
 }
 

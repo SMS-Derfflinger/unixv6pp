@@ -3,10 +3,6 @@ mod interrupt;
 mod system_call;
 mod time;
 
-use core::arch::asm;
-
-use crate::dev::io_port::IOPort;
-
 pub use interrupt::send_master_eoi;
 pub use time::set_time;
 
@@ -66,26 +62,20 @@ impl PteContext {
     }
 }
 
-pub unsafe fn switch_to_kernel_segments() {
-    unsafe {
-        asm!(
-            "movw $0x10, %dx",
-            "movw %dx, %ds",
-            "movw %dx, %es",
-            options(att_syntax),
-        );
-    }
-}
-
 #[macro_export]
 macro_rules! interrupt_entry {
     ($entry:ident, $handler:ident) => {
         core::arch::global_asm!(
             concat!(
                 ".text\n",
-                ".global ", stringify!($entry), "\n",
-                ".type ", stringify!($entry), ", @function\n",
-                stringify!($entry), ":\n",
+                ".global ",
+                stringify!($entry),
+                "\n",
+                ".type ",
+                stringify!($entry),
+                ", @function\n",
+                stringify!($entry),
+                ":\n",
                 "    pushl %ebp\n",
                 "    movl %esp, %ebp\n",
                 "    cld\n",
@@ -107,7 +97,9 @@ macro_rules! interrupt_entry {
                 "    movw $0x10, %dx\n",
                 "    movw %dx, %ds\n",
                 "    movw %dx, %es\n",
-                "    call ", stringify!($handler), "\n",
+                "    call ",
+                stringify!($handler),
+                "\n",
                 "    addl $0x8, %esp\n",
                 "    popl %gs\n",
                 "    popl %fs\n",
@@ -122,7 +114,11 @@ macro_rules! interrupt_entry {
                 "    popl %eax\n",
                 "    leave\n",
                 "    iret\n",
-                ".size ", stringify!($entry), ", . - ", stringify!($entry), "\n",
+                ".size ",
+                stringify!($entry),
+                ", . - ",
+                stringify!($entry),
+                "\n",
             ),
             options(att_syntax),
         );
@@ -135,9 +131,14 @@ macro_rules! interrupt_entry_with_error_code {
         core::arch::global_asm!(
             concat!(
                 ".text\n",
-                ".global ", stringify!($entry), "\n",
-                ".type ", stringify!($entry), ", @function\n",
-                stringify!($entry), ":\n",
+                ".global ",
+                stringify!($entry),
+                "\n",
+                ".type ",
+                stringify!($entry),
+                ", @function\n",
+                stringify!($entry),
+                ":\n",
                 "    pushl %ebp\n",
                 "    movl %esp, %ebp\n",
                 "    cld\n",
@@ -159,7 +160,9 @@ macro_rules! interrupt_entry_with_error_code {
                 "    movw $0x10, %dx\n",
                 "    movw %dx, %ds\n",
                 "    movw %dx, %es\n",
-                "    call ", stringify!($handler), "\n",
+                "    call ",
+                stringify!($handler),
+                "\n",
                 "    addl $0x8, %esp\n",
                 "    popl %gs\n",
                 "    popl %fs\n",
@@ -175,7 +178,11 @@ macro_rules! interrupt_entry_with_error_code {
                 "    leave\n",
                 "    addl $4, %esp\n",
                 "    iret\n",
-                ".size ", stringify!($entry), ", . - ", stringify!($entry), "\n",
+                ".size ",
+                stringify!($entry),
+                ", . - ",
+                stringify!($entry),
+                "\n",
             ),
             options(att_syntax),
         );
