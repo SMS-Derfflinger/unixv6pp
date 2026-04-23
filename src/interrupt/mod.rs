@@ -201,7 +201,7 @@ macro_rules! interrupt_entry_with_error_code {
                 "    pushl %ds\n",
                 "    pushl %fs\n",
                 "    pushl %gs\n",
-                "    lea 0x8(%ebp), %edx\n",
+                "    lea 0x4(%ebp), %edx\n",
                 "    pushl %edx\n",
                 "    lea 0x4(%esp), %edx\n",
                 "    pushl %edx\n",
