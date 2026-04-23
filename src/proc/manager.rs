@@ -861,7 +861,10 @@ define_class_compat! {impl ProcessManager {
         };
 
         crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
-        pm.exec(proc, path, argv).pass_to_user();
+        if let Err(err) = pm.exec(proc, path, argv) {
+            Userspace::get().set_error(err);
+            return;
+        }
 
         let mut ctx = TaskContext::new();
         unsafe {
