@@ -1,8 +1,6 @@
 #ifndef INODE_H
 #define INODE_H
 
-#include "Buf.h"
-
 class Inode;
 
 extern "C" void Inode_clean(Inode*);

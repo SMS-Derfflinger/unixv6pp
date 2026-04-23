@@ -1,11 +1,8 @@
 #ifndef KERNEL_H
 #define KERNEL_H
 
-#include "PageManager.h"
 #include "ProcessManager.h"
 #include "User.h"
-#include "BufferManager.h"
-#include "DeviceManager.h"
 #include "SwapperManager.h"
 
 const unsigned long PAGE_SIZE = 0x1000;

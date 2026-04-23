@@ -5,12 +5,6 @@
 
 Kernel Kernel::instance;
 
-/* 
- * 内存管理相关的全局manager
- */
-UserPageManager g_UserPageManager;
-KernelPageManager g_KernelPageManager;
-
 /*
  * 交换区相关全局manager
  */
@@ -20,11 +14,6 @@ SwapperManager g_SwapperManager(&(Allocator::GetInstance()));
  * 进程相关全局manager
  */
 ProcessManager g_ProcessManager;
-
-/*
- * 设备管理、高速缓存管理全局manager
- */
-BufferManager g_BufferManager;
 
 Kernel::Kernel()
 {
