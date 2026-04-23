@@ -307,6 +307,8 @@ extern "C" void next()
 	// PageManager::PHY_MEM_SIZE = memSize * 1024;
 	// UserPageManager::USER_PAGE_POOL_SIZE = PageManager::PHY_MEM_SIZE - UserPageManager::USER_PAGE_POOL_START_ADDR;
 
+	asm volatile("sti");
+
 	/* 真正操作系统内核初始化逻辑	 */
 	Kernel::Instance().Initialize();
 	Kernel::Instance().GetProcessManager().SetupProcessZero();

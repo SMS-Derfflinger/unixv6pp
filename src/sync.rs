@@ -1,5 +1,5 @@
-mod super_cell;
 mod spin;
+mod super_cell;
 
+pub use spin::{IrqContext, IrqGuard, KernelSpinGuard, SpinExt};
 pub use super_cell::SuperCell;
-pub use spin::{IrqContext, KernelSpinGuard, SpinExt};

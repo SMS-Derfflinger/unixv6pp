@@ -17,10 +17,7 @@ use crate::{
     dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt, OpenFiles},
     loader::PEParser,
-    machine::{
-        asm::{disable_interrupts, enable_interrupts},
-        set_tss_esp0, switch_user_struct,
-    },
+    machine::{asm::disable_interrupts, set_tss_esp0, switch_user_struct},
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
@@ -28,7 +25,7 @@ use crate::{
         Channel, Process, EXPRI,
     },
     serial::KResult,
-    sync::{SpinExt, SuperCell},
+    sync::{IrqGuard, SpinExt, SuperCell},
     user::{MemoryDescriptor, Userspace, Userspace_init},
 };
 
@@ -129,10 +126,10 @@ impl ProcessManager {
     fn set_kernel_entry_context(child: &mut Process, entry: unsafe extern "C" fn()) {
         let stack_top = child.kstack.as_ref().unwrap().top();
 
-        child.ctx.eip = entry as usize;
+        child.ctx.eip = go_kernelspace as usize;
         child.ctx.esp = stack_top;
         child.ctx.ebp = stack_top;
-        child.ctx.ebx = 0;
+        child.ctx.ebx = entry as usize;
         child.ctx.esi = 0;
         child.ctx.edi = 0;
     }
@@ -559,9 +556,8 @@ impl ProcessManager {
         switch_user_struct(&scheduler);
 
         unsafe {
-            disable_interrupts();
+            let ctx = IrqGuard::disable_save();
             TaskContext::switch(&mut me.ctx, &mut scheduler.ctx);
-            enable_interrupts();
         }
     }
 
@@ -585,9 +581,8 @@ impl ProcessManager {
             }
 
             unsafe {
-                disable_interrupts();
+                let ctx = IrqGuard::disable_save();
                 TaskContext::switch(&mut me.ctx, &mut selected.ctx);
-                enable_interrupts();
             }
         }
     }
@@ -662,6 +657,17 @@ impl ProcessManager {
 }
 
 static TEMPORARY_STACK: [usize; 6] = [0; 6];
+
+#[unsafe(naked)]
+extern "C" fn go_kernelspace() {
+    naked_asm!(
+        "push $0x200",    // eflags = IF
+        "push $0x08",     // cs
+        "push %ebx",      // eip = entry
+        "iret",
+        options(att_syntax),
+    )
+}
 
 #[unsafe(naked)]
 extern "C" fn go_userspace() {
@@ -858,6 +864,7 @@ define_class_compat! {impl ProcessManager {
 
         let mut ctx = TaskContext::new();
         unsafe {
+            disable_interrupts();
             TaskContext::switch(&mut ctx, &mut proc.ctx);
         }
     }

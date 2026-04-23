@@ -1,7 +1,6 @@
 use crate::dev::buffer::Buffer;
-use crate::machine::asm::{disable_interrupts, enable_interrupts};
 use crate::proc::ProcessManager;
-use crate::sync::SuperCell;
+use crate::sync::{IrqGuard, SuperCell};
 use crate::{constants::PosixError, user::Userspace};
 
 use super::{
@@ -88,14 +87,12 @@ impl BufferManager {
         loop {
             if let Some(bp) = self.in_core(dev, blkno) {
                 unsafe {
-                    disable_interrupts();
+                    let ctx = IrqGuard::disable_save();
                     if (*bp).b_flags.contains(BufFlag::B_BUSY) {
                         (*bp).b_flags.insert(BufFlag::B_WANTED);
                         sleep_on(bp as usize, PRIBIO);
-                        enable_interrupts();
                         continue;
                     }
-                    enable_interrupts();
                 }
 
                 self.not_avail(bp);
@@ -104,16 +101,14 @@ impl BufferManager {
 
             let bp = loop {
                 unsafe {
-                    disable_interrupts();
+                    let ctx = IrqGuard::disable_save();
                     if !self.is_free_list_empty() {
                         let bp = (*self.free_list_sentinel()).av_forw;
-                        enable_interrupts();
                         break bp;
                     }
 
                     self.b_free_list.b_flags.insert(BufFlag::B_WANTED);
                     sleep_on(self.free_list_sentinel() as usize, PRIBIO);
-                    enable_interrupts();
                 }
             };
 
@@ -157,7 +152,7 @@ impl BufferManager {
                 (*bp).b_dev = set_minor((*bp).b_dev, -1);
             }
 
-            disable_interrupts();
+            let ctx = IrqGuard::disable_save();
             (*bp)
                 .b_flags
                 .remove(BufFlag::B_WANTED | BufFlag::B_BUSY | BufFlag::B_ASYNC);
@@ -165,7 +160,6 @@ impl BufferManager {
             if !(*bp).is_on_free_list() {
                 self.push_free_back(bp);
             }
-            enable_interrupts();
         }
     }
 
@@ -175,12 +169,13 @@ impl BufferManager {
         }
 
         unsafe {
-            disable_interrupts();
+            let mut ctx = IrqGuard::disable_save();
             while !(*bp).b_flags.contains(BufFlag::B_DONE) {
                 (*bp).b_flags.insert(BufFlag::B_WANTED);
+                drop(ctx);
                 sleep_on(bp as usize, PRIBIO);
+                ctx = IrqGuard::disable_save();
             }
-            enable_interrupts();
         }
 
         self.get_error(bp)
@@ -218,9 +213,7 @@ impl BufferManager {
         device.strategy(bp);
         self.io_wait(bp)?;
 
-        unsafe {
-            Ok(Buffer::new(bp))
-        }
+        unsafe { Ok(Buffer::new(bp)) }
     }
 
     pub fn breada(
@@ -276,9 +269,7 @@ impl BufferManager {
         match bp {
             Some(bp) => {
                 self.io_wait(bp)?;
-                unsafe {
-                    Ok(Buffer::new(bp))
-                }
+                unsafe { Ok(Buffer::new(bp)) }
             }
             None => self.bread(dev, blkno),
         }
@@ -365,12 +356,11 @@ impl BufferManager {
         flag: BufFlag,
     ) -> BufferResult<()> {
         unsafe {
-            disable_interrupts();
+            let ctx = IrqGuard::disable_save();
             while self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
                 sleep_on(self.swap_buf_ptr() as usize, PSWP);
             }
-            enable_interrupts();
         }
 
         self.swap_buf.b_flags = BufFlag::B_BUSY | flag;
@@ -384,12 +374,11 @@ impl BufferManager {
         device.strategy(bp);
 
         unsafe {
-            disable_interrupts();
+            let ctx = IrqGuard::disable_save();
             while !self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
                 sleep_on(self.swap_buf_ptr() as usize, PSWP);
             }
-            enable_interrupts();
         }
 
         self.finish_swap()
@@ -463,12 +452,11 @@ impl BufferManager {
         }
 
         unsafe {
-            disable_interrupts();
+            let ctx = IrqGuard::disable_save();
             if (*bp).is_on_free_list() {
                 self.remove_from_free_list(bp);
             }
             (*bp).b_flags.insert(BufFlag::B_BUSY);
-            enable_interrupts();
         }
     }
 

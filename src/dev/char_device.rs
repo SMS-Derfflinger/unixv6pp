@@ -4,8 +4,7 @@ use eonix_sync_base::LazyLock;
 
 use crate::{
     constants::PosixError,
-    machine::asm::{disable_interrupts, enable_interrupts},
-    sync::SuperCell,
+    sync::{IrqGuard, SuperCell},
     tty::{console_tty, TTIPRI},
     user::Userspace,
 };
@@ -71,17 +70,14 @@ impl CharDevice for ConsoleDevice {
     fn read(&self, dev: i16, out: &mut [u8]) -> Result<usize, PosixError> {
         Self::validate(dev)?;
         loop {
-            disable_interrupts();
+            let ctx = IrqGuard::disable_save();
 
             if let Some(nread) = console_tty().with_mut(|tty| tty.read_available(out)) {
-                enable_interrupts();
                 return Ok(nread);
             }
 
             let chan = console_tty().with(|tty| tty.read_wait_channel());
             Userspace::get().proc().sleep_user(chan, TTIPRI);
-
-            enable_interrupts();
         }
     }
 

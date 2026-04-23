@@ -15,14 +15,15 @@ use crate::{
     compat::{compat_phys_copy, compat_swap_alloc, compat_swap_free},
     constants::Signal,
     dev::buffer::PhysicalBlock,
-    fs::{GLOBAL_OPEN_FILE_TABLE, InodeRef, OpenFiles},
-    machine::asm::{disable_interrupts, enable_interrupts},
-    mm::{KERNEL_PAGE_MANAGER, PAGE_SIZE, PhysPage, USER_PAGE_MANAGER},
+    fs::{InodeRef, OpenFiles, GLOBAL_OPEN_FILE_TABLE},
+    mm::{PhysPage, KERNEL_PAGE_MANAGER, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
-        Channel, context::TaskContext, manager::{ProcessManager, SLOAD, SSWAP}
+        context::TaskContext,
+        manager::{ProcessManager, SLOAD, SSWAP},
+        Channel,
     },
     serial::KResult,
-    sync::SpinExt,
+    sync::{IrqGuard, SpinExt},
     user::Userspace,
 };
 
@@ -391,11 +392,12 @@ impl Process {
     }
 
     pub fn sleep_kernel(&mut self, chan: impl Channel, pri: i32) {
-        disable_interrupts();
-        self.wchan = chan.channel_addr();
-        self.stat = ProcessState::SSLEEP;
-        self.pri = pri;
-        enable_interrupts();
+        {
+            let ctx = IrqGuard::disable_save();
+            self.wchan = chan.channel_addr();
+            self.stat = ProcessState::SSLEEP;
+            self.pri = pri;
+        }
 
         ProcessManager::get().switch();
     }
@@ -409,11 +411,12 @@ impl Process {
             return true;
         }
 
-        disable_interrupts();
-        self.wchan = chan;
-        self.stat = ProcessState::SWAIT;
-        self.pri = pri as i32;
-        enable_interrupts();
+        {
+            let ctx = IrqGuard::disable_save();
+            self.wchan = chan;
+            self.stat = ProcessState::SWAIT;
+            self.pri = pri as i32;
+        }
 
         if ProcessManager::get().run_in != 0 {
             ProcessManager::get().run_in = 0;

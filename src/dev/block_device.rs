@@ -3,8 +3,7 @@ use eonix_sync_base::LazyLock;
 use crate::{
     constants::PosixError,
     dev::buffer_manager::global_buffer_manager,
-    machine::asm::{disable_interrupts, enable_interrupts},
-    sync::SuperCell,
+    sync::{IrqGuard, SuperCell},
     user::Userspace,
 };
 
@@ -140,7 +139,7 @@ impl BlockDevice for ATABlockDevice {
             }
         }
 
-        disable_interrupts();
+        let ctx = IrqGuard::disable_save();
         let should_start = self.tab.with_mut(|tab| {
             tab.push_io_request(bp);
             tab.d_active == 0
@@ -148,11 +147,7 @@ impl BlockDevice for ATABlockDevice {
 
         if should_start {
             self.start();
-            enable_interrupts();
-            return 0;
         }
-
-        enable_interrupts();
 
         0
     }

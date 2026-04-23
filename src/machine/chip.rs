@@ -1,4 +1,4 @@
-use crate::{dev::io_port::IOPort, machine::asm::{disable_interrupts, enable_interrupts}};
+use crate::{dev::io_port::IOPort, sync::IrqGuard};
 
 #[repr(C)]
 pub struct SystemTime {
@@ -39,7 +39,7 @@ const RTC_YEAR: u8 = 0x09;
 const RTC_STATUS_REGISTER_A: u8 = 0x0a;
 const RTC_UPDATE_IN_PROGRESS: i32 = 0x80;
 
-const EXTENDED_MEMORY_ABOVE_1MB_LOW: u8 = 0x30;	/* 1MB以上扩展内存(低字节) */
+const EXTENDED_MEMORY_ABOVE_1MB_LOW: u8 = 0x30; /* 1MB以上扩展内存(低字节) */
 const EXTENDED_MEMORY_ABOVE_1MB_HIGH: u8 = 0x31;
 
 #[no_mangle]
@@ -135,11 +135,9 @@ pub extern "C" fn _cmos_read_time(time: *mut SystemTime) {
 
 fn cmos_read_byte(cmos_offset: u8) -> i32 {
     unsafe {
-        disable_interrupts();
+        let ctx = IrqGuard::disable_save();
         IOPort::out_byte(CMOS_ADDR_PORT, cmos_offset);
-        let value = IOPort::in_byte(CMOS_DATA_PORT) as i32;
-        enable_interrupts();
-        value
+        IOPort::in_byte(CMOS_DATA_PORT) as i32
     }
 }
 
