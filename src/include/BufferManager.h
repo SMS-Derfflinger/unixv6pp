@@ -28,11 +28,7 @@ public:
 public:
 	BufferManager() {}
 	~BufferManager() {}
-	
-	void Initialize() {
-        buffer_manager_initialize();
-    }
-	
+
 	Buf* GetBlk(short dev, int blkno) {
         return buffer_get_blk(dev, blkno);
     }

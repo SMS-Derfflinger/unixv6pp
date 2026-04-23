@@ -633,8 +633,7 @@ fn set_buffer_error(err: BufferError) {
     Userspace::get().set_error(err.into());
 }
 
-#[no_mangle]
-pub extern "C" fn buffer_manager_initialize() {
+pub fn buffer_manager_initialize() {
     global_buffer_manager().initialize();
 }
 

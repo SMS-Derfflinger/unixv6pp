@@ -112,14 +112,6 @@ void Kernel::InitProcess()
 	Diagnose::Write("Ok.\n");
 }
 
-void Kernel::InitBuffer()
-{
-	this->m_BufferManager = &g_BufferManager;
-
-	Diagnose::Write("Initialize Buffer...");
-	this->GetBufferManager().Initialize();
-	Diagnose::Write("OK.\n");
-}
 
 void Kernel::InitFileSystem()
 {
@@ -148,11 +140,6 @@ ProcessManager& Kernel::GetProcessManager()
 SwapperManager& Kernel::GetSwapperManager()
 {
 	return *(this->m_SwapperManager);
-}
-
-BufferManager& Kernel::GetBufferManager()
-{
-	return *(this->m_BufferManager);
 }
 
 User& Kernel::GetUser()

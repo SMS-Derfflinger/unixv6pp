@@ -1,9 +1,8 @@
-use crate::{println, serial::init_serial};
+use crate::{dev::buffer_manager::buffer_manager_initialize, println, serial::init_serial};
 
 unsafe extern "C" {
     fn cpp_swapper_manager_initialize() -> i32;
     fn cpp_process_manager_initialize();
-    fn buffer_manager_initialize();
 }
 
 pub fn rust_kernel_initialize() {
@@ -34,9 +33,7 @@ fn init_process() {
 
 fn init_buffer() {
     println!("Initialize Buffer...");
-    unsafe {
-        buffer_manager_initialize();
-    }
+    buffer_manager_initialize();
     println!("OK.");
 
     println!("Initialize Device Manager...");

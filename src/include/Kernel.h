@@ -10,12 +10,6 @@
 
 const unsigned long PAGE_SIZE = 0x1000;
 
-constexpr unsigned long align_down_page(unsigned long val) {
-        return (val + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
-}
-
-extern "C" void serial_write_cstr(const char* str);
-
 /*
  * Kernel类用于封装所有内核相关的全局类实例对象，
  * 例如PageManager, ProcessManager等。
@@ -37,7 +31,6 @@ public:
 
 	ProcessManager& GetProcessManager();
 	SwapperManager& GetSwapperManager();
-	BufferManager& GetBufferManager();
 	User& GetUser();		/* 获取当前进程的User结构 */
 
 private:
@@ -51,7 +44,6 @@ private:
 
 	ProcessManager* m_ProcessManager;
 	SwapperManager* m_SwapperManager;
-	BufferManager* m_BufferManager;
 };
 
 #endif

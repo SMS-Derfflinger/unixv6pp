@@ -221,42 +221,9 @@ pub fn serial_try_read_byte() -> Option<u8> {
     serial.try_read()
 }
 
-macro_rules! exported {
-    {$(pub fn $name:ident($($arg_name:ident: $arg_type:ty),*) $(-> $ret_type:ty)? $body:block)*} => {
-        $(
-        #[no_mangle]
-        pub extern "C" fn $name($($arg_name: $arg_type),*) $(-> $ret_type)? $body
-        )*
-    };
-}
+pub fn init_serial() {
+    init().unwrap();
 
-exported! {
-    pub fn init_serial() -> i32 {
-        init().unwrap();
-
-        println!();
-        println_info!("Serial initialized");
-
-        0
-    }
-
-    pub fn serial_write_cstr(cstr: *const u8) {
-        let mut cstr = cstr;
-
-        if cstr.is_null() {
-            panic!("Null pointer");
-        }
-
-        let iter = core::iter::from_fn(move || unsafe {
-            let ch = *cstr;
-            if ch == 0 {
-                return None;
-            }
-
-            cstr = cstr.add(1);
-            Some(ch)
-        });
-
-        serial_write_bytes(iter)
-    }
+    println!();
+    println_info!("Serial initialized");
 }
