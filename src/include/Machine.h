@@ -39,12 +39,7 @@ public:
 	
 public:
 	static Machine& Instance();			/* 返回单态类的instance */
-	void LoadIDT();						/* 把建立好的IDT表的基地址和长度加载进IDTR寄存器 */
-	void LoadGDT();						/* 把建立好的GDT表的基地址和长度加载进IDTR寄存器 */
 	void LoadTaskRegister();
-
-	void InitIDT();
-	void InitGDT();
 
 	/**
 	 * VESA Support
@@ -52,17 +47,7 @@ public:
 	 */
 	void InitVESAMemoryMap(uintptr_t videoMemAddr, uintptr_t virtualMemAddr, size_t videoMemSize);
 
-	void InitPageDirectory();
 	void InitUserPageTable();
-	void EnablePageProtection();
-	
-	/* property functions */
-public:
-	PageDirectory& GetPageDirectory();	/* 获取当前正在使用的页目录表 */
-	PageTable& GetKernelPageTable();	/* 获取操作系统内核所使用的页表，用于map 0xc0000000以上地址 */
-	PageTable* GetUserPageTableArray();	/* 获取用户进程页表，共两张，被映射在0x202000和0x203000上，
-										    映射0x00000000 - 0x00800000用户态地址空间 */
-	
 private:
 	static Machine instance;	/* Machine单体类实例 */
 };

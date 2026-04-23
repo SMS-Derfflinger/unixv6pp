@@ -1,14 +1,25 @@
 use core::{mem::MaybeUninit, ptr};
 
 use crate::{
-    dev::{buffer::DevId, device_manager::ROOTDEV}, fs::{GLOBAL_INODE_TABLE, InodeFlag, inoderef_leak}, interrupt::set_time, kernel::kernel::rust_kernel_initialize, machine::asm::enable_interrupts, println, proc::ProcessManager, sync::SpinExt, user::Userspace, vesa::{VbeModeInfo, vesa_init}
+    dev::{buffer::DevId, device_manager::ROOTDEV},
+    fs::{GLOBAL_INODE_TABLE, InodeFlag, inoderef_leak},
+    interrupt::set_time,
+    kernel::kernel::rust_kernel_initialize,
+    machine::{
+        asm::enable_interrupts,
+        chip::{SystemTime, cmos_read_byte_high, cmos_read_byte_low, cmos_read_time, init_peripherals},
+        enable_page_protection, init_gdt, init_idt, init_page_directory, init_user_page_table,
+        load_gdt, load_idt,
+    },
+    mm::init_page_managers,
+    println,
+    proc::{KernelStack, ProcessManager},
+    sync::SpinExt,
+    user::Userspace,
+    vesa::{VbeModeInfo, vesa_init},
 };
 
-use super::{
-    diagnose::_diagnose_trace_on,
-    syscall::_lib_open,
-    utility::{_make_kernel_time, SystemTime},
-};
+use super::{diagnose::_diagnose_trace_on, syscall::_lib_open, utility::_make_kernel_time};
 
 const KERNEL_SPACE_START_ADDRESS: usize = 0xc0000000;
 const VESA_MODE_INFO_ADDR: usize = KERNEL_SPACE_START_ADDRESS + 0x7e00;
@@ -62,10 +73,6 @@ unsafe extern "C" {
         video_memory_size: usize,
     );
     fn _load_task_register();
-    fn _cmos_read_time(time: *mut SystemTime);
-    fn _cmos_read_byte_low() -> i32;
-    fn _cmos_read_byte_high() -> i32;
-    fn _init_user_page_table();
     fn clear_screan();
 
     fn FileSystem_load_super_block() -> bool;
@@ -76,8 +83,7 @@ unsafe extern "C" {
     fn ExecShell();
 }
 
-#[no_mangle]
-pub extern "C" fn rust_kernel_next() {
+fn rust_kernel_next() {
     init_vesa();
 
     unsafe {
@@ -136,15 +142,13 @@ fn init_vesa() {
 
 fn init_kernel_time() {
     let mut time = MaybeUninit::<SystemTime>::uninit();
-    unsafe {
-        _cmos_read_time(time.as_mut_ptr());
-    }
+    cmos_read_time(time.as_mut_ptr());
     set_time(_make_kernel_time(time.as_ptr()));
 }
 
 fn read_memory_size() {
-    let low_mem = unsafe { _cmos_read_byte_low() };
-    let high_mem = unsafe { _cmos_read_byte_high() };
+    let low_mem = cmos_read_byte_low();
+    let high_mem = cmos_read_byte_high();
     let _mem_size_kb = ((high_mem << 8) + low_mem) + 1024;
 }
 
@@ -179,4 +183,41 @@ fn copy_runtime_to_userspace() {
             (offset as *mut u8).write_volatile(byte);
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn main0() -> ! {
+    init_peripherals();
+
+    init_gdt();
+    load_gdt();
+
+    init_idt();
+    load_idt();
+
+    init_page_directory();
+    init_user_page_table();
+    enable_page_protection();
+
+    init_page_managers();
+    let kstack = KernelStack::new();
+    let top = kstack.top();
+    core::mem::forget(kstack);
+
+    unsafe {
+        core::arch::asm!(
+            "mov $0x10, %ax",
+            "mov %ax, %ds",
+            "mov %ax, %es",
+            "mov %ax, %ss",
+            "mov {top}, %ebp",
+            "mov {top}, %esp",
+            "ljmp $0x08, ${entry}",
+            top = in(reg) top,
+            entry = sym rust_kernel_next,
+            options(att_syntax),
+        );
+    }
+
+    unreachable!();
 }

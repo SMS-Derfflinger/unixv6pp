@@ -1,6 +1,7 @@
 use eonix_mm::paging::PFN;
 
 use crate::compat::compat_flush_page_directory;
+use crate::machine::chip::SystemTime;
 use crate::machine::{global_user_page_table, kernel_page_table_mut, EntryFlags};
 
 const SECONDS_IN_MINUTE: u32 = 60;
@@ -21,17 +22,6 @@ const DAYS_BEFORE_MONTH: [u32; 13] = [
     304,
     334,
 ];
-
-#[repr(C)]
-pub struct SystemTime {
-    second: i32,
-    minute: i32,
-    hour: i32,
-    day_of_month: i32,
-    month: i32,
-    year: i32,
-    day_of_week: i32,
-}
 
 #[no_mangle]
 pub extern "C" fn _mem_copy(src: usize, dst: usize, count: u32) {

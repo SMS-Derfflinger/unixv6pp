@@ -10,7 +10,7 @@ use crate::proc::Process;
 
 const ENTRY_COUNT_PER_PAGE_TABLE: usize = 1024;
 const SIZE_PER_PAGE_TABLE_MAP: usize = 0x400000;
-const PAGE_DIRECTORY_BASE_ADDRESS: usize = 0x200000;
+pub const PAGE_DIRECTORY_BASE_ADDRESS: usize = 0x200000;
 const KERNEL_PAGE_TABLE_BASE_ADDRESS: usize = 0x201000;
 pub const USER_PAGE_TABLE_BASE_ADDRESS: usize = 0x202000;
 pub const USER_PAGE_TABLE_COUNT: usize = 2;
@@ -105,8 +105,7 @@ impl IndexMut<usize> for PageTable {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _init_page_directory() {
+pub fn init_page_directory() {
     let page_directory = page_directory_mut();
 
     page_directory.entries[KERNEL_PAGE_DIRECTORY_INDEX].set(
@@ -123,7 +122,7 @@ pub extern "C" fn _init_page_directory() {
 }
 
 #[no_mangle]
-pub extern "C" fn _init_user_page_table() {
+pub extern "C" fn init_user_page_table() {
     let page_directory = page_directory_mut();
     let page_table_base = USER_PAGE_TABLE_BASE_ADDRESS >> 12;
 
@@ -204,7 +203,7 @@ pub fn switch_user_struct(proc: &Process) {
     compat_flush_page_directory();
 }
 
-fn page_directory_mut() -> &'static mut PageDirectory {
+pub fn page_directory_mut() -> &'static mut PageDirectory {
     unsafe {
         &mut *phys_to_virt(PAddr::from(PAGE_DIRECTORY_BASE_ADDRESS)).cast()
     }

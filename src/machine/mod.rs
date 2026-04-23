@@ -1,16 +1,16 @@
 pub mod asm;
-mod chip;
+pub mod chip;
 mod page_table;
 
 use core::arch::asm;
 use core::mem::size_of;
 
-use crate::sync::SuperCell;
+use crate::{machine::page_table::PAGE_DIRECTORY_BASE_ADDRESS, sync::SuperCell};
 
-use kernel_macros::define_class_compat;
+use eonix_mm::address::{Addr, PAddr};
 pub use page_table::{
-    global_user_page_table, kernel_page_table_mut, switch_user_struct, EntryFlags, PageTable,
-    PageTableEntry,
+    global_user_page_table, init_page_directory, init_user_page_table, kernel_page_table_mut,
+    switch_user_struct, EntryFlags, PageTable, PageTableEntry,
 };
 
 const DESCRIPTOR_COUNT: usize = 256;
@@ -18,7 +18,6 @@ const KERNEL_DATA_SEGMENT_SELECTOR: u32 = 0x10;
 const USER_CODE_SEGMENT_SELECTOR: u32 = 0x18 | 0x3;
 const USER_DATA_SEGMENT_SELECTOR: u32 = 0x20 | 0x3;
 const TASK_STATE_SEGMENT_SELECTOR: u16 = 0x28;
-const PAGE_DIRECTORY_BASE_ADDRESS: u32 = 0x200000;
 const KERNEL_SPACE_START_ADDRESS: u32 = 0xc0000000;
 const KERNEL_SPACE_SIZE: u32 = 0x400000;
 const TASK_STATE_SEGMENT_INDEX: usize = 5;
@@ -353,7 +352,7 @@ impl TaskStateSegment {
 
     fn init(&mut self) {
         *self = Self::empty();
-        self.cr3 = PAGE_DIRECTORY_BASE_ADDRESS;
+        self.cr3 = PAGE_DIRECTORY_BASE_ADDRESS as u32;
         self.cs = USER_CODE_SEGMENT_SELECTOR;
         self.ds = USER_DATA_SEGMENT_SELECTOR;
         self.ss = USER_DATA_SEGMENT_SELECTOR;
@@ -373,21 +372,17 @@ static GDT: SuperCell<Gdt> = SuperCell::new(Gdt::empty());
 static IDT: SuperCell<Idt> = SuperCell::new(Idt::empty());
 static TSS: SuperCell<TaskStateSegment> = SuperCell::new(TaskStateSegment::empty());
 
-define_class_compat! {impl Machine {
-    pub fn init_idt() {
-        IDT.with_mut(|idt| idt.init_gates());
-    }
-}}
+pub fn init_idt() {
+    IDT.with_mut(|idt| idt.init_gates());
+}
 
-#[no_mangle]
-pub extern "C" fn _init_gdt() {
+pub fn init_gdt() {
     GDT.with_mut(|gdt| gdt.init());
     TSS.with_mut(|tss| tss.init());
     GDT.with_mut(|gdt| gdt.init_tss_descriptor());
 }
 
-#[no_mangle]
-pub extern "C" fn _load_idt() {
+pub fn load_idt() {
     IDT.with(|idt| {
         let idtr = DescriptorTableRegister::new(address_of(idt), size_of::<Idt>());
         unsafe {
@@ -400,8 +395,7 @@ pub extern "C" fn _load_idt() {
     });
 }
 
-#[no_mangle]
-pub extern "C" fn _load_gdt() {
+pub fn load_gdt() {
     GDT.with(|gdt| {
         let gdtr = DescriptorTableRegister::new(address_of(gdt), size_of::<Gdt>());
         unsafe {
@@ -425,16 +419,15 @@ pub extern "C" fn _load_task_register() {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _enable_page_protection(page_directory: *const u8) {
-    let page_directory_physical_address = page_directory as u32 - KERNEL_SPACE_START_ADDRESS;
+pub fn enable_page_protection() {
+    let pd_paddr = PAddr::from_val(PAGE_DIRECTORY_BASE_ADDRESS);
     unsafe {
         asm!(
             "mov cr3, eax",
             "mov eax, cr0",
             "or eax, 0x80000000",
             "mov cr0, eax",
-            inout("eax") page_directory_physical_address => _,
+            inout("eax") pd_paddr.addr() => _,
             options(nostack),
         );
     }

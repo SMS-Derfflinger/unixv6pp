@@ -6,5 +6,7 @@ mod zone;
 
 pub use allocator::{phys_to_virt, virt_to_phys};
 pub use page::{PageList, PhysPage, PAGE_SIZE};
-pub use page_manager::{KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER, alloc_page, free_page};
+pub use page_manager::{
+    alloc_page, free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,
+};
 pub use zone::ZONE;

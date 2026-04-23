@@ -31,33 +31,14 @@ struct MachineIDTHandlers
 	unsigned int master_irq7;
 };
 
-void _load_idt();
-void _load_gdt();
 void _load_task_register();
-void _enable_page_protection(const void* page_directory);
-void Machine_init_idt();
-void _init_gdt();
-void _init_page_directory();
-void _init_user_page_table();
+void init_user_page_table();
 void _init_vesa_memory_map(uintptr_t video_memory_address, uintptr_t virtual_memory_address, size_t video_memory_size);
-void* _page_directory();
-void* _kernel_page_table();
-void* _user_page_table_array();
 }
 
 Machine& Machine::Instance()
 {
 	return instance;
-}
-
-void Machine::LoadIDT()
-{
-	_load_idt();
-}
-
-void Machine::LoadGDT()
-{
-	_load_gdt();
 }
 
 void Machine::LoadTaskRegister()
@@ -69,21 +50,6 @@ extern "C" void MasterIRQ7();
 extern "C" void DiskInterruptEntrance();
 extern "C" void KeyboardInterruptEntrance();
 
-void Machine::InitIDT()
-{
-	Machine_init_idt();
-}
-
-void Machine::InitGDT()
-{
-	_init_gdt();
-}
-
-void Machine::InitPageDirectory()
-{
-	_init_page_directory();
-}
-
 #ifdef USE_VESA
 void Machine::InitVESAMemoryMap(uintptr_t videoMemAddr, uintptr_t virtualMemAddr, size_t videoMemSize)
 {
@@ -94,25 +60,5 @@ void Machine::InitVESAMemoryMap(uintptr_t videoMemAddr, uintptr_t virtualMemAddr
 
 void Machine::InitUserPageTable()
 {
-	_init_user_page_table();
-}
-
-void Machine::EnablePageProtection()
-{
-	_enable_page_protection(&GetPageDirectory());
-}
-
-PageDirectory& Machine::GetPageDirectory()
-{
-	return *(PageDirectory*)_page_directory();
-}
-
-PageTable& Machine::GetKernelPageTable()
-{
-	return *(PageTable*)_kernel_page_table();
-}
-
-PageTable* Machine::GetUserPageTableArray()
-{
-	return (PageTable*)_user_page_table_array();
+	init_user_page_table();
 }

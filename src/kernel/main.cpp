@@ -94,65 +94,6 @@ static void callDtors()
 	}
 }
 
-
-extern "C" void init_page_managers(void);
-extern "C" unsigned long KernelStack_new(void);
-
-void main0(void)
-{
-	Machine& machine = Machine::Instance();
-
-	Chip8253::Init(60);	//初始化时钟中断芯片
-	Chip8259A::Init();
-	Chip8259A::IrqEnable(Chip8259A::IRQ_TIMER);
-	DMA::Init();
-	Chip8259A::IrqEnable(Chip8259A::IRQ_IDE);
-	Chip8259A::IrqEnable(Chip8259A::IRQ_SLAVE);
-	Chip8259A::IrqEnable(Chip8259A::IRQ_KBD);
-
-
-	//init gdt
-	machine.InitGDT();
-	machine.LoadGDT();
-	//init idt
-	machine.InitIDT();
-	machine.LoadIDT();
-
-	machine.InitPageDirectory();    // 初始化页目录、核心态页表
-	Machine::Instance().InitUserPageTable();     // 初始化用户态页表
-	machine.EnablePageProtection();    //开启分页模式
-	/*
-	 * InitPageDirectory()中将线性地址0-4M映射到物理内存
-	 * 0-4M是为保证此注释以下至本函数结尾的代码正确执行！
-	 *
-	 * 现在，除了CS是内核初始化阶段的段选择子，其余段寄存器全是boot使用的段选择子，尤其是SS。
-	 * 分段单元给出的线性地址是[0,4M)。开启分页模式后，一定要有这段空间的映射关系，否则，通不过。
-	 * [4M，8M)空间用户区，不应该被映射，所以先空着，InitUserPageTable(),base填0。
-	 */
-
-        init_page_managers();
-	auto stack = KernelStack_new();
-
-	//使用0x10段寄存器
-	__asm
-		(" \
-		mov $0x10, %ax\n\t \
-		mov %ax, %ds\n\t \
-		mov %ax, %ss\n\t \
-		mov %ax, %es\n\t"
-		);
-
-	//将初始化堆栈设置为0xc0400000，这里破坏了封装性，考虑使用更好的方法
-	asm volatile(
-		"mov %0, %%ebp \n\t \
-		 mov %0, %%esp \n\t \
-		 jmp $0x8, $rust_kernel_next"
-		: : "r"(stack)
-	);
-
-	__asm ("ud2");
-}
-
 /* 应用程序从main返回，进程就终止了，这全是runtime()的功劳。没有它，就只能用exit终止进程了。xV6没这个功能^-^ */
 extern "C" void runtime()
 {
@@ -196,6 +137,8 @@ extern "C" void InitProcessEntry()
 
 	Utility::Panic("InitProcessEntry returned");
 }
+
+extern "C" void main0(void);
 
 extern "C" void kernelBridge() {  // called by sector2.asm
 	initBss();

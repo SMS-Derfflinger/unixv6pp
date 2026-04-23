@@ -299,8 +299,7 @@ where
     core::ptr::write_unaligned(prd, value);
 }
 
-#[no_mangle]
-pub extern "C" fn dma_init() {
+pub fn dma_init() {
     DMA::init();
 }
 

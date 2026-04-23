@@ -615,12 +615,3 @@ define_class_compat! {impl Process {
         this.sleep_kernel(chan, pri);
     }
 }}
-
-define_class_compat! {impl KernelStack {
-    pub fn new() -> *mut u8 {
-        let stack = KernelStack::new();
-        let top = stack.top() as *mut u8;
-        core::mem::forget(stack);
-        top
-    }
-}}

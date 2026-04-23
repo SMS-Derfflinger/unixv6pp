@@ -1,14 +1,17 @@
-use crate::{dev::io_port::IOPort, sync::IrqGuard};
+use crate::{
+    dev::{dma::dma_init, io_port::IOPort},
+    sync::IrqGuard,
+};
 
 #[repr(C)]
 pub struct SystemTime {
-    second: i32,
-    minute: i32,
-    hour: i32,
-    day_of_month: i32,
-    month: i32,
-    year: i32,
-    day_of_week: i32,
+    pub second: i32,
+    pub minute: i32,
+    pub hour: i32,
+    pub day_of_month: i32,
+    pub month: i32,
+    pub year: i32,
+    pub day_of_week: i32,
 }
 
 const PIT_INPUT_FREQ: i32 = 1_193_180;
@@ -42,8 +45,7 @@ const RTC_UPDATE_IN_PROGRESS: i32 = 0x80;
 const EXTENDED_MEMORY_ABOVE_1MB_LOW: u8 = 0x30; /* 1MB以上扩展内存(低字节) */
 const EXTENDED_MEMORY_ABOVE_1MB_HIGH: u8 = 0x31;
 
-#[no_mangle]
-pub extern "C" fn _chip8253_init(mut ticks: i32) {
+fn chip8253_init(mut ticks: i32) {
     if ticks <= 0 {
         ticks = 60;
     }
@@ -60,8 +62,7 @@ pub extern "C" fn _chip8253_init(mut ticks: i32) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _chip8259a_init() {
+fn chip8259a_init() {
     unsafe {
         IOPort::out_byte(PIC_MASTER_IO_PORT_1, 0x11);
         IOPort::out_byte(PIC_SLAVE_IO_PORT_1, 0x11);
@@ -80,8 +81,7 @@ pub extern "C" fn _chip8259a_init() {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _chip8259a_irq_enable(irq: u32) {
+fn chip8259a_irq_enable(irq: u32) {
     if irq >= 16 {
         return;
     }
@@ -97,8 +97,7 @@ pub extern "C" fn _chip8259a_irq_enable(irq: u32) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _chip8259a_irq_disable(irq: u32) {
+fn chip8259a_irq_disable(irq: u32) {
     if irq >= 16 {
         return;
     }
@@ -114,8 +113,7 @@ pub extern "C" fn _chip8259a_irq_disable(irq: u32) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _cmos_read_time(time: *mut SystemTime) {
+pub fn cmos_read_time(time: *mut SystemTime) {
     if time.is_null() {
         return;
     }
@@ -141,16 +139,29 @@ fn cmos_read_byte(cmos_offset: u8) -> i32 {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn _cmos_read_byte_low() -> i32 {
+pub fn cmos_read_byte_low() -> i32 {
     cmos_read_byte(EXTENDED_MEMORY_ABOVE_1MB_LOW)
 }
 
-#[no_mangle]
-pub extern "C" fn _cmos_read_byte_high() -> i32 {
+pub fn cmos_read_byte_high() -> i32 {
     cmos_read_byte(EXTENDED_MEMORY_ABOVE_1MB_HIGH)
 }
 
 fn bcd_to_binary(value: i32) -> i32 {
     (value & 0x0f) + ((value >> 4) * 10)
+}
+
+pub fn init_peripherals() {
+    const IRQ_TIMER: u32 = 0;
+    const IRQ_KEYBOARD: u32 = 1;
+    const IRQ_SLAVE: u32 = 2;
+    const IRQ_IDE: u32 = 14;
+
+    chip8253_init(60);
+    chip8259a_init();
+    chip8259a_irq_enable(IRQ_TIMER);
+    dma_init();
+    chip8259a_irq_enable(IRQ_IDE);
+    chip8259a_irq_enable(IRQ_SLAVE);
+    chip8259a_irq_enable(IRQ_KEYBOARD);
 }
