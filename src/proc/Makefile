@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
 
-objs := MemoryDescriptor.o Process.o ProcessManager.o Text.o
+objs := MemoryDescriptor.o Process.o Text.o
 
 include $(abs_srctree)/scripts/Makefile
 

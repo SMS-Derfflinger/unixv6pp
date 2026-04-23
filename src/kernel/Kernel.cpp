@@ -10,11 +10,6 @@ Kernel Kernel::instance;
  */
 SwapperManager g_SwapperManager(&(Allocator::GetInstance()));
 
-/* 
- * 进程相关全局manager
- */
-ProcessManager g_ProcessManager;
-
 Kernel::Kernel()
 {
 }
@@ -80,50 +75,9 @@ extern "C" void cpp_exception_page_fault(struct pt_regs* regs, struct pte_contex
 	}
 }
 
-void Kernel::InitMemory()
-{
-	Diagnose::Write("Initilize Memory...");
-	Diagnose::Write("Ok.\n");
-
-	this->m_SwapperManager = &g_SwapperManager;
-	Diagnose::Write("Initialize Swapper...");
-	this->GetSwapperManager().Initialize();
-	Diagnose::Write("Ok.\n");
-
-}
-
-void Kernel::InitProcess()
-{
-	this->m_ProcessManager = &g_ProcessManager;
-
-	Diagnose::Write("Initilize Process...");
-	this->GetProcessManager().Initialize();
-	Diagnose::Write("Ok.\n");
-}
-
-
-void Kernel::InitFileSystem()
-{
-	Diagnose::Write("Initialize File System...");
-	Diagnose::Write("OK.\n");
-
-	Diagnose::Write("Initialize File Manager...");
-	Diagnose::Write("OK.\n");
-}
-
 extern "C" int cpp_swapper_manager_initialize()
 {
 	return g_SwapperManager.Initialize();
-}
-
-extern "C" void cpp_process_manager_initialize()
-{
-	g_ProcessManager.Initialize();
-}
-
-ProcessManager& Kernel::GetProcessManager()
-{
-	return *(this->m_ProcessManager);
 }
 
 SwapperManager& Kernel::GetSwapperManager()

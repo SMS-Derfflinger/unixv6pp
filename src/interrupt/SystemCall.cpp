@@ -26,10 +26,6 @@ void SystemCall::Trap1(int (*func)())
 	User& u = Kernel::Instance().GetUser();
 
 	User_get_intflg() = 1;
-/*	int pid = User_get_procp()->p_pid;
-	int text = User_get_MemoryDescriptor().m_TextSize;
-	int data =  User_get_MemoryDescriptor().m_DataSize;*/
-	SaveU(User_get_qsav());
 	func();
 	User_get_intflg() = 0;
 }
@@ -58,21 +54,19 @@ extern "C" void cpp_system_call_trap1(unsigned int number)
 	SystemCall::Trap1ByNumber(number);
 }
 
+extern "C" void ProcessManager_wait();
 /*	7 = wait	count = 0	*/
 int SystemCall::Sys_Wait()
 {
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	procMgr.Wait();
-
+	ProcessManager_wait();
 	return 0;	/* GCC likes it ! */
 }
 
+extern "C" void ProcessManager_exec();
 /*	11 = exec	count = 2	*/
 int SystemCall::Sys_Exec()
 {
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	procMgr.Exec();
-
+	ProcessManager_exec();
 	return 0;	/* GCC likes it ! */
 }
 
@@ -187,12 +181,11 @@ int SystemCall::Sys_Sslep()
 	return 0;	/* GCC likes it ! */
 }
 
+extern "C" void ProcessManager_kill();
 /*	37 = kill	count = 1	*/
 int SystemCall::Sys_Kill()
 {
-	ProcessManager& procMgr = Kernel::Instance().GetProcessManager();
-	procMgr.Kill();
-
+	ProcessManager_kill();
 	return 0;	/* GCC likes it ! */
 }
 

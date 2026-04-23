@@ -26,7 +26,6 @@ public:
 	static Kernel& Instance();
 	void Initialize();		/* 该函数完成初始化内核大部分数据结构的初始化 */
 
-	ProcessManager& GetProcessManager();
 	SwapperManager& GetSwapperManager();
 	User& GetUser();		/* 获取当前进程的User结构 */
 
@@ -39,7 +38,6 @@ private:
 private:
 	static Kernel instance;		/* Kernel单体类实例 */
 
-	ProcessManager* m_ProcessManager;
 	SwapperManager* m_SwapperManager;
 };
 

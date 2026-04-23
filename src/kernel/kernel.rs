@@ -2,7 +2,6 @@ use crate::{dev::buffer_manager::buffer_manager_initialize, println, serial::ini
 
 unsafe extern "C" {
     fn cpp_swapper_manager_initialize() -> i32;
-    fn cpp_process_manager_initialize();
 }
 
 pub fn rust_kernel_initialize() {
@@ -25,9 +24,6 @@ fn init_memory() {
 
 fn init_process() {
     println!("Initilize Process...");
-    unsafe {
-        cpp_process_manager_initialize();
-    }
     println!("Ok.");
 }
 
