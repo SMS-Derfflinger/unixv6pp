@@ -163,6 +163,7 @@ impl ProcessManager {
         let order = aligned_size.trailing_zeros() - 12;
         let new_pages = USER_PAGE_MANAGER.lock().alloc_order(order);
 
+        let ctx = IrqGuard::disable_save();
         Userspace::replace(&mut new_user);
 
         if let Some(pages) = new_pages {
