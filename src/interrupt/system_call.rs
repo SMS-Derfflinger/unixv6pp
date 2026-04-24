@@ -42,6 +42,7 @@ mod syscall_number {
     pub const FSTAT: usize = 28;
     pub const SMDATE: usize = 30;
     pub const TRACE: usize = 29;
+    pub const NICE: usize = 34;
     pub const SYNC: usize = 36;
     pub const KILL: usize = 37;
     pub const GETSWITCH: usize = 38;
@@ -52,6 +53,7 @@ mod syscall_number {
     pub const PROFIL: usize = 44;
     pub const SETGID: usize = 46;
     pub const GETGID: usize = 47;
+    pub const SSIG: usize = 48;
 
     pub fn is_unimplemented(number: usize) -> bool {
         matches!(number, 27 | 33 | 40 | 45 | 49..=63)
@@ -284,6 +286,11 @@ fn handle_in_rust(number: usize) -> bool {
             copy_pwd();
             true
         }
+        sys::NICE => {
+            let nice = Userspace::get().args[0] as i32;
+            Userspace::get().proc().set_nice(nice);
+            true
+        }
         sys::SYNC => {
             trap1(crate::fs::syscall_sync);
             true
@@ -307,6 +314,15 @@ fn handle_in_rust(number: usize) -> bool {
         }
         sys::GETGID => {
             Userspace::get().set_user_retval(Userspace::get().getgid());
+            true
+        }
+        sys::SSIG => {
+            let signal = Userspace::get().args[0] as u32;
+            let func = Userspace::get().args[1];
+            match Userspace::get().proc().send_signal(signal, func) {
+                Ok(retval) => Userspace::get().set_user_retval(retval as u32),
+                Err(err) => Userspace::get().set_error(err),
+            }
             true
         }
         _ => false,

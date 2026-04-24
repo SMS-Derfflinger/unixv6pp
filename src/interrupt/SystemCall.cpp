@@ -36,9 +36,7 @@ void SystemCall::Trap1ByNumber(unsigned int number)
 	case 17: Trap1(Sys_SBreak); return;
 	case 31: Trap1(Sys_Stty); return;
 	case 32: Trap1(Sys_Gtty); return;
-	case 34: Trap1(Sys_Nice); return;
 	case 35: Trap1(Sys_Sslep); return;
-	case 48: Trap1(Sys_Ssig); return;
 	default:
 		User_get_error() = User::ENOSYS;
 		return;
@@ -107,15 +105,6 @@ int SystemCall::Sys_Gtty()
 	return 0;	/* GCC likes it ! */
 }
 
-/*	34 = nice	count = 0	*/
-int SystemCall::Sys_Nice()
-{
-	User& u = Kernel::Instance().GetUser();
-	User_get_procp()->Nice();
-
-	return 0;	/* GCC likes it ! */
-}
-
 /*	35 = sleep	count = 0	*/
 int SystemCall::Sys_Sslep()
 {
@@ -155,15 +144,6 @@ int SystemCall::Sys_Sslep()
 	}
 
 	X86Assembly::STI();
-
-	return 0;	/* GCC likes it ! */
-}
-
-/*	48 = ssig	count = 2	*/
-int SystemCall::Sys_Ssig()
-{
-	User& u = Kernel::Instance().GetUser();
-	User_get_procp()->Ssig();
 
 	return 0;	/* GCC likes it ! */
 }
