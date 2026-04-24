@@ -8,35 +8,6 @@
 #include "Assembly.h"
 #include "Kernel.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void clear_screan();
-
-#ifdef __cplusplus
-}
-#endif
-
-extern "C" void MasterIRQ7()
-{
-	SaveContext();
-
-	Diagnose::Write("IRQ7 from Master 8259A!\n");
-
-	//需要在中断处理程序末尾先8259A发送EOI命令
-	//实验发现：有没有下面IOPort::OutByte(0x27, 0x20);这句运行效果都一样，本来以为
-	//发送EOI命令之后会有后续的IRQ7中断进入， 但试下来结果是IRQ7只会产生一次。
-	IOPort::OutByte(Chip8259A::MASTER_IO_PORT_1, Chip8259A::EOI);
-
-	RestoreContext();
-
-	Leave();
-
-	InterruptReturn();
-}
-
-
 static void callCtors()
 {
 	extern void (*__CTOR_LIST__)();

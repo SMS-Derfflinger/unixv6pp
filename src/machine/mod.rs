@@ -255,7 +255,7 @@ impl Idt {
         self.set_gate(0x21, entry_address(KeyboardInterruptEntrance), 0x0e);
         self.set_gate(0x2e, entry_address(DiskInterruptEntrance), 0x0e);
         self.set_gate(0x80, entry_address(SystemCallEntrance), 0x0f);
-        self.set_gate(0x27, entry_address(MasterIRQ7), 0x0e);
+        self.set_gate(0x27, entry_address(MasterIRQ7Entrance), 0x0e);
     }
 }
 
@@ -281,7 +281,7 @@ unsafe extern "C" {
     safe fn SIMDExceptionEntrance();
     safe fn KeyboardInterruptEntrance();
     safe fn DiskInterruptEntrance();
-    safe fn MasterIRQ7();
+    safe fn MasterIRQ7Entrance();
     safe fn TimeInterruptEntrance();
     safe fn SystemCallEntrance();
 }

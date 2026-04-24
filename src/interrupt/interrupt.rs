@@ -48,5 +48,12 @@ pub extern "C" fn keyboard_interrupt_body(_regs: *mut Registers, context: *mut P
     schedule_on_user_return(context);
 }
 
+#[no_mangle]
+pub extern "C" fn master_irq7(_regs: *mut Registers, _context: *mut PtContext) {
+    crate::println_info!("IRQ7 from master 8295A");
+    send_master_eoi();
+}
+
 interrupt_entry!(DiskInterruptEntrance, disk_interrupt_body);
 interrupt_entry!(KeyboardInterruptEntrance, keyboard_interrupt_body);
+interrupt_entry!(MasterIRQ7Entrance, master_irq7);
