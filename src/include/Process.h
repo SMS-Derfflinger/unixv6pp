@@ -32,27 +32,7 @@ public:
 		STWED	= 0x20	/* 父子进程跟踪标志，UNIX V6++未有效使用到 */
 	};
 public:
-	Process();
-	~Process();
-
 	void Sleep(unsigned long chan, int pri);	/* 使当前进程转入睡眠状态 */
-
-	void SStack();                              /* 堆栈溢出时，自动扩展堆栈 */
-
-	void PSignal(int signal);					/* 向当前进程发送信号。signal是要发送的信号数 */
-
-	void PSig(struct pt_context* pContext);		/* 对当前进程接收到的信号进行处理 */
-
-	void Ssig();								/* 设置用户自定信号处理方式的系统调用处理函数 */
-
-	int IsSig();								/* 判断当前进程是否接收到信号。
-												 * 
-												 * 进程在每次中断、异常和系统调用末尾退出核心态时，以及低优先权
-												 * 睡眠首尾处总会检查p_sig。p_sig中接收到信号本身对进程并无影响，
-												 * 仅在响应信号时进程会对改变原定执行流程。
-												 * 
-												 * 返回值：信号数，无信号则返回0。
-												 */
 };
 
 #endif

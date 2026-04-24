@@ -25,41 +25,6 @@ pub struct Registers {
     pub ebp: usize,
 }
 
-#[repr(C)]
-pub struct PtContext {
-    pub eip: u32,
-    pub xcs: u32,
-    pub eflags: u32,
-    pub esp: u32,
-    pub xss: u32,
-}
-
-#[repr(C)]
-pub struct PteContext {
-    pub error_code: u32,
-    pub eip: u32,
-    pub xcs: u32,
-    pub eflags: u32,
-    pub esp: u32,
-    pub xss: u32,
-}
-
-impl PtContext {
-    pub fn from_user_mode(&self) -> bool {
-        self.xcs & USER_MODE == USER_MODE
-    }
-}
-
-impl PteContext {
-    pub fn as_context(&mut self) -> *mut PtContext {
-        core::ptr::addr_of_mut!(self.eip).cast::<PtContext>()
-    }
-
-    pub fn from_user_mode(&self) -> bool {
-        self.xcs & USER_MODE == USER_MODE
-    }
-}
-
 #[macro_export]
 macro_rules! interrupt_entry {
     ($entry:ident, $handler:ident) => {

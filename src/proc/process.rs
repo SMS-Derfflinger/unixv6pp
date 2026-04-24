@@ -16,6 +16,7 @@ use crate::{
     constants::Signal,
     dev::buffer::PhysicalBlock,
     fs::{InodeRef, OpenFiles},
+    machine::TrapFrame,
     mm::{PhysPage, KERNEL_PAGE_MANAGER, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
@@ -37,15 +38,6 @@ pub enum ProcessState {
     SIDL = 4,
     SZOMB = 5,
     SSTOP = 6,
-}
-
-#[repr(C)]
-pub struct TrapFrame {
-    pub eip: usize,
-    pub xcs: usize,
-    pub eflags: usize,
-    pub esp: *mut usize,
-    pub xss: usize,
 }
 
 #[repr(C)]

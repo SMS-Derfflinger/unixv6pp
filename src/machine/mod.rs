@@ -2,8 +2,9 @@ pub mod asm;
 pub mod chip;
 mod page_table;
 
-use core::arch::asm;
 use core::mem::size_of;
+use core::ops::DerefMut;
+use core::{arch::asm, ops::Deref};
 
 use crate::{machine::page_table::PAGE_DIRECTORY_BASE_ADDRESS, sync::SuperCell};
 
@@ -21,6 +22,43 @@ const TASK_STATE_SEGMENT_SELECTOR: u16 = 0x28;
 const KERNEL_SPACE_START_ADDRESS: u32 = 0xc0000000;
 const KERNEL_SPACE_SIZE: u32 = 0x400000;
 const TASK_STATE_SEGMENT_INDEX: usize = 5;
+
+#[repr(C)]
+pub struct TrapFrame {
+    pub eip: usize,
+    pub xcs: usize,
+    pub eflags: usize,
+    pub esp: *mut usize,
+    pub xss: usize,
+}
+
+#[repr(C)]
+pub struct TrapFrameWithError {
+    pub error_code: usize,
+    _frame: TrapFrame,
+}
+
+impl TrapFrame {
+    pub fn is_user(&self) -> bool {
+        const USER_MODE: usize = 0x3;
+
+        (self.xcs & USER_MODE) != USER_MODE
+    }
+}
+
+impl Deref for TrapFrameWithError {
+    type Target = TrapFrame;
+
+    fn deref(&self) -> &Self::Target {
+        &self._frame
+    }
+}
+
+impl DerefMut for TrapFrameWithError {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self._frame
+    }
+}
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]

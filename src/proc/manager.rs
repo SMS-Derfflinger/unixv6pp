@@ -18,11 +18,11 @@ use crate::{
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
     interrupt::Registers,
     loader::PEParser,
-    machine::{asm::disable_interrupts, set_tss_esp0, switch_user_struct},
+    machine::{set_tss_esp0, switch_user_struct, TrapFrame},
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
-        process::{KResultExt, KernelStack, ProcessState, Terminal, Text, TrapFrame},
+        process::{KernelStack, ProcessState, Terminal, Text},
         Channel, Process, EXPRI,
     },
     serial::KResult,
@@ -724,7 +724,7 @@ extern "C" fn go_userspace() {
         "push %edi",      // esp
         "push $0x200",    // eflags = IF
         "push $0x1b",     // cs
-        "push $0x10",        // eip = runtime
+        "push $0x10",     // eip = runtime
         "xor %ebx, %ebx",
         "xor %ecx, %ecx",
         "xor %edx, %edx",

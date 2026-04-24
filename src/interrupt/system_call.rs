@@ -2,10 +2,10 @@ use core::ptr::NonNull;
 
 use crate::{
     constants::{PosixError, Signal},
-    interrupt::{PtContext, Registers},
+    interrupt::Registers,
     interrupt_entry,
     kernel::diagnose::{diagnose_disable_rows, diagnose_enable_rows, diagnose_rows},
-    machine::asm::disable_interrupts,
+    machine::{TrapFrame, asm::disable_interrupts},
     proc::{ProcessManager, TaskContext},
     user::{Pointer, Userspace},
 };
@@ -66,12 +66,12 @@ unsafe extern "C" {
 }
 
 #[no_mangle]
-pub extern "C" fn system_call_body(regs: *mut Registers, context: *mut PtContext) {
+pub extern "C" fn system_call_body(regs: *mut Registers, context: &mut TrapFrame) {
     trap(regs, context);
     crate::interrupt::interrupt::schedule_on_user_return(context);
 }
 
-fn trap(regs: *mut Registers, context: *mut PtContext) {
+fn trap(regs: *mut Registers, context: &mut TrapFrame) {
     let Some(regs) = (unsafe { regs.as_mut() }) else {
         return;
     };
@@ -86,7 +86,7 @@ fn trap(regs: *mut Registers, context: *mut PtContext) {
     }
 
     Userspace::get().ssav[0] = Pointer((&raw mut *regs) as usize);
-    Userspace::get().ssav[1] = Pointer(context as usize);
+    Userspace::get().ssav[1] = Pointer(context as *mut _ as usize);
     Userspace::get().ar0 = &raw mut regs.eax as *mut _;
     Userspace::get().error = None;
 

@@ -1,7 +1,7 @@
 use crate::{
-    interrupt::{PtContext, Registers, interrupt::schedule_on_user_return, send_master_eoi},
+    interrupt::{interrupt::schedule_on_user_return, send_master_eoi, Registers},
     interrupt_entry,
-    machine::asm::enable_interrupts,
+    machine::{asm::enable_interrupts, TrapFrame},
     proc::{ProcessManager, ProcessState},
     user::Userspace,
 };
@@ -13,21 +13,15 @@ static mut TIME: u32 = 0;
 static mut TOUT: u32 = 0;
 
 #[no_mangle]
-pub extern "C" fn time_interrupt_body(_regs: *mut Registers, context: *mut PtContext) {
+pub extern "C" fn time_interrupt_body(_regs: *mut Registers, context: &mut TrapFrame) {
     clock(context);
     schedule_on_user_return(context);
 }
 
-fn clock(context: *mut PtContext) {
-    let Some(context_ref) = (unsafe { context.as_ref() }) else {
-        send_master_eoi();
-        return;
-    };
-
-    let from_user_mode = context_ref.from_user_mode();
+fn clock(context: &mut TrapFrame) {
     let current_status = {
         let current = Userspace::get().proc();
-        if from_user_mode {
+        if context.is_user() {
             Userspace::get().utime += 1;
         } else {
             Userspace::get().stime += 1;
@@ -46,7 +40,7 @@ fn clock(context: *mut PtContext) {
         }
     }
 
-    if current_status == ProcessState::SRUN && !from_user_mode {
+    if current_status == ProcessState::SRUN && !context.is_user() {
         send_master_eoi();
         return;
     }
@@ -70,10 +64,10 @@ fn clock(context: *mut PtContext) {
         ProcessManager::get().wakeup_runin();
     }
 
-    if from_user_mode {
+    if context.is_user() {
         let current = Userspace::get().proc();
         if current.should_process() {
-            current.process_signal(unsafe { &mut *(context as *mut _) });
+            current.process_signal(context);
         }
         current.set_pri();
     }
