@@ -475,7 +475,10 @@ impl FileSystem {
                 .map_err(|_| FileSystemError::BufferUnavailable)
                 .and_then(|buf| {
                     unsafe {
-                        let table = core::slice::from_raw_parts_mut((*buf).b_addr as *mut i32, 101);
+                        let table = core::slice::from_raw_parts_mut(
+                            (*buf).as_slice_mut().as_mut_ptr() as *mut i32,
+                            101,
+                        );
                         table[0] = nfree;
                         table[1..101].copy_from_slice(&free);
                     }

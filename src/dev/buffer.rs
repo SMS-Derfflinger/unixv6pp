@@ -1,6 +1,5 @@
 use core::ptr::NonNull;
 
-use alloc::slice;
 use bitflags::bitflags;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
 
@@ -66,10 +65,14 @@ impl Buffer {
         unsafe { self.bp.as_ref() }
     }
 
+    fn deref_mut(&mut self) -> &mut Buf {
+        unsafe { self.bp.as_mut() }
+    }
+
     pub fn as_slice_mut<T: Copy>(&mut self) -> &mut [T] {
-        let buffer = self.deref();
-        let addr = buffer.b_addr as *mut T;
-        let len_in_bytes = buffer.b_wcount as usize;
+        let bytes = self.deref_mut().as_slice_mut();
+        let addr = bytes.as_mut_ptr() as *mut T;
+        let len_in_bytes = bytes.len();
 
         assert!(addr.is_aligned(), "Unaligned pointer");
         assert!(len_in_bytes % size_of::<T>() == 0, "Wrong type");
@@ -78,14 +81,14 @@ impl Buffer {
     }
 
     pub fn as_slice<T: Copy>(&self) -> &[T] {
-        let buffer = self.deref();
-        let addr = buffer.b_addr as *mut T;
-        let len_in_bytes = buffer.b_wcount as usize;
+        let bytes = self.deref().as_slice();
+        let addr = bytes.as_ptr() as *const T;
+        let len_in_bytes = bytes.len();
 
         assert!(addr.is_aligned(), "Unaligned pointer");
         assert!(len_in_bytes % size_of::<T>() == 0, "Wrong type");
 
-        unsafe { core::slice::from_raw_parts(addr as *mut T, len_in_bytes / size_of::<T>()) }
+        unsafe { core::slice::from_raw_parts(addr, len_in_bytes / size_of::<T>()) }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -101,7 +104,9 @@ impl Buffer {
     }
 
     pub fn into_raw(self) -> *mut Buf {
-        self.bp.as_ptr()
+        let bp = self.bp.as_ptr();
+        core::mem::forget(self);
+        bp
     }
 }
 
@@ -121,10 +126,11 @@ pub struct Buf {
     pub b_dev: i16,             // 高8位主设备号，低8位次设备号
     pub b_queue_dev: i16,       // 当前所在设备缓存链，-1 表示未挂到具体设备
     pub b_wcount: i32,          // 需传送的字节数
-    pub b_addr: *mut u8,        // 所管理缓冲区的首地址
     pub b_blkno: PhysicalBlock, // 磁盘物理块号
     pub b_error: i32,           // I/O出错信息
     pub b_resid: i32,           // 出错时尚未传送的剩余字节数
+    data: Option<NonNull<BufferData>>,
+    transfer: Option<NonNull<[u8]>>,
 }
 
 impl Buf {
@@ -140,27 +146,44 @@ impl Buf {
             b_dev: -1,
             b_queue_dev: -1,
             b_wcount: 0,
-            b_addr: core::ptr::null_mut(),
             b_blkno: PhysicalBlock(0),
             b_error: 0,
             b_resid: 0,
+            data: None,
+            transfer: None,
         }
     }
 
     pub fn read_table(&self) -> &[i32; 128] {
-        unsafe { &*(self.b_addr as *const [i32; 128]) }
+        unsafe { &*(self.as_slice().as_ptr() as *const [i32; 128]) }
     }
 
     pub fn write_table(&mut self) -> &mut [i32; 128] {
-        unsafe { &mut *(self.b_addr as *mut [i32; 128]) }
+        unsafe { &mut *(self.as_slice_mut().as_mut_ptr() as *mut [i32; 128]) }
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.b_addr, Self::BLOCK_SIZE) }
+        self.data_ref().as_slice()
     }
 
     pub fn as_slice_mut(&mut self) -> &mut [u8] {
-        unsafe { slice::from_raw_parts_mut(self.b_addr, Self::BLOCK_SIZE) }
+        self.data_mut().as_slice_mut()
+    }
+
+    pub fn io_addr(&self) -> *mut u8 {
+        self.transfer
+            .map(|transfer| transfer.as_ptr() as *mut u8)
+            .unwrap_or_else(|| self.data_ref().as_ptr())
+    }
+
+    pub unsafe fn set_transfer(&mut self, addr: *mut u8, len: usize) {
+        self.transfer = Some(NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(
+            addr, len,
+        )));
+    }
+
+    pub fn clear_transfer(&mut self) {
+        self.transfer = None;
     }
 
     pub fn is_busy(&self) -> bool {
@@ -194,6 +217,14 @@ impl Buf {
     pub fn is_on_io_queue(&self) -> bool {
         self.io_link.is_linked()
     }
+
+    fn data_ref(&self) -> &BufferData {
+        unsafe { self.data.expect("buffer data is not attached").as_ref() }
+    }
+
+    fn data_mut(&mut self) -> &mut BufferData {
+        unsafe { self.data.expect("buffer data is not attached").as_mut() }
+    }
 }
 
 intrusive_adapter!(pub BufDeviceAdapter = UnsafeRef<Buf>: Buf {
@@ -209,3 +240,55 @@ intrusive_adapter!(pub BufIoAdapter = UnsafeRef<Buf>: Buf {
 pub type BufDeviceList = LinkedList<BufDeviceAdapter>;
 pub type BufFreeList = LinkedList<BufFreeAdapter>;
 pub type BufIoQueue = LinkedList<BufIoAdapter>;
+
+#[repr(C, align(512))]
+pub struct BufferData {
+    bytes: [u8; Buf::BLOCK_SIZE],
+}
+
+impl BufferData {
+    pub const fn new() -> Self {
+        Self {
+            bytes: [0; Buf::BLOCK_SIZE],
+        }
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
+    }
+
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.bytes.as_ptr() as *mut u8
+    }
+}
+
+#[repr(C)]
+pub struct BufferSlot {
+    pub buf: Buf,
+    pub data: BufferData,
+}
+
+impl BufferSlot {
+    pub const fn new() -> Self {
+        Self {
+            buf: Buf::new(),
+            data: BufferData::new(),
+        }
+    }
+
+    pub fn initialize(&mut self) {
+        self.buf = Buf::new();
+        self.buf.attach_owned_data(&mut self.data);
+    }
+}
+
+impl Buf {
+    fn attach_owned_data(&mut self, data: &mut BufferData) {
+        self.data = Some(NonNull::from(data));
+        self.transfer = None;
+    }
+}

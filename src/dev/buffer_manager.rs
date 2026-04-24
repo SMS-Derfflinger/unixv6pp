@@ -7,8 +7,8 @@ use intrusive_collections::UnsafeRef;
 use super::{
     block_device::block_device_for_dev,
     buffer::{
-        Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufFreeAdapter, BufFreeList, DevId,
-        PhysicalBlock,
+        Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufFreeAdapter, BufFreeList, BufferSlot,
+        DevId, PhysicalBlock,
     },
     device_manager::{set_minor, ROOTDEV},
 };
@@ -43,8 +43,7 @@ pub struct BufferManager {
     free_list: BufFreeList,
     unassigned_list: BufDeviceList,
     swap_buf: Buf,
-    buffers: [Buf; Self::NBUF],
-    data: [[u8; Self::BUFFER_SIZE]; Self::NBUF],
+    slots: [BufferSlot; Self::NBUF],
 }
 
 unsafe impl Send for BufferManager {}
@@ -60,8 +59,7 @@ impl BufferManager {
             free_list: BufFreeList::new(BufFreeAdapter::NEW),
             unassigned_list: BufDeviceList::new(BufDeviceAdapter::NEW),
             swap_buf: Buf::new(),
-            buffers: [const { Buf::new() }; Self::NBUF],
-            data: [[0; Self::BUFFER_SIZE]; Self::NBUF],
+            slots: [const { BufferSlot::new() }; Self::NBUF],
         }
     }
 
@@ -76,12 +74,14 @@ impl BufferManager {
         self.swap_buf = Buf::new();
 
         for index in 0..Self::NBUF {
-            let bp = &mut self.buffers[index] as *mut Buf;
+            let bp = {
+                let slot = &mut self.slots[index];
+                slot.initialize();
+                &mut slot.buf as *mut Buf
+            };
 
             unsafe {
-                *bp = Buf::new();
                 (*bp).b_dev = -1;
-                (*bp).b_addr = self.data[index].as_mut_ptr();
                 self.insert_into_unassigned_queue(bp);
                 self.push_free_back(bp);
             }
@@ -374,7 +374,9 @@ impl BufferManager {
         self.swap_buf.b_dev = ROOTDEV;
         self.swap_buf.b_wcount = count as i32;
         self.swap_buf.b_blkno = blkno;
-        self.swap_buf.b_addr = addr as *mut u8;
+        unsafe {
+            self.swap_buf.set_transfer(addr as *mut u8, count);
+        }
 
         let bp = self.swap_buf_ptr();
         let device = block_device_for_dev(ROOTDEV).ok_or(BufferError::InvalidDevice)?;
@@ -403,6 +405,7 @@ impl BufferManager {
         self.swap_buf
             .b_flags
             .remove(BufFlag::B_BUSY | BufFlag::B_WANTED);
+        self.swap_buf.clear_transfer();
 
         self.get_error(bp)
     }
@@ -423,20 +426,12 @@ impl BufferManager {
         &mut self.swap_buf
     }
 
-    pub fn buffers(&self) -> &[Buf; Self::NBUF] {
-        &self.buffers
+    pub fn slots(&self) -> &[BufferSlot; Self::NBUF] {
+        &self.slots
     }
 
-    pub fn buffers_mut(&mut self) -> &mut [Buf; Self::NBUF] {
-        &mut self.buffers
-    }
-
-    pub fn data(&self) -> &[[u8; Self::BUFFER_SIZE]; Self::NBUF] {
-        &self.data
-    }
-
-    pub fn data_mut(&mut self) -> &mut [[u8; Self::BUFFER_SIZE]; Self::NBUF] {
-        &mut self.data
+    pub fn slots_mut(&mut self) -> &mut [BufferSlot; Self::NBUF] {
+        &mut self.slots
     }
 
     fn get_error(&mut self, bp: *mut Buf) -> BufferResult<()> {

@@ -110,7 +110,7 @@ impl ATADriver {
         let sectors = (bp_ref.b_wcount as usize / Buf::BLOCK_SIZE) as u8;
 
         let mut prd = PhysicalRegionDescriptor::new();
-        prd.set_base_address((bp_ref.b_addr as usize & !0xc000_0000) as u32);
+        prd.set_base_address((bp_ref.io_addr() as usize & !0xc000_0000) as u32);
         prd.set_byte_count(bp_ref.b_wcount as u16);
 
         let table_base = PRD_TABLE.with_mut(|table| {
