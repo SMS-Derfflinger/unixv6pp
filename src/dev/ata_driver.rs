@@ -74,23 +74,18 @@ impl ATADriver {
         });
 
         match action {
-            HandlerAction::Ignore => return,
+            HandlerAction::Ignore => {}
             HandlerAction::Retry => {
                 bdev.start();
-                return;
             }
             HandlerAction::Complete(bp) => {
                 global_buffer_manager().io_done(bp);
                 let _ = bp;
+                bdev.start();
             }
         }
 
-        bdev.start();
-
-        unsafe {
-            IOPort::out_byte(Self::MASTER_PIC_COMMAND_PORT, Self::PIC_EOI);
-            IOPort::out_byte(Self::SLAVE_PIC_COMMAND_PORT, Self::PIC_EOI);
-        }
+        Self::send_disk_eoi();
     }
 
     pub fn dev_start(bp: BufRef) {
@@ -125,11 +120,11 @@ impl ATADriver {
             );
 
             if bp_ref.b_flags.contains(BufFlag::B_READ) {
-                IOPort::out_byte(Self::CMD_PORT, Self::HD_DMA_READ);
                 DMA::start(DMAType::Read, table_base);
+                IOPort::out_byte(Self::CMD_PORT, Self::HD_DMA_READ);
             } else {
-                IOPort::out_byte(Self::CMD_PORT, Self::HD_DMA_WRITE);
                 DMA::start(DMAType::Write, table_base);
+                IOPort::out_byte(Self::CMD_PORT, Self::HD_DMA_WRITE);
             }
         }
     }
@@ -150,6 +145,13 @@ impl ATADriver {
 
     fn is_error() -> bool {
         unsafe { IOPort::in_byte(Self::STATUS_PORT) & Self::HD_ERROR == Self::HD_ERROR }
+    }
+
+    fn send_disk_eoi() {
+        unsafe {
+            IOPort::out_byte(Self::SLAVE_PIC_COMMAND_PORT, Self::PIC_EOI);
+            IOPort::out_byte(Self::MASTER_PIC_COMMAND_PORT, Self::PIC_EOI);
+        }
     }
 }
 

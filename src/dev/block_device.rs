@@ -88,11 +88,15 @@ impl BlockDevice for ATABlockDevice {
             return 0;
         }
 
-        let ctx = IrqGuard::disable_save();
-        let should_start = self.tab.with_mut(|tab| {
-            tab.push_io_request(bp);
-            tab.d_active == 0
-        });
+        let should_start = {
+            let ctx = IrqGuard::disable_save();
+            let should_start = self.tab.with_mut(|tab| {
+                tab.push_io_request(bp);
+                tab.d_active == 0
+            });
+            drop(ctx);
+            should_start
+        };
 
         if should_start {
             self.start();
@@ -103,10 +107,15 @@ impl BlockDevice for ATABlockDevice {
 
     fn start(&self) {
         let bp = self.tab.with_mut(|tab| {
+            if tab.d_active != 0 {
+                return None;
+            }
+
             let Some(bp) = tab.peek_io_request() else {
                 return None;
             };
-            tab.d_active += 1;
+
+            tab.d_active = 1;
             Some(bp)
         });
 

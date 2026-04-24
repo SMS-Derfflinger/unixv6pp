@@ -333,19 +333,20 @@ impl BufferManager {
         flag: BufFlag,
     ) -> BufferResult<()> {
         unsafe {
-            let ctx = IrqGuard::disable_save();
+            let mut ctx = IrqGuard::disable_save();
             while self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
+                drop(ctx);
                 sleep_on(self.swap_buf_ref().chan(), PSWP);
+                ctx = IrqGuard::disable_save();
             }
-        }
 
-        self.swap_buf.b_flags = BufFlag::B_BUSY | flag;
-        self.swap_buf.b_dev = ROOTDEV;
-        self.swap_buf.b_wcount = count as i32;
-        self.swap_buf.b_blkno = blkno;
-        unsafe {
+            self.swap_buf.b_flags = BufFlag::B_BUSY | flag;
+            self.swap_buf.b_dev = ROOTDEV;
+            self.swap_buf.b_wcount = count as i32;
+            self.swap_buf.b_blkno = blkno;
             self.swap_buf.set_transfer(addr as *mut u8, count);
+            drop(ctx);
         }
 
         let bp = self.swap_buf_ref();
@@ -353,11 +354,14 @@ impl BufferManager {
         device.strategy(bp);
 
         unsafe {
-            let ctx = IrqGuard::disable_save();
+            let mut ctx = IrqGuard::disable_save();
             while !self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
+                drop(ctx);
                 sleep_on(self.swap_buf_ref().chan(), PSWP);
+                ctx = IrqGuard::disable_save();
             }
+            drop(ctx);
         }
 
         self.finish_swap()
@@ -365,17 +369,18 @@ impl BufferManager {
 
     fn finish_swap(&mut self) -> BufferResult<()> {
         let bp = self.swap_buf_ref();
-
-        if self.swap_buf.b_flags.contains(BufFlag::B_WANTED) {
-            unsafe {
-                wakeup_all(bp.chan());
-            }
-        }
+        let wanted = self.swap_buf.b_flags.contains(BufFlag::B_WANTED);
 
         self.swap_buf
             .b_flags
             .remove(BufFlag::B_BUSY | BufFlag::B_WANTED);
         self.swap_buf.clear_transfer();
+
+        if wanted {
+            unsafe {
+                wakeup_all(bp.chan());
+            }
+        }
 
         self.get_error(bp)
     }
