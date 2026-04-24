@@ -36,20 +36,6 @@ public:
 	/* 内核空间大小 4M 0xC0000000 - 0xC0400000 1 PageTable */
 	static const unsigned int KERNEL_SPACE_SIZE = 0x400000;
 	static const unsigned long KERNEL_SPACE_START_ADDRESS	= 0xC0000000;
-	
-public:
-	static Machine& Instance();			/* 返回单态类的instance */
-	void LoadTaskRegister();
-
-	/**
-	 * VESA Support
-	 *   added by 2051565 GTY
-	 */
-	void InitVESAMemoryMap(uintptr_t videoMemAddr, uintptr_t virtualMemAddr, size_t videoMemSize);
-
-	void InitUserPageTable();
-private:
-	static Machine instance;	/* Machine单体类实例 */
 };
 
 #endif
