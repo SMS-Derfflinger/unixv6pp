@@ -1,8 +1,7 @@
 use alloc::boxed::Box;
 use eonix_mm::paging::PAGE_SIZE;
-use kernel_macros::define_class_compat;
 
-use crate::fs::{InodeRef, InodeRefCompat};
+use crate::fs::InodeRef;
 use crate::sync::SpinExt;
 use crate::{
     compat::{compat_flush_page_directory, compat_user_pt},
@@ -123,49 +122,6 @@ impl PEParser {
             })
     }
 
-    fn relocate_compat(&mut self, inode: InodeRefCompat, shared_text: bool) {
-        let text_begin_pfn = self.text >> 12;
-        let text_pages = self.text_len >> 12;
-        let text_end_pfn = text_begin_pfn + text_pages;
-
-        if !shared_text {
-            for i in text_begin_pfn..text_end_pfn {
-                compat_user_pt()[i] |= PA_RW;
-            }
-
-            compat_flush_page_directory();
-        }
-
-        let nt_header = self.nt_header.as_deref().unwrap();
-        for section in self.wanted_sections(shared_text) {
-            let vstart = nt_header.opt_header.image_base + section.vaddr;
-            let len = (section.vsize + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
-
-            unsafe {
-                (vstart as *mut u8).write_bytes(0, len);
-            }
-        }
-
-        for section in self.wanted_sections(shared_text) {
-            let dst = unsafe {
-                core::slice::from_raw_parts_mut(
-                    (nt_header.opt_header.image_base + section.vaddr) as *mut u8,
-                    section.vsize,
-                )
-            };
-
-            inode.lock().read(dst, section.raw_data_addr);
-        }
-
-        if !shared_text {
-            for i in 0..text_pages {
-                compat_user_pt()[i] &= !PA_RW;
-            }
-
-            compat_flush_page_directory();
-        }
-    }
-
     pub fn relocate(&mut self, inode: &InodeRef, shared_text: bool) {
         let text_begin_pfn = self.text >> 12;
         let text_pages = self.text_len >> 12;
@@ -207,54 +163,6 @@ impl PEParser {
 
             compat_flush_page_directory();
         }
-    }
-
-    fn load_compat(&mut self, inode: InodeRefCompat) -> bool {
-        let mut offset = 0;
-        let mut dos_header = DOSHeader::default();
-        inode.lock().read(dos_header.as_buffer(), offset);
-
-        offset += dos_header.new_header_addr;
-        let mut nt_header: Box<NTHeader> = Box::default();
-        inode.lock().read(nt_header.as_buffer(), offset);
-
-        const NT_SIG: usize = 0x4550;
-        if nt_header.sig != NT_SIG {
-            return false;
-        }
-
-        offset += size_of::<NTHeader>();
-        let section_count = nt_header.file_header.section_count as usize;
-        let mut section_headers: Box<[SectionHeader]> =
-            unsafe { Box::new_uninit_slice(section_count).assume_init() };
-        inode.lock().read(section_headers.as_buffer(), offset);
-
-        let OptionalHeader32 {
-            image_base,
-            code_base,
-            data_base,
-            data_dir,
-            stack_size,
-            heap_size,
-            entry,
-            ..
-        } = &nt_header.opt_header;
-
-        self.text = image_base + code_base;
-        self.text_len = data_base - code_base;
-
-        self.data = image_base + data_base;
-        self.data_len = data_dir[1].vaddr - data_base;
-
-        self.stack_size = *stack_size;
-        self.heap_size = *heap_size;
-
-        self.entry = image_base + entry;
-
-        self.nt_header = Some(nt_header);
-        self.section_headers = Some(section_headers);
-
-        true
     }
 
     pub fn load(&mut self, inode: &InodeRef) -> bool {
@@ -305,21 +213,3 @@ impl PEParser {
         true
     }
 }
-
-define_class_compat! {impl PEParser {
-    pub fn new() -> *mut PEParser {
-        Box::into_raw(Box::new(PEParser::new()))
-    }
-
-    pub fn free(&mut self) {
-        unsafe { Box::from_raw(this as *mut _); }
-    }
-
-    pub fn load_header(&mut self, inode: InodeRefCompat) -> bool {
-        this.load_compat(inode)
-    }
-
-    pub fn relocate(&mut self, inode: InodeRefCompat, shared_text: bool) {
-        this.relocate_compat(inode, shared_text);
-    }
-}}

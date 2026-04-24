@@ -1,15 +1,12 @@
 use alloc::sync::Arc;
 use bitflags::bitflags;
-use core::{array, ptr::NonNull};
+use core::array;
 use eonix_spin::Spin;
 
 use crate::{
     constants::PosixError,
     fs::{FileRef, InodeRef},
-    sync::{KernelSpinGuard, SpinExt},
 };
-
-use super::inode::Inode;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,36 +14,6 @@ bitflags! {
         const FREAD  = 0x1;  // 读请求
         const FWRITE = 0x2;  // 写请求
         const FPIPE  = 0x4;  // 管道
-    }
-}
-
-#[repr(transparent)]
-#[derive(Clone, Copy)]
-pub struct InodeRefCompat(NonNull<Inode>);
-
-unsafe impl Send for InodeRefCompat {}
-unsafe impl Sync for InodeRefCompat {}
-
-impl InodeRefCompat {
-    /// Create a reference to Inode for compatibility use.
-    ///
-    /// # Safety
-    /// The created InodeRefCompat holds **NO REFCOUNTS**. The caller MUST
-    /// manage the lifetime manually.
-    pub(crate) unsafe fn new(inode: &Inode) -> Self {
-        Self(NonNull::from_ref(inode))
-    }
-
-    fn spin(self) -> &'static Spin<Inode> {
-        unsafe {
-            // SAFETY: InodeRefCompat is only constructed from an Inode inside
-            // a Spin<Inode> allocated in the global inode table.
-            &*Spin::ref_from_inner(self.0.as_ptr())
-        }
-    }
-
-    pub(crate) fn lock(self) -> KernelSpinGuard<'static, Inode> {
-        self.spin().lock()
     }
 }
 

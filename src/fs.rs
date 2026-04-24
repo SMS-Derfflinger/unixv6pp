@@ -111,7 +111,6 @@ impl Deref for InodeRefGuard {
     }
 }
 
-pub(crate) use file::InodeRefCompat;
 pub use file::{File, IOParameter, OpenFiles};
 pub use file_manager::{DirSearchMode, DirectoryEntry, FileManager, InodeRefExt};
 pub use file_system::SuperBlock;
