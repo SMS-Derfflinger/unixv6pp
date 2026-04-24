@@ -7,7 +7,7 @@ use crate::{
 };
 
 fn handle_exception(context: &mut TrapFrame, signal: Option<Signal>, message: &str) {
-    if context.is_user() {
+    if !context.is_user() {
         panic!("Unhandled kernel space exception: {}", message);
     }
 
