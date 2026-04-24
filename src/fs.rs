@@ -11,9 +11,79 @@ mod file_system;
 mod inode;
 mod open_file_manager;
 
-pub(crate) type FileRef = Arc<Spin<File>>;
-pub(crate) type InodeRef = Arc<Spin<Inode>>;
 pub(crate) type SuperBlockRef = Arc<Spin<SuperBlock>>;
+
+#[derive(Clone)]
+pub(crate) struct FileSlot(Arc<Spin<File>>);
+
+pub(crate) struct FileRef {
+    slot: FileSlot,
+}
+
+impl FileRef {
+    pub(crate) fn from_slot_owned(slot: FileSlot) -> Self {
+        Self { slot }
+    }
+}
+
+impl Clone for FileRef {
+    fn clone(&self) -> Self {
+        global_open_file_table().f_dup(&self.slot);
+        Self {
+            slot: self.slot.clone(),
+        }
+    }
+}
+
+impl Drop for FileRef {
+    fn drop(&mut self) {
+        global_open_file_table().f_put_slot(&self.slot);
+    }
+}
+
+impl Deref for FileRef {
+    type Target = Spin<File>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.slot.0
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct InodeSlot(Arc<Spin<Inode>>);
+
+pub(crate) struct InodeRef {
+    slot: InodeSlot,
+}
+
+impl InodeRef {
+    pub(crate) fn from_slot_owned(slot: InodeSlot) -> Self {
+        Self { slot }
+    }
+}
+
+impl Clone for InodeRef {
+    fn clone(&self) -> Self {
+        global_inode_table().i_dup(&self.slot);
+        Self {
+            slot: self.slot.clone(),
+        }
+    }
+}
+
+impl Drop for InodeRef {
+    fn drop(&mut self) {
+        global_inode_table().i_put_slot(&self.slot);
+    }
+}
+
+impl Deref for InodeRef {
+    type Target = Spin<Inode>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.slot.0
+    }
+}
 
 pub(crate) struct InodeRefGuard(Option<InodeRef>);
 
@@ -29,9 +99,7 @@ impl InodeRefGuard {
 
 impl Drop for InodeRefGuard {
     fn drop(&mut self) {
-        if let Some(inode) = self.0.take() {
-            global_inode_table().i_put(inode);
-        }
+        let _ = self.0.take();
     }
 }
 
@@ -43,22 +111,12 @@ impl Deref for InodeRefGuard {
     }
 }
 
-pub(crate) trait InodeRefPutExt {
-    fn with_i_put(self) -> InodeRefGuard;
-}
-
-impl InodeRefPutExt for InodeRef {
-    fn with_i_put(self) -> InodeRefGuard {
-        InodeRefGuard::new(self)
-    }
-}
-
 pub(crate) use file::InodeRefCompat;
 pub use file::{File, IOParameter, OpenFiles};
 pub use file_manager::{DirSearchMode, DirectoryEntry, FileManager, InodeRefExt};
 pub use file_system::SuperBlock;
 pub use inode::{Inode, InodeFlag, InodeMode};
-pub use open_file_manager::{GLOBAL_INODE_TABLE, GLOBAL_OPEN_FILE_TABLE};
+pub use open_file_manager::GLOBAL_INODE_TABLE;
 
 use crate::sync::{KernelSpinGuard, SpinExt};
 

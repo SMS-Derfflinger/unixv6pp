@@ -6,7 +6,7 @@ use eonix_spin::Spin;
 use crate::{
     constants::PosixError,
     fs::{FileRef, InodeRef},
-    sync::SpinExt,
+    sync::{KernelSpinGuard, SpinExt},
 };
 
 use super::inode::Inode;
@@ -37,17 +37,16 @@ impl InodeRefCompat {
         Self(NonNull::from_ref(inode))
     }
 
-    pub(crate) fn to_ref(self) -> InodeRef {
-        let spin = unsafe {
+    fn spin(self) -> &'static Spin<Inode> {
+        unsafe {
             // SAFETY: InodeRefCompat is only constructed from an Inode inside
-            // a Spin<Inode> allocated by Arc.
-            Spin::ref_from_inner(self.0.as_ptr())
-        };
-        let arc = unsafe { Arc::from_raw(spin as *const Spin<Inode>) };
-        let ret = arc.clone();
-        core::mem::forget(arc);
+            // a Spin<Inode> allocated in the global inode table.
+            &*Spin::ref_from_inner(self.0.as_ptr())
+        }
+    }
 
-        ret
+    pub(crate) fn lock(self) -> KernelSpinGuard<'static, Inode> {
+        self.spin().lock()
     }
 }
 
@@ -69,7 +68,7 @@ impl File {
         }
     }
 
-    pub fn new() -> FileRef {
+    pub fn new() -> Arc<Spin<File>> {
         Arc::new(Spin::new(Self::new_const()))
     }
 
@@ -111,7 +110,6 @@ impl OpenFiles {
     pub fn clone_fd(&mut self, fd: usize) -> Result<usize, PosixError> {
         let file = self.get_f(fd)?;
         let new_fd = self.alloc_free_slot()?;
-        file.lock().f_count += 1;
         self.table[new_fd] = Some(file);
         Ok(new_fd)
     }

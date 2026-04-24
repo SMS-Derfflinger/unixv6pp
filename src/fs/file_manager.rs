@@ -13,7 +13,7 @@ use crate::{
         file::FileFlags,
         file_system::FileSystem,
         inode::{InodeFlag, InodeMode},
-        File, FileRef, Inode, InodeRef, InodeRefGuard, InodeRefPutExt,
+        File, FileRef, Inode, InodeRef, InodeRefGuard,
     },
     proc::{Channel, ProcessManager},
     sync::SpinExt,
@@ -77,7 +77,7 @@ fn is_root() -> bool {
 }
 
 fn i_put(inode: InodeRef) {
-    fs::global_inode_table().i_put(inode);
+    drop(inode);
 }
 
 fn i_get(dev: DevId, ino: i32) -> Result<InodeRefGuard, PosixError> {
@@ -288,7 +288,7 @@ impl FileManager {
         let mut iref = if let Some(b'/') = path.first() {
             i_get(DevId(ROOTDEV), FileSystem::ROOTINO)?
         } else {
-            Userspace::get().getcwd().with_i_put()
+            InodeRefGuard::new(Userspace::get().getcwd())
         };
 
         while let Some(b'/') = path.first() {
@@ -498,7 +498,8 @@ impl FileManager {
 
         if Userspace::get().error.is_some() {
             Userspace::get().open_files.clear_f(fd);
-            fileref.lock().f_count -= 1;
+            let mut file = fileref.lock();
+            file.f_inode = None;
             i_put(pinode);
         }
     }
@@ -659,7 +660,7 @@ impl FileManager {
         };
 
         Userspace::get().open_files.clear_f(fd);
-        fs::global_open_file_table().close_f(&file_ref);
+        drop(file_ref);
     }
 
     pub fn seek() {
@@ -716,7 +717,6 @@ impl FileManager {
         };
 
         Userspace::get().open_files.set_f(new_fd, file_ref.clone());
-        file_ref.lock().f_count += 1;
     }
 
     pub fn fstat() {
@@ -838,7 +838,6 @@ impl FileManager {
                 Err(err) => {
                     set_error(err);
                     Userspace::get().open_files.clear_f(fd_r);
-                    file_r.lock().f_count = 0;
                     i_put(inode_ref);
                     return;
                 }
@@ -862,7 +861,6 @@ impl FileManager {
         }
 
         let mut inode = inode_ref.lock();
-        inode.i_count = 2;
         inode.i_flag = InodeFlag::IACC | InodeFlag::IUPD;
         inode.i_mode = InodeMode::IALLOC;
     }

@@ -15,7 +15,7 @@ use crate::{
     compat::{compat_phys_copy, compat_swap_alloc},
     constants::{PosixError, Signal},
     dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
-    fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt, OpenFiles},
+    fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
     interrupt::Registers,
     loader::PEParser,
     machine::{asm::disable_interrupts, set_tss_esp0, switch_user_struct},
@@ -128,14 +128,6 @@ impl ProcessManager {
 
         let mut new_user = Box::new(Userspace::get().clone());
         new_user.proc = &raw mut *child;
-
-        for fd in 0..OpenFiles::NOFILES {
-            let Ok(file) = new_user.open_files.get_f(fd) else {
-                continue;
-            };
-
-            file.lock().f_count += 1;
-        }
 
         let aligned_size = cur_size.next_power_of_two();
         let order = aligned_size.trailing_zeros() - 12;

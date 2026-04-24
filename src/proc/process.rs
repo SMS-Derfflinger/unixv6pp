@@ -15,7 +15,7 @@ use crate::{
     compat::{compat_phys_copy, compat_swap_alloc, compat_swap_free},
     constants::Signal,
     dev::buffer::PhysicalBlock,
-    fs::{InodeRef, OpenFiles, GLOBAL_OPEN_FILE_TABLE},
+    fs::{InodeRef, OpenFiles},
     mm::{PhysPage, KERNEL_PAGE_MANAGER, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
@@ -91,8 +91,6 @@ impl TextRef {
 
 impl Text {
     pub fn new(inode: InodeRef, len: usize) -> TextRef {
-        inode.lock().i_count += 1;
-
         let aligned_size = len.next_power_of_two();
         let order = aligned_size.trailing_zeros() - 12;
 
@@ -538,10 +536,6 @@ impl Process {
         // Ignore all signals
         Userspace::get().clear_signal_handlers();
         for fd in 0..OpenFiles::NOFILES {
-            let Ok(file) = Userspace::get().open_files.get_f(fd) else {
-                continue;
-            };
-            GLOBAL_OPEN_FILE_TABLE.lock().close_f(&file);
             Userspace::get().open_files.clear_f(fd);
         }
 

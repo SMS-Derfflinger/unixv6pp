@@ -13,7 +13,7 @@ use crate::{
         file::{File, FileFlags, OpenFiles},
         file_system::FileSystem,
         inode::{DiskInode, Inode, InodeFlag, InodeMode},
-        FileRef, InodeRef, InodeRefGuard, InodeRefPutExt,
+        FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot,
     },
     proc::{Channel, ProcessManager, PINOD},
     sync::SpinExt,
@@ -25,7 +25,7 @@ pub static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
     LazyLock::new(|| Spin::new(OpenFileTable::new()));
 
 pub(crate) struct OpenFileTable {
-    m_file: [FileRef; Self::NFILE],
+    m_file: [FileSlot; Self::NFILE],
 }
 
 impl OpenFileTable {
@@ -33,13 +33,13 @@ impl OpenFileTable {
 
     pub fn new() -> Self {
         Self {
-            m_file: core::array::from_fn(|_| File::new()),
+            m_file: core::array::from_fn(|_| FileSlot(File::new())),
         }
     }
 
-    fn find_free(&mut self) -> Option<&mut FileRef> {
+    fn find_free(&mut self) -> Option<&mut FileSlot> {
         for file in &mut self.m_file {
-            if !file.lock().is_free() {
+            if !file.0.lock().is_free() {
                 continue;
             }
 
@@ -57,11 +57,14 @@ impl OpenFileTable {
         let free_file = self.find_free().ok_or(PosixError::ENFILE)?;
 
         {
-            let mut file = free_file.lock();
+            let mut file = free_file.0.lock();
             file.reset_for_open();
+            file.f_count += 1;
         }
-        open_files.set_f(fd, free_file.clone());
-        Ok((fd, free_file.clone()))
+        let fd_ref = FileRef::from_slot_owned(free_file.clone());
+        let ret_ref = FileRef::from_slot_owned(free_file.clone());
+        open_files.set_f(fd, fd_ref);
+        Ok((fd, ret_ref))
     }
 
     fn close_pipe(&mut self, file: &mut File) {
@@ -73,17 +76,21 @@ impl OpenFileTable {
         ProcessManager::get().wakeup_all(inode.channel_write());
     }
 
-    pub fn close_f(&mut self, fileref: &FileRef) {
-        let mut file = fileref.lock();
+    pub fn f_dup(&mut self, slot: &FileSlot) {
+        slot.0.lock().f_count += 1;
+    }
+
+    pub fn f_put_slot(&mut self, slot: &FileSlot) {
+        let mut file = slot.0.lock();
 
         if file.f_flag.contains(FileFlags::FPIPE) {
             self.close_pipe(&mut file);
         }
 
         if file.f_count <= 1 {
-            let inode = file.f_inode.as_ref().expect("file without inode").clone();
-            inode.lock().close_i(file.f_flag & FileFlags::FWRITE);
-            GLOBAL_INODE_TABLE.lock().i_put(inode);
+            if let Some(inode) = file.f_inode.take() {
+                inode.lock().close_i(file.f_flag & FileFlags::FWRITE);
+            }
         }
 
         file.f_count -= 1;
@@ -91,7 +98,7 @@ impl OpenFileTable {
 }
 
 pub(crate) struct InodeTable {
-    pub m_inode: [InodeRef; InodeTable::NINODE],
+    pub m_inode: [InodeSlot; InodeTable::NINODE],
 }
 
 impl InodeTable {
@@ -99,7 +106,7 @@ impl InodeTable {
 
     pub fn new() -> Self {
         Self {
-            m_inode: core::array::from_fn(|_| Inode::new()),
+            m_inode: core::array::from_fn(|_| InodeSlot(Inode::new())),
         }
     }
 
@@ -131,11 +138,11 @@ impl InodeTable {
                     + ino as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32;
 
                 let buf = global_buffer_manager().bread(dev, PhysicalBlock(sector))?;
-                Self::icopy(&mut *iref.lock(), buf, ino);
-                return Ok(iref.with_i_put());
+                Self::icopy(&mut *iref.0.lock(), buf, ino);
+                return Ok(InodeRefGuard::new(InodeRef::from_slot_owned(iref)));
             };
 
-            let mut inode = iref.lock();
+            let mut inode = iref.0.lock();
 
             if inode.i_flag.contains(InodeFlag::ILOCK) {
                 inode.i_flag.insert(InodeFlag::IWANT);
@@ -164,13 +171,17 @@ impl InodeTable {
             inode.i_flag.insert(InodeFlag::ILOCK);
 
             drop(inode);
-            return Ok(iref.with_i_put());
+            return Ok(InodeRefGuard::new(InodeRef::from_slot_owned(iref)));
         }
     }
 
+    pub fn i_dup(&mut self, slot: &InodeSlot) {
+        slot.0.lock().i_count += 1;
+    }
+
     /// 减少引用计数，计数归零时将 inode 写回磁盘并释放。
-    pub fn i_put(&mut self, inode: InodeRef) {
-        let mut inode = inode.lock();
+    pub fn i_put_slot(&mut self, slot: &InodeSlot) {
+        let mut inode = slot.0.lock();
 
         inode.i_count -= 1;
         if inode.i_count != 0 {
@@ -195,7 +206,7 @@ impl InodeTable {
 
     pub fn update_inode_table(&mut self) {
         for inode in &self.m_inode {
-            let mut inode = inode.lock();
+            let mut inode = inode.0.lock();
             if inode.i_flag.contains(InodeFlag::ILOCK) || inode.i_count == 0 {
                 continue;
             }
@@ -206,9 +217,9 @@ impl InodeTable {
         }
     }
 
-    pub fn get(&self, dev: DevId, ino: i32) -> Option<InodeRef> {
+    pub fn get(&self, dev: DevId, ino: i32) -> Option<InodeSlot> {
         for iref in &self.m_inode {
-            let inode = iref.lock();
+            let inode = iref.0.lock();
             if inode.i_dev != dev || inode.i_number != ino || inode.i_count <= 0 {
                 continue;
             }
@@ -219,9 +230,9 @@ impl InodeTable {
         None
     }
 
-    pub fn alloc_free(&mut self, dev: DevId, ino: i32) -> Option<InodeRef> {
+    pub fn alloc_free(&mut self, dev: DevId, ino: i32) -> Option<InodeSlot> {
         for iref in &self.m_inode {
-            let mut inode = iref.lock();
+            let mut inode = iref.0.lock();
             if inode.i_count != 0 {
                 continue;
             }

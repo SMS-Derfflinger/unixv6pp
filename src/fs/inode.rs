@@ -9,7 +9,7 @@ use crate::{
     fs::{
         file::FileFlags,
         file_system::FileSystem,
-        global_file_system, InodeRef,
+        global_file_system,
     },
     proc::{Channel, ProcessManager},
     sync::{KernelSpinGuard, SpinExt},
@@ -118,7 +118,7 @@ impl Inode {
         }
     }
 
-    pub fn new() -> InodeRef {
+    pub fn new() -> Arc<Spin<Inode>> {
         Arc::new(Spin::new(Self::new_const()))
     }
 
