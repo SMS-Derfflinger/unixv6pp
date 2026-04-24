@@ -7,10 +7,9 @@ use crate::{
         char_device::{char_device_for_dev, char_device_read, char_device_write},
     },
     fs::{
-        self,
         file::{FileFlags, FileRefCompat, InodeRefCompat},
         file_system::FileSystem,
-        global_file_system, FileRef, IOParameter, InodeRef,
+        global_file_system, FileRef, InodeRef,
     },
     proc::{Channel, ProcessManager},
     sync::{KernelSpinGuard, SpinExt},
@@ -19,7 +18,6 @@ use crate::{
 use alloc::sync::Arc;
 use bitflags::bitflags;
 use eonix_spin::Spin;
-use kernel_macros::define_class_compat;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,69 +94,6 @@ pub struct Inode {
     pub i_lastr: i32, // 最近一次读取文件的逻辑块号（用于判断是否预读）
 }
 
-#[derive(Debug, PartialEq)]
-pub enum BmapError {
-    FileTooLarge, // EFBIG
-    AllocFailed,
-}
-
-pub struct BmapResult {
-    pub phyblk: PhysicalBlock,
-    pub rablock: Option<PhysicalBlock>, // None 表示放弃预读
-}
-
-#[derive(Debug, PartialEq)]
-pub enum OpenError {
-    NoSuchDevice, // ENXIO
-}
-
-enum IndexKind {
-    /// lbn 0–5，直接从 i_addr[lbn] 取物理块号
-    Direct { slot: usize },
-    /// lbn 6–261，i_addr[6/7] -> 一次间接表 -> 数据块
-    Indirect {
-        i_addr_slot: usize, // 6 或 7
-        inner: usize,       // 在一次间接表中的下标
-    },
-    /// lbn 262–33031，i_addr[8/9] -> 二次间接表 -> 一次间接表 -> 数据块
-    DoubleIndirect {
-        i_addr_slot: usize, // 8 或 9
-        mid: usize,         // 在二次间接表中的下标
-        inner: usize,       // 在一次间接表中的下标
-    },
-}
-
-impl IndexKind {
-    fn from_lbn(lbn: usize) -> Result<Self, BmapError> {
-        const N: usize = Inode::ADDRESS_PER_INDEX_BLOCK; // 128
-        let small = Inode::SMALL_FILE_BLOCK; // 6
-        let large = Inode::LARGE_FILE_BLOCK; // 262
-        let huge = Inode::HUGE_FILE_BLOCK; // 33032
-
-        if lbn >= huge {
-            return Err(BmapError::FileTooLarge);
-        }
-        if lbn < small {
-            Ok(IndexKind::Direct { slot: lbn })
-        } else if lbn < large {
-            Ok(IndexKind::Indirect {
-                i_addr_slot: (lbn - small) / N + 6,
-                inner: (lbn - small) % N,
-            })
-        } else {
-            Ok(IndexKind::DoubleIndirect {
-                i_addr_slot: (lbn - large) / (N * N) + 8,
-                mid: ((lbn - large) / N) % N,
-                inner: (lbn - large) % N,
-            })
-        }
-    }
-}
-
-fn map_fs_alloc_error<T>(_err: T) -> BmapError {
-    BmapError::AllocFailed
-}
-
 pub fn inoderef_leak(inode_ref: InodeRef) -> InodeRefCompat {
     let inoderef_compat = unsafe {
         // SAFETY: Leaking the Inode is always safe.
@@ -181,7 +116,6 @@ pub fn fileref_leak(file_ref: FileRef) -> FileRefCompat {
     fileref_compat
 }
 
-#[allow(unused)]
 impl Inode {
     pub const BLOCK_SIZE: usize = 512;
     pub const ADDRESS_PER_INDEX_BLOCK: usize = Self::BLOCK_SIZE / size_of::<i32>();
@@ -434,13 +368,6 @@ impl Inode {
         }
     }
 
-    fn alloc_block_from_fs(dev: DevId) -> Result<PhysicalBlock, BmapError> {
-        let buf = fs::global_file_system()
-            .alloc(dev)
-            .map_err(map_fs_alloc_error)?;
-        Ok(buf.phyblk())
-    }
-
     pub fn open_i(&self, mode: u32) -> Result<(), PosixError> {
         let dev = self.i_addr[0].0 as i16;
 
@@ -671,97 +598,3 @@ pub struct DiskInode {
     pub d_atime: i32,
     pub d_mtime: i32,
 }
-
-define_class_compat! {impl Inode {
-    pub fn clean(&mut self) {
-        this.clean();
-    }
-
-    pub fn file_lock(this: *mut Inode) {
-        let this = unsafe { Spin::ref_from_inner(this) };
-        Inode::lock_file(unsafe { &*this });
-    }
-
-    pub fn pipe_lock(this: *mut Inode) {
-        let this = unsafe { Spin::ref_from_inner(this) };
-        Inode::lock_pipe(unsafe { &*this });
-    }
-
-    pub fn release_lock(&mut self) {
-        this.unlock_and_wake();
-    }
-
-    pub fn read(&mut self) {
-        let IOParameter { m_base, m_count, m_offset } = Userspace::get().ioparam;
-
-        let buffer = unsafe {
-            core::slice::from_raw_parts_mut(
-                m_base as *mut u8,
-                m_count,
-            )
-        };
-
-        match this.read(buffer, m_offset) {
-            Err(err) => Userspace::get().error = Some(err),
-            Ok(nread) => {
-                let ioparam = &mut Userspace::get().ioparam;
-                ioparam.m_count -= nread;
-                ioparam.m_base += nread;
-                ioparam.m_offset += nread;
-            }
-        }
-    }
-
-    pub fn write(&mut self) {
-        let IOParameter { m_base, m_count, m_offset } = Userspace::get().ioparam;
-
-        let buffer = unsafe {
-            core::slice::from_raw_parts(
-                m_base as *const u8,
-                m_count,
-            )
-        };
-
-        match this.write(buffer, m_offset) {
-            Err(err) => Userspace::get().error = Some(err),
-            Ok(nwrite) => {
-                let ioparam = &mut Userspace::get().ioparam;
-                ioparam.m_count -= nwrite;
-                ioparam.m_base += nwrite;
-                ioparam.m_offset += nwrite;
-            }
-        }
-    }
-
-    pub fn update(&mut self, time: i32) {
-        this.i_update(time);
-    }
-
-    pub fn release(&mut self) {
-        this.release();
-    }
-
-    pub fn open(&mut self, mode: u32) {
-        if let Err(err) = this.open_i(mode) {
-            Userspace::get().error = Some(err);
-        }
-    }
-
-    pub fn close(&mut self, mode: FileFlags) {
-        this.close_i(mode);
-    }
-
-    pub fn bmap(&mut self, blkid: u32) -> PhysicalBlock {
-        let mut ra = None;
-        let buf = this.get_blk(LogicalBlock(blkid), &mut ra);
-        buf.map(|buf| buf.phyblk()).unwrap_or(PhysicalBlock::ZERO)
-    }
-
-    pub fn get_dev(&mut self) -> DevId {
-        DevId(this.i_addr[0].0 as i16)
-    }
-
-    pub fn set_dev(&mut self, dev: DevId) {
-        this.i_addr[0].0 = dev.0 as _;
-    }
-}}

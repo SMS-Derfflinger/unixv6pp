@@ -2,7 +2,7 @@ use core::{arch::naked_asm, mem::MaybeUninit, ptr};
 
 use crate::{
     dev::{buffer::DevId, device_manager::ROOTDEV},
-    fs::{GLOBAL_INODE_TABLE, InodeFlag, inoderef_leak},
+    fs::{global_file_system, GLOBAL_INODE_TABLE, InodeFlag, inoderef_leak},
     interrupt::set_time,
     kernel::kernel::rust_kernel_initialize,
     machine::{
@@ -74,9 +74,6 @@ unsafe extern "C" {
     );
     fn _load_task_register();
     fn clear_screan();
-
-    fn FileSystem_load_super_block() -> bool;
-
     fn cpp_set_kernel_time(value: u32);
 
     fn runtime();
@@ -153,7 +150,7 @@ fn read_memory_size() {
 }
 
 fn load_file_system() {
-    let ok = unsafe { FileSystem_load_super_block() };
+    let ok = global_file_system().load_super_block().is_ok();
     if !ok {
         panic!("Load SuperBlock Error....!");
     }

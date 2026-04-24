@@ -11,9 +11,9 @@ use crate::{
     },
     fs::{
         self,
-        file::{File, FileFlags, FileRefCompat, InodeRefCompat, OpenFiles},
+        file::{File, FileFlags, FileRefCompat, OpenFiles},
         file_system::FileSystem,
-        inode::{fileref_leak, inoderef_leak, DiskInode, Inode, InodeFlag, InodeMode},
+        inode::{fileref_leak, DiskInode, Inode, InodeFlag, InodeMode},
         FileRef, InodeRef, InodeRefGuard, InodeRefPutExt,
     },
     proc::{Channel, ProcessManager, PINOD},
@@ -280,27 +280,3 @@ impl InodeTable {
 
 pub static GLOBAL_INODE_TABLE: LazyLock<Spin<InodeTable>> =
     LazyLock::new(|| Spin::new(InodeTable::new()));
-
-define_class_compat! {impl InodeTable {
-    pub fn get(dev: DevId, ino: i32) -> Option<InodeRefCompat> {
-        match GLOBAL_INODE_TABLE.lock().i_get(dev, ino) {
-            Ok(iref) => Some(inoderef_leak(iref.into_inner())),
-            Err(err) => {
-                Userspace::get().set_error(err);
-                None
-            }
-        }
-    }
-
-    pub fn put(inode: InodeRefCompat) {
-        GLOBAL_INODE_TABLE.lock().i_put(inode.own());
-    }
-
-    pub fn is_loaded(dev: DevId, ino: i32) -> bool {
-        GLOBAL_INODE_TABLE.lock().get(dev, ino).is_some()
-    }
-
-    pub fn update() {
-        GLOBAL_INODE_TABLE.lock().update_inode_table();
-    }
-}}

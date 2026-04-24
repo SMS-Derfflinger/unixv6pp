@@ -176,20 +176,6 @@ impl OpenFiles {
 }
 
 define_class_compat! {impl OpenFiles {
-    pub fn alloc_free_slot() -> i32 {
-        let this = &mut Userspace::get().open_files;
-        let retval = match this.alloc_free_slot() {
-            Ok(fd) => fd as i32,
-            Err(err) => {
-                Userspace::get().set_error(err);
-                -1
-            }
-        };
-
-        Userspace::get().set_user_retval(retval as _);
-        retval
-    }
-
     pub fn get_file(fd: i32) -> Option<FileRefCompat> {
         let this = &Userspace::get().open_files;
 
@@ -200,20 +186,6 @@ define_class_compat! {impl OpenFiles {
 
         this.get_f(fd as usize)
             .inspect_err(|&err| Userspace::get().set_error(err)).ok().map(fileref_leak)
-    }
-
-    pub fn set_file(fd: i32, file: Option<FileRefCompat>) {
-        let this = &mut Userspace::get().open_files;
-
-        if fd < 0 {
-            return;
-        }
-
-        if let Some(file) = file {
-            this.set_f(fd as _, file.own());
-        } else {
-            this.clear_f(fd as _);
-        }
     }
 }}
 

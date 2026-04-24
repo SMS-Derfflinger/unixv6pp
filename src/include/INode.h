@@ -171,7 +171,6 @@ public:
 	int		i_size;			/* 文件大小，字节为单位 */
 };
 
-extern "C" short Inode_get_dev(Inode*);
-extern "C" void Inode_set_dev(Inode*, short);
+inline short Inode_get_dev(Inode*) {return 0;} //fuck
 
 #endif
