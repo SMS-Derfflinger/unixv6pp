@@ -1,4 +1,5 @@
 #include "Kernel.h"
+#include "CharDevice.h"
 #include "Video.h"
 #include "Utility.h"
 #include "Regs.h"
@@ -9,6 +10,8 @@ Kernel Kernel::instance;
  * 交换区相关全局manager
  */
 SwapperManager g_SwapperManager(&(Allocator::GetInstance()));
+
+ConsoleDevice g_ConsoleDevice;
 
 Kernel::Kernel()
 {

@@ -160,13 +160,3 @@ impl ATADriver {
 }
 
 static PRD_TABLE: SuperCell<PRDTable> = SuperCell::new(PRDTable::new());
-
-#[no_mangle]
-pub extern "C" fn ata_handler() {
-    ATADriver::ata_handler();
-}
-
-#[no_mangle]
-pub extern "C" fn ata_dev_start(bp: *mut Buf) {
-    ATADriver::dev_start(bp);
-}

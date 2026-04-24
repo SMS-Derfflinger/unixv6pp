@@ -1,5 +1,5 @@
 use crate::{
-    dev::{ata_driver::ata_handler, io_port::IOPort},
+    dev::{ata_driver::ATADriver, io_port::IOPort},
     interrupt::{PtContext, Registers, PIC_EOI, PIC_MASTER_IO_PORT_1},
     interrupt_entry,
     machine::asm::disable_interrupts,
@@ -37,7 +37,7 @@ pub fn schedule_on_user_return(context: *mut PtContext) {
 
 #[no_mangle]
 pub extern "C" fn disk_interrupt_body(_regs: *mut Registers, context: *mut PtContext) {
-    ata_handler();
+    ATADriver::ata_handler();
     schedule_on_user_return(context);
 }
 

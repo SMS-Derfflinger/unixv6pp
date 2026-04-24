@@ -108,29 +108,7 @@ fn set_char_error(err: PosixError) {
     Userspace::get().set_error(err);
 }
 
-fn char_device_result(dev: i16, f: impl FnOnce(&dyn CharDevice) -> Result<(), PosixError>) {
-    let result = match char_device_for_dev(dev) {
-        Some(device) => f(device),
-        None => Err(PosixError::ENXIO),
-    };
-
-    if let Err(err) = result {
-        set_char_error(err);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn char_device_open(dev: i16, mode: i32) {
-    char_device_result(dev, |device| device.open(dev, mode));
-}
-
-#[no_mangle]
-pub extern "C" fn char_device_close(dev: i16, mode: i32) {
-    char_device_result(dev, |device| device.close(dev, mode));
-}
-
-#[no_mangle]
-pub extern "C" fn char_device_read(dev: i16) {
+pub fn char_device_read(dev: i16) {
     let ioparam = Userspace::get().io_param_mut();
     if ioparam.m_count == 0 {
         return;
@@ -157,8 +135,7 @@ pub extern "C" fn char_device_read(dev: i16) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn char_device_write(dev: i16) {
+pub fn char_device_write(dev: i16) {
     let ioparam = Userspace::get().io_param_mut();
     if ioparam.m_count == 0 {
         return;
@@ -183,8 +160,4 @@ pub extern "C" fn char_device_write(dev: i16) {
         }
         Err(err) => set_char_error(err),
     }
-}
-
-unsafe extern "C" {
-    fn char_device_fuck_tty();
 }
