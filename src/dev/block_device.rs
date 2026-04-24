@@ -1,15 +1,14 @@
 use eonix_sync_base::LazyLock;
+use intrusive_collections::UnsafeRef;
 
 use crate::{
-    constants::PosixError,
     dev::buffer_manager::global_buffer_manager,
     sync::{IrqGuard, SuperCell},
-    user::Userspace,
 };
 
 use super::{
     ata_driver::ATADriver,
-    buffer::{Buf, BufFlag},
+    buffer::{Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufIoAdapter, BufIoQueue},
     device_manager::major,
 };
 
@@ -17,10 +16,8 @@ use super::{
 pub struct Devtab {
     pub d_active: i32,
     pub d_errcnt: i32,
-    pub b_forw: *mut Buf,
-    pub b_back: *mut Buf,
-    pub d_actf: *mut Buf,
-    pub d_actl: *mut Buf,
+    pub buffer_list: BufDeviceList,
+    pub io_queue: BufIoQueue,
 }
 
 unsafe impl Send for Devtab {}
@@ -30,42 +27,22 @@ impl Devtab {
         Self {
             d_active: 0,
             d_errcnt: 0,
-            b_forw: core::ptr::null_mut(),
-            b_back: core::ptr::null_mut(),
-            d_actf: core::ptr::null_mut(),
-            d_actl: core::ptr::null_mut(),
-        }
-    }
-
-    pub fn ensure_buffer_list(&mut self) {
-        if self.b_forw.is_null() || self.b_back.is_null() {
-            let sentinel = self.sentinel();
-            self.b_forw = sentinel;
-            self.b_back = sentinel;
+            buffer_list: BufDeviceList::new(BufDeviceAdapter::NEW),
+            io_queue: BufIoQueue::new(BufIoAdapter::NEW),
         }
     }
 
     pub fn pop_io_request(&mut self) -> Option<*mut Buf> {
-        let bp = self.d_actf;
-        if bp.is_null() {
-            self.d_actl = core::ptr::null_mut();
-            return None;
-        }
-
-        unsafe {
-            self.d_actf = (*bp).av_forw;
-            if self.d_actf.is_null() {
-                self.d_actl = core::ptr::null_mut();
-            }
-            (*bp).av_forw = core::ptr::null_mut();
-            (*bp).av_back = core::ptr::null_mut();
-        }
-
-        Some(bp)
+        self.io_queue
+            .pop_front()
+            .map(|bp| UnsafeRef::into_raw(bp) as *mut Buf)
     }
 
     pub fn peek_io_request(&self) -> Option<*mut Buf> {
-        (!self.d_actf.is_null()).then_some(self.d_actf)
+        self.io_queue
+            .front()
+            .clone_pointer()
+            .map(|bp| UnsafeRef::into_raw(bp) as *mut Buf)
     }
 
     pub fn push_io_request(&mut self, bp: *mut Buf) {
@@ -74,24 +51,13 @@ impl Devtab {
         }
 
         unsafe {
-            (*bp).av_forw = core::ptr::null_mut();
-            (*bp).av_back = core::ptr::null_mut();
-
-            if self.d_actf.is_null() {
-                self.d_actf = bp;
-            } else {
-                (*self.d_actl).av_forw = bp;
+            if (*bp).is_on_io_queue() {
+                return;
             }
-            self.d_actl = bp;
+
+            let bp = UnsafeRef::from_raw(bp as *const Buf);
+            self.io_queue.push_back(bp);
         }
-    }
-
-    pub fn sentinel(&mut self) -> *mut Buf {
-        self as *mut Devtab as *mut Buf
-    }
-
-    pub fn sentinel_const(&self) -> *mut Buf {
-        self as *const Devtab as *mut Buf
     }
 }
 

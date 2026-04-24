@@ -2,10 +2,14 @@ use crate::dev::buffer::Buffer;
 use crate::proc::ProcessManager;
 use crate::sync::{IrqGuard, SuperCell};
 use crate::{constants::PosixError, user::Userspace};
+use intrusive_collections::UnsafeRef;
 
 use super::{
     block_device::block_device_for_dev,
-    buffer::{Buf, BufFlag, DevId, PhysicalBlock},
+    buffer::{
+        Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufFreeAdapter, BufFreeList, DevId,
+        PhysicalBlock,
+    },
     device_manager::{set_minor, ROOTDEV},
 };
 
@@ -36,6 +40,8 @@ pub type BufferResult<T> = Result<T, BufferError>;
 
 pub struct BufferManager {
     b_free_list: Buf,
+    free_list: BufFreeList,
+    unassigned_list: BufDeviceList,
     swap_buf: Buf,
     buffers: [Buf; Self::NBUF],
     data: [[u8; Self::BUFFER_SIZE]; Self::NBUF],
@@ -51,6 +57,8 @@ impl BufferManager {
     pub const fn new() -> Self {
         Self {
             b_free_list: Buf::new(),
+            free_list: BufFreeList::new(BufFreeAdapter::NEW),
+            unassigned_list: BufDeviceList::new(BufDeviceAdapter::NEW),
             swap_buf: Buf::new(),
             buffers: [const { Buf::new() }; Self::NBUF],
             data: [[0; Self::BUFFER_SIZE]; Self::NBUF],
@@ -63,10 +71,9 @@ impl BufferManager {
 
     fn initialize_buffers(&mut self) {
         self.b_free_list = Buf::new();
+        self.free_list = BufFreeList::new(BufFreeAdapter::NEW);
+        self.unassigned_list = BufDeviceList::new(BufDeviceAdapter::NEW);
         self.swap_buf = Buf::new();
-        unsafe {
-            self.init_free_list_sentinel();
-        }
 
         for index in 0..Self::NBUF {
             let bp = &mut self.buffers[index] as *mut Buf;
@@ -75,7 +82,7 @@ impl BufferManager {
                 *bp = Buf::new();
                 (*bp).b_dev = -1;
                 (*bp).b_addr = self.data[index].as_mut_ptr();
-                Self::insert_device_front(self.free_list_sentinel(), bp);
+                self.insert_into_unassigned_queue(bp);
                 self.push_free_back(bp);
             }
         }
@@ -103,12 +110,12 @@ impl BufferManager {
                 unsafe {
                     let ctx = IrqGuard::disable_save();
                     if !self.is_free_list_empty() {
-                        let bp = (*self.free_list_sentinel()).av_forw;
+                        let bp = self.free_list_head().expect("free list is not empty");
                         break bp;
                     }
 
                     self.b_free_list.b_flags.insert(BufFlag::B_WANTED);
-                    sleep_on(self.free_list_sentinel() as usize, PRIBIO);
+                    sleep_on(self.free_list_wait_chan(), PRIBIO);
                 }
             };
 
@@ -145,7 +152,7 @@ impl BufferManager {
 
             if self.b_free_list.b_flags.contains(BufFlag::B_WANTED) {
                 self.b_free_list.b_flags.remove(BufFlag::B_WANTED);
-                wakeup_all(self.free_list_sentinel() as usize);
+                wakeup_all(self.free_list_wait_chan());
             }
 
             if (*bp).b_flags.contains(BufFlag::B_ERROR) {
@@ -462,17 +469,13 @@ impl BufferManager {
 
     fn in_core(&self, dev: DevId, blkno: PhysicalBlock) -> Option<*mut Buf> {
         if dev.0 < 0 {
-            return self.in_device_list(self.free_list_sentinel_const(), blkno, dev.0);
+            return self.in_device_list(&self.unassigned_list, blkno, dev.0);
         }
 
         let device = block_device_for_dev(dev.0)?;
-        device.devtab().with(|devtab| {
-            if devtab.b_forw.is_null() {
-                None
-            } else {
-                self.in_device_list(devtab.sentinel_const(), blkno, dev.0)
-            }
-        })
+        device
+            .devtab()
+            .with(|devtab| self.in_device_list(&devtab.buffer_list, blkno, dev.0))
     }
 
     fn validate_device(&self, dev: DevId) -> BufferResult<()> {
@@ -484,124 +487,115 @@ impl BufferManager {
     }
 
     fn find_delayed_write_buffer(&self, dev: Option<DevId>) -> Option<*mut Buf> {
-        unsafe {
-            let sentinel = self.free_list_sentinel_const();
-            let mut bp = (*sentinel).av_forw;
+        for bp in self.free_list.iter() {
+            let matches_dev = dev.is_none_or(|dev| bp.b_dev == dev.0);
 
-            while bp != sentinel {
-                let matches_dev = dev.is_none_or(|dev| (*bp).b_dev == dev.0);
-
-                if matches_dev && (*bp).b_flags.contains(BufFlag::B_DELWRI) {
-                    return Some(bp);
-                }
-
-                bp = (*bp).av_forw;
+            if matches_dev && bp.b_flags.contains(BufFlag::B_DELWRI) {
+                return Some(bp as *const Buf as *mut Buf);
             }
         }
 
         None
     }
 
-    fn insert_into_device_queue(&self, dev: DevId, bp: *mut Buf) -> BufferResult<()> {
+    fn insert_into_device_queue(&mut self, dev: DevId, bp: *mut Buf) -> BufferResult<()> {
         if dev.0 < 0 {
-            unsafe {
-                Self::insert_device_front(self.free_list_sentinel_const(), bp);
-            }
+            self.insert_into_unassigned_queue(bp);
             return Ok(());
         }
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
         device.devtab().with_mut(|devtab| unsafe {
-            devtab.ensure_buffer_list();
-            Self::insert_device_front(devtab.sentinel(), bp);
+            Self::insert_device_front(&mut devtab.buffer_list, bp, dev.0);
         });
 
         Ok(())
     }
 
-    unsafe fn remove_from_current_device_queue(&self, bp: *mut Buf) {
+    unsafe fn remove_from_current_device_queue(&mut self, bp: *mut Buf) {
         if !(*bp).is_on_device_list() {
             return;
         }
 
-        Self::remove_from_device_list(bp);
+        let queue_dev = (*bp).b_queue_dev;
+        if queue_dev < 0 {
+            Self::remove_from_device_list(&mut self.unassigned_list, bp);
+            return;
+        }
+
+        if let Some(device) = block_device_for_dev(queue_dev) {
+            device
+                .devtab()
+                .with_mut(|devtab| Self::remove_from_device_list(&mut devtab.buffer_list, bp));
+        }
     }
 
     fn in_device_list(
         &self,
-        sentinel: *mut Buf,
+        list: &BufDeviceList,
         blkno: PhysicalBlock,
         dev: i16,
     ) -> Option<*mut Buf> {
-        unsafe {
-            let mut bp = (*sentinel).b_forw;
-
-            while bp != sentinel {
-                if (*bp).b_blkno == blkno && (*bp).b_dev == dev {
-                    return Some(bp);
-                }
-
-                bp = (*bp).b_forw;
+        for bp in list.iter() {
+            if bp.b_blkno == blkno && bp.b_dev == dev {
+                return Some(bp as *const Buf as *mut Buf);
             }
         }
 
         None
     }
 
-    unsafe fn init_free_list_sentinel(&mut self) {
-        let sentinel = self.free_list_sentinel();
-        (*sentinel).b_forw = sentinel;
-        (*sentinel).b_back = sentinel;
-        (*sentinel).av_forw = sentinel;
-        (*sentinel).av_back = sentinel;
+    fn insert_into_unassigned_queue(&mut self, bp: *mut Buf) {
+        unsafe {
+            Self::insert_device_front(&mut self.unassigned_list, bp, -1);
+        }
     }
 
-    unsafe fn insert_device_front(sentinel: *mut Buf, bp: *mut Buf) {
+    unsafe fn insert_device_front(list: &mut BufDeviceList, bp: *mut Buf, queue_dev: i16) {
         if (*bp).is_on_device_list() {
             return;
         }
 
-        (*bp).b_forw = (*sentinel).b_forw;
-        (*bp).b_back = sentinel;
-        (*(*sentinel).b_forw).b_back = bp;
-        (*sentinel).b_forw = bp;
+        (*bp).b_queue_dev = queue_dev;
+        list.push_front(UnsafeRef::from_raw(bp as *const Buf));
     }
 
-    unsafe fn remove_from_device_list(bp: *mut Buf) {
-        (*(*bp).b_back).b_forw = (*bp).b_forw;
-        (*(*bp).b_forw).b_back = (*bp).b_back;
-        (*bp).b_forw = core::ptr::null_mut();
-        (*bp).b_back = core::ptr::null_mut();
+    fn remove_from_device_list(list: &mut BufDeviceList, bp: *mut Buf) {
+        let mut cursor = unsafe { list.cursor_mut_from_ptr(bp as *const Buf) };
+        cursor.remove();
+
+        unsafe {
+            (*bp).b_queue_dev = -1;
+        }
     }
 
     unsafe fn push_free_back(&mut self, bp: *mut Buf) {
-        let sentinel = self.free_list_sentinel();
-        let tail = (*sentinel).av_back;
+        if (*bp).is_on_free_list() {
+            return;
+        }
 
-        (*tail).av_forw = bp;
-        (*bp).av_back = tail;
-        (*bp).av_forw = sentinel;
-        (*sentinel).av_back = bp;
+        self.free_list
+            .push_back(UnsafeRef::from_raw(bp as *const Buf));
     }
 
     unsafe fn remove_from_free_list(&mut self, bp: *mut Buf) {
-        (*(*bp).av_back).av_forw = (*bp).av_forw;
-        (*(*bp).av_forw).av_back = (*bp).av_back;
-        (*bp).av_forw = core::ptr::null_mut();
-        (*bp).av_back = core::ptr::null_mut();
+        let mut cursor = self.free_list.cursor_mut_from_ptr(bp as *const Buf);
+        cursor.remove();
     }
 
     fn is_free_list_empty(&self) -> bool {
-        let sentinel = self.free_list_sentinel_const();
-        unsafe { (*sentinel).av_forw == sentinel }
+        self.free_list.is_empty()
     }
 
-    fn free_list_sentinel(&mut self) -> *mut Buf {
-        &mut self.b_free_list as *mut Buf
+    fn free_list_head(&self) -> Option<*mut Buf> {
+        self.free_list
+            .front()
+            .clone_pointer()
+            .map(|bp| UnsafeRef::into_raw(bp) as *mut Buf)
     }
 
-    fn free_list_sentinel_const(&self) -> *mut Buf {
-        &self.b_free_list as *const Buf as *mut Buf
+    fn free_list_wait_chan(&mut self) -> usize {
+        &mut self.b_free_list as *mut Buf as usize
     }
 
     fn swap_buf_ptr(&mut self) -> *mut Buf {
