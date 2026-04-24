@@ -33,14 +33,11 @@ void SystemCall::Trap1ByNumber(unsigned int number)
 {
 	switch ( number )
 	{
-	case 7: Trap1(Sys_Wait); return;
-	case 11: Trap1(Sys_Exec); return;
 	case 17: Trap1(Sys_SBreak); return;
 	case 31: Trap1(Sys_Stty); return;
 	case 32: Trap1(Sys_Gtty); return;
 	case 34: Trap1(Sys_Nice); return;
 	case 35: Trap1(Sys_Sslep); return;
-	case 37: Trap1(Sys_Kill); return;
 	case 48: Trap1(Sys_Ssig); return;
 	default:
 		User_get_error() = User::ENOSYS;
@@ -51,22 +48,6 @@ void SystemCall::Trap1ByNumber(unsigned int number)
 extern "C" void cpp_system_call_trap1(unsigned int number)
 {
 	SystemCall::Trap1ByNumber(number);
-}
-
-extern "C" void ProcessManager_wait();
-/*	7 = wait	count = 0	*/
-int SystemCall::Sys_Wait()
-{
-	ProcessManager_wait();
-	return 0;	/* GCC likes it ! */
-}
-
-extern "C" void ProcessManager_exec();
-/*	11 = exec	count = 2	*/
-int SystemCall::Sys_Exec()
-{
-	ProcessManager_exec();
-	return 0;	/* GCC likes it ! */
 }
 
 /*	17 = sbreak	count = 1	*/
@@ -175,14 +156,6 @@ int SystemCall::Sys_Sslep()
 
 	X86Assembly::STI();
 
-	return 0;	/* GCC likes it ! */
-}
-
-extern "C" void ProcessManager_kill();
-/*	37 = kill	count = 1	*/
-int SystemCall::Sys_Kill()
-{
-	ProcessManager_kill();
 	return 0;	/* GCC likes it ! */
 }
 

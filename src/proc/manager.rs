@@ -842,53 +842,6 @@ define_class_compat! {impl ProcessManager {
         0
     }
 
-    /// Fork() 的 Rust 实现 - 进程创建
-    pub fn fork() {
-        let pm = ProcessManager::get();
-        let retval = pm.fork();
-        Userspace::get().set_user_retval(retval);
-    }
-
-    /// Exec() 的 Rust 实现 - 进程图像改换
-    pub fn exec() {
-        let pm = ProcessManager::get();
-        let proc = Userspace::get().proc();
-        let path_ptr = Userspace::get().args[0] as *const u8;
-        let argc = Userspace::get().args[1];
-        let argv_ptr = Userspace::get().args[2] as *const NonNull<i8>;
-
-        // 从用户空间读取路径
-        let path = unsafe {
-            let cstr = core::ffi::CStr::from_ptr(path_ptr as *const i8);
-            cstr.to_bytes()
-        };
-
-        let argv = unsafe {
-            core::slice::from_raw_parts(argv_ptr, argc)
-        };
-
-        crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
-        if let Err(err) = pm.exec(proc, path, argv) {
-            Userspace::get().set_error(err);
-            return;
-        }
-
-        let mut ctx = TaskContext::new();
-        unsafe {
-            disable_interrupts();
-            TaskContext::switch(&mut ctx, &mut proc.ctx);
-        }
-    }
-
-    /// Kill() 的 Rust 实现 - 终止进程
-    pub fn kill() {
-        let pm = ProcessManager::get();
-        let pid = Userspace::get().args[0] as u32;
-        let signal_num = Userspace::get().args[1] as u32;
-        let signal = unsafe { core::mem::transmute::<u32, Signal>(signal_num) };
-        pm.kill(pid, signal).pass_to_user();
-    }
-
     pub fn new_init_proc() -> i32 {
         let pm = ProcessManager::get();
         pm.new_init_proc() as i32

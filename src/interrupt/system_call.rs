@@ -1,5 +1,13 @@
+use core::ptr::NonNull;
+
 use crate::{
-    constants::PosixError, interrupt::{PtContext, Registers}, interrupt_entry, kernel::diagnose::{diagnose_disable_rows, diagnose_enable_rows, diagnose_rows}, proc::ProcessManager, user::{Pointer, Userspace}
+    constants::{PosixError, Signal},
+    interrupt::{PtContext, Registers},
+    interrupt_entry,
+    kernel::diagnose::{diagnose_disable_rows, diagnose_enable_rows, diagnose_rows},
+    machine::asm::disable_interrupts,
+    proc::{ProcessManager, TaskContext},
+    user::{Pointer, Userspace},
 };
 
 const SYSTEM_CALL_NUM: usize = 64;
@@ -12,9 +20,11 @@ mod syscall_number {
     pub const WRITE: usize = 4;
     pub const OPEN: usize = 5;
     pub const CLOSE: usize = 6;
+    pub const WAIT: usize = 7;
     pub const CREAT: usize = 8;
     pub const LINK: usize = 9;
     pub const UNLINK: usize = 10;
+    pub const EXEC: usize = 11;
     pub const CHDIR: usize = 12;
     pub const TIME: usize = 13;
     pub const MKNOD: usize = 14;
@@ -33,6 +43,7 @@ mod syscall_number {
     pub const SMDATE: usize = 30;
     pub const TRACE: usize = 29;
     pub const SYNC: usize = 36;
+    pub const KILL: usize = 37;
     pub const GETSWITCH: usize = 38;
     pub const PWD: usize = 39;
     pub const DUP: usize = 41;
@@ -123,8 +134,7 @@ fn handle_in_rust(number: usize) -> bool {
     use syscall_number as sys;
 
     match number {
-        sys::INDIRECT | sys::MOUNT | sys::UMOUNT | sys::PTRACE
-            | sys::SMDATE | sys::PROFIL => true,
+        sys::INDIRECT | sys::MOUNT | sys::UMOUNT | sys::PTRACE | sys::SMDATE | sys::PROFIL => true,
         sys::EXIT => Userspace::get().proc().exit(),
         sys::FORK => {
             set_eax(ProcessManager::get().fork());
@@ -146,6 +156,10 @@ fn handle_in_rust(number: usize) -> bool {
             trap1(crate::fs::syscall_close);
             true
         }
+        sys::WAIT => {
+            ProcessManager::get().wait(Userspace::get().proc());
+            true
+        }
         sys::CREAT => {
             trap1(crate::fs::syscall_creat);
             true
@@ -156,6 +170,35 @@ fn handle_in_rust(number: usize) -> bool {
         }
         sys::UNLINK => {
             trap1(crate::fs::syscall_unlink);
+            true
+        }
+        sys::EXEC => {
+            let pm = ProcessManager::get();
+            let proc = Userspace::get().proc();
+            let path_ptr = Userspace::get().args[0] as *const u8;
+            let argc = Userspace::get().args[1];
+            let argv_ptr = Userspace::get().args[2] as *const NonNull<i8>;
+
+            // 从用户空间读取路径
+            let path = unsafe {
+                let cstr = core::ffi::CStr::from_ptr(path_ptr as *const i8);
+                cstr.to_bytes()
+            };
+
+            let argv = unsafe { core::slice::from_raw_parts(argv_ptr, argc) };
+
+            crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
+            if let Err(err) = pm.exec(proc, path, argv) {
+                Userspace::get().set_error(err);
+                return true;
+            }
+
+            let mut ctx = TaskContext::new();
+            unsafe {
+                disable_interrupts();
+                TaskContext::switch(&mut ctx, &mut proc.ctx);
+            }
+
             true
         }
         sys::CHDIR => {
@@ -220,6 +263,17 @@ fn handle_in_rust(number: usize) -> bool {
                 diagnose_disable_rows();
             }
             set_eax(diagnose_rows());
+            true
+        }
+        sys::KILL => {
+            let pid = Userspace::get().args[0] as u32;
+            let signal_num = Userspace::get().args[1] as u32;
+            let signal = unsafe { core::mem::transmute::<u32, Signal>(signal_num) };
+            match ProcessManager::get().kill(pid, signal) {
+                Ok(()) => Userspace::get().set_user_retval(0),
+                Err(err) => Userspace::get().set_error(err),
+            }
+
             true
         }
         sys::GETSWITCH => {
@@ -288,8 +342,8 @@ fn write_times() {
         return;
     };
 
-    times.utime  = Userspace::get().utime;
-    times.stime  = Userspace::get().stime;
+    times.utime = Userspace::get().utime;
+    times.stime = Userspace::get().stime;
     times.cutime = Userspace::get().children_utime;
     times.cstime = Userspace::get().children_utime;
 }
@@ -299,9 +353,7 @@ fn args() -> &'static mut [usize; 5] {
 }
 
 fn set_eax(val: u32) {
-    unsafe {
-        Userspace::get().ar0.write(val)
-    }
+    unsafe { Userspace::get().ar0.write(val) }
 }
 
 interrupt_entry!(SystemCallEntrance, system_call_body);

@@ -43,18 +43,6 @@ private:
 	 * 程序。
 	 */
 
-	/*	1 = rexit	count = 0	*/
-	static int Sys_Rexit();
-
-	/*	2 = fork	count = 0	*/
-	static int Sys_Fork();
-
-	/*	7 = wait	count = 0	*/
-	static int Sys_Wait();
-
-	/*	11 = exec	count = 2	*/
-	static int Sys_Exec();
-
 	/*	17 = sbreak	count = 1	*/
 	static int Sys_SBreak();
 
@@ -71,9 +59,6 @@ private:
 	
 	/*	35 = sleep	count = 0	*/
 	static int Sys_Sslep();		/* Don't Confused with sleep(chan, pri) */
-
-	/*	37 = kill	count = 1	*/
-	static int Sys_Kill();
 
 	/*	48 = sig	count = 2	*/
 	static int Sys_Ssig();

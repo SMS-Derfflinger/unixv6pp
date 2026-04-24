@@ -2,8 +2,9 @@ mod context;
 mod manager;
 mod process;
 
-pub use process::{Text, Process, ProcessState, KernelStack};
+pub use context::TaskContext;
 pub use manager::ProcessManager;
+pub use process::{KernelStack, Process, ProcessState, Text};
 
 /// A channel that sleepers can subscribe to.
 ///
