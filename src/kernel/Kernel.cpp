@@ -1,12 +1,9 @@
 #include "Kernel.h"
-#include "CharDevice.h"
 #include "Video.h"
 #include "Utility.h"
 #include "Regs.h"
 
 Kernel Kernel::instance;
-
-ConsoleDevice g_ConsoleDevice;
 
 Kernel::Kernel()
 {

@@ -1,5 +1,4 @@
 #include "SystemCall.h"
-#include "CharDevice.h"
 #include "User.h"
 #include "Kernel.h"
 
@@ -86,7 +85,7 @@ int SystemCall::Sys_Stty()
 	/*Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
 	int fd = User_get_arg()[0];
-	TTy* pTTy = (TTy *)User_get_arg()[1];
+	// TTy* pTTy = (TTy *)User_get_arg()[1];
 
 	if ( (pInode = OpenFiles_get_inode(fd)) == NULL )
 	{
@@ -110,7 +109,7 @@ int SystemCall::Sys_Gtty()
 	/*Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
 	int fd = User_get_arg()[0];
-	TTy* pTTy = (TTy *)User_get_arg()[1];
+	// TTy* pTTy = (TTy *)User_get_arg()[1];
 
 	if ( (pInode = OpenFiles_get_inode(fd)) == NULL )
 	{
