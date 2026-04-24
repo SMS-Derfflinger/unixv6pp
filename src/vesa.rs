@@ -213,12 +213,13 @@ impl VesaConsole {
     }
 
     fn line_feed(&mut self) {
+        self.curr_x = 0;
         if self.curr_y + 1 >= self.char_rows() {
             self.scroll_down(1);
+            self.curr_y = self.char_rows().saturating_sub(1);
         } else {
             self.curr_y += 1;
         }
-        self.curr_x = 0;
         self.mark_input_begin();
     }
 
@@ -252,6 +253,7 @@ impl VesaConsole {
             self.curr_x = 0;
             if self.curr_y + 1 >= self.char_rows() {
                 self.scroll_down(1);
+                self.curr_y = self.char_rows().saturating_sub(1);
             } else {
                 self.curr_y += 1;
             }
@@ -298,8 +300,6 @@ impl VesaConsole {
         }
 
         self.clear_rect(0, copy_height, self.width, pixel_lines);
-        self.curr_y = self.curr_y.saturating_sub(lines);
-        self.input_begin = self.cursor_pos();
     }
 
     fn clear_rect(&mut self, x0: usize, y0: usize, width: usize, height: usize) {
