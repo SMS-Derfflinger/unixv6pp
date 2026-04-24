@@ -1,9 +1,5 @@
 use crate::{dev::buffer_manager::buffer_manager_initialize, println, serial::init_serial};
 
-unsafe extern "C" {
-    fn cpp_swapper_manager_initialize() -> i32;
-}
-
 pub fn rust_kernel_initialize() {
     init_serial();
     init_memory();
@@ -16,9 +12,6 @@ fn init_memory() {
     println!("Ok.");
 
     println!("Initialize Swapper...");
-    unsafe {
-        cpp_swapper_manager_initialize();
-    }
     println!("Ok.");
 }
 

@@ -6,11 +6,6 @@
 
 Kernel Kernel::instance;
 
-/*
- * 交换区相关全局manager
- */
-SwapperManager g_SwapperManager(&(Allocator::GetInstance()));
-
 ConsoleDevice g_ConsoleDevice;
 
 Kernel::Kernel()
@@ -76,16 +71,6 @@ extern "C" void cpp_exception_page_fault(struct pt_regs* regs, struct pte_contex
 		Diagnose::Write("at eip=0x%x cr2=0x%x, ", context->eip, cr2);
 		Utility::Panic("Page Fault in Kernel Mode.");
 	}
-}
-
-extern "C" int cpp_swapper_manager_initialize()
-{
-	return g_SwapperManager.Initialize();
-}
-
-SwapperManager& Kernel::GetSwapperManager()
-{
-	return *(this->m_SwapperManager);
 }
 
 User& Kernel::GetUser()

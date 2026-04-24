@@ -26,7 +26,6 @@ public:
 	static Kernel& Instance();
 	void Initialize();		/* 该函数完成初始化内核大部分数据结构的初始化 */
 
-	SwapperManager& GetSwapperManager();
 	User& GetUser();		/* 获取当前进程的User结构 */
 
 private:
@@ -37,8 +36,6 @@ private:
 
 private:
 	static Kernel instance;		/* Kernel单体类实例 */
-
-	SwapperManager* m_SwapperManager;
 };
 
 #endif

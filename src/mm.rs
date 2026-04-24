@@ -10,3 +10,4 @@ pub use page_manager::{
     alloc_page, free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,
 };
 pub use zone::ZONE;
+pub use swapper_manager::SWAPPER_AREAS;

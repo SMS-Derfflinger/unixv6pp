@@ -1,10 +1,10 @@
-use core::ffi::CStr;
+use core::{ffi::CStr, num::NonZero};
 
 use alloc::boxed::Box;
 use eonix_mm::address::{Addr, PAddr};
 use kernel_macros::define_class_compat;
 
-use crate::{dev::buffer::PhysicalBlock, user::Userspace};
+use crate::{dev::buffer::PhysicalBlock, mm::SWAPPER_AREAS, sync::SpinExt, user::Userspace};
 
 pub fn compat_flush_page_directory() {
     unsafe {
@@ -74,22 +74,26 @@ pub fn compat_phys_copy(from: PAddr, to: PAddr, len: usize) {
     }
 }
 
-pub fn compat_swap_alloc(len: usize) -> PhysicalBlock {
-    extern "C" {
-        fn compat_swap_alloc(len: u32) -> u32;
-    }
+const SECTOR_SIZE: usize = 512;
 
-    PhysicalBlock(unsafe { compat_swap_alloc(len as u32) })
+pub fn compat_swap_alloc(bytes: usize) -> PhysicalBlock {
+    let sectors = (bytes + SECTOR_SIZE - 1) / SECTOR_SIZE;
+    assert_ne!(sectors, 0);
+
+    let block = SWAPPER_AREAS.lock()
+        .alloc(NonZero::new(sectors).expect("Alloc 0 swap blocks"))
+        .expect("Out of swap space");
+
+    PhysicalBlock(block.get() as u32)
 }
 
-pub fn compat_swap_free(blkno: u32) {
-    extern "C" {
-        fn compat_swap_free(blkno: u32);
-    }
+pub fn compat_swap_free(blkno: PhysicalBlock, bytes: usize) {
+    let start_blk = NonZero::new(blkno.0 as usize)
+        .expect("Free swap block 0");
+    let sectors = NonZero::new((bytes + SECTOR_SIZE - 1) / SECTOR_SIZE)
+        .expect("Free 0 swap blocks");
 
-    unsafe {
-        compat_swap_free(blkno);
-    }
+    SWAPPER_AREAS.lock().free(start_blk,sectors);
 }
 
 define_class_compat!{impl Utility {

@@ -150,7 +150,7 @@ impl Text {
             return;
         }
 
-        compat_swap_free(self.disk_addr.0);
+        compat_swap_free(self.disk_addr, self.len_bytes);
 
         unsafe {
             let _ = Box::from_raw(&raw mut *self);

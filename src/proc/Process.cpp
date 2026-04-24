@@ -1,5 +1,4 @@
 #include "Process.h"
-#include "Kernel.h"
 
 extern "C" {
 	void Process_send_signal(Process*);
@@ -12,14 +11,6 @@ extern "C" {
 	void Process_sstack(Process*);
 	void Process_sbrk(Process*);
 	void Process_sleep_kernel(Process*, unsigned long, int);
-}
-
-extern "C" int compat_swap_alloc(unsigned long len) {
-        return Kernel::Instance().GetSwapperManager().AllocSwap(len);
-}
-
-extern "C" void compat_swap_free(unsigned int blkno) {
-	Kernel::Instance().GetSwapperManager().FreeSwap(0, blkno);
 }
 
 Process::Process() {}
