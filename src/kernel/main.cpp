@@ -8,7 +8,6 @@
 #include "Machine.h"
 #include "Assembly.h"
 #include "Kernel.h"
-#include "OpenFileManager.h"
 #include "CMOSTime.h"
 
 #include "libyrosstd/sys/types.h"

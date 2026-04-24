@@ -32,7 +32,7 @@ pub enum FileSystemError {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct SuperBlock {
+struct DiskSuperBlock {
     pub s_isize: i32,
     pub s_fsize: i32,
 
@@ -51,38 +51,114 @@ pub struct SuperBlock {
     padding: [i32; 47],
 }
 
+#[derive(Clone, Copy)]
+struct SleepFlag {
+    locked: bool,
+}
+
+impl SleepFlag {
+    const fn new() -> Self {
+        Self { locked: false }
+    }
+
+    fn is_locked(&self) -> bool {
+        self.locked
+    }
+
+    fn lock(&mut self) {
+        self.locked = true;
+    }
+
+    fn unlock(&mut self) {
+        self.locked = false;
+    }
+
+    fn chan(&self) -> usize {
+        self as *const Self as usize
+    }
+}
+
+pub struct SuperBlock {
+    disk: DiskSuperBlock,
+    free_lock: SleepFlag,
+    inode_lock: SleepFlag,
+    modified: bool,
+    readonly: bool,
+}
+
 impl SuperBlock {
-    pub fn new() -> SuperBlockRef {
-        Arc::new(Spin::new(Self {
-            s_isize: 0,
-            s_fsize: 0,
-            s_nfree: 0,
-            s_free: [0; 100],
-            s_ninode: 0,
-            s_inode: [0; 100],
-            s_flock: 0,
-            s_ilock: 0,
-            s_fmod: 0,
-            s_ronly: 0,
-            s_time: 0,
-            padding: [0; 47],
-        }))
+    fn from_disk(mut disk: DiskSuperBlock, time: i32) -> Self {
+        let readonly = disk.s_ronly != 0;
+        let modified = disk.s_fmod != 0;
+
+        disk.s_flock = 0;
+        disk.s_ilock = 0;
+        disk.s_time = time;
+
+        Self {
+            disk,
+            free_lock: SleepFlag::new(),
+            inode_lock: SleepFlag::new(),
+            modified,
+            readonly,
+        }
+    }
+
+    fn to_disk(&self) -> DiskSuperBlock {
+        let mut disk = self.disk;
+        disk.s_flock = 0;
+        disk.s_ilock = 0;
+        disk.s_fmod = self.modified as i32;
+        disk.s_ronly = self.readonly as i32;
+        disk
     }
 
     pub fn is_readonly(&self) -> bool {
-        self.s_ronly != 0
+        self.readonly
     }
 
     pub fn is_modified(&self) -> bool {
-        self.s_fmod != 0
+        self.modified
     }
 
     pub fn is_flock(&self) -> bool {
-        self.s_flock != 0
+        self.free_lock.is_locked()
     }
 
     pub fn is_ilock(&self) -> bool {
-        self.s_ilock != 0
+        self.inode_lock.is_locked()
+    }
+
+    fn set_modified(&mut self, modified: bool) {
+        self.modified = modified;
+    }
+
+    fn set_time(&mut self, time: i32) {
+        self.disk.s_time = time;
+    }
+
+    fn free_lock_chan(&self) -> usize {
+        self.free_lock.chan()
+    }
+
+    fn inode_lock_chan(&self) -> usize {
+        self.inode_lock.chan()
+    }
+
+    fn lock_free_list(&mut self) {
+        self.free_lock.lock();
+    }
+
+    fn unlock_free_list(&mut self) {
+        self.free_lock.unlock();
+    }
+
+    fn lock_inode_list(&mut self) {
+        self.inode_lock.lock();
+    }
+
+    fn unlock_inode_list(&mut self) {
+        self.inode_lock.unlock();
     }
 }
 
@@ -120,16 +196,15 @@ impl FileSystem {
     pub const INODE_NUMBER_PER_SECTOR: usize = 8;
     pub const INODE_ZONE_START_SECTOR: usize = 514;
 
-    fn install_loaded_super_block(&mut self, loaded_super_block: &SuperBlock, time: i32) {
-        let mut super_block = *loaded_super_block;
-        super_block.s_time = time;
+    fn install_loaded_super_block(&mut self, loaded_super_block: DiskSuperBlock, time: i32) {
+        let super_block = SuperBlock::from_disk(loaded_super_block, time);
         self.m_mount[0].m_dev = DevId(ROOTDEV);
         self.m_mount[0].m_spb = Some(Arc::new(Spin::new(super_block)));
         self.m_mount[0].m_inode = None;
     }
 
-    fn read_super_block() -> Result<SuperBlock, FileSystemError> {
-        let mut super_block = core::mem::MaybeUninit::<SuperBlock>::zeroed();
+    fn read_super_block() -> Result<DiskSuperBlock, FileSystemError> {
+        let mut super_block = core::mem::MaybeUninit::<DiskSuperBlock>::zeroed();
         let super_block_ptr = super_block.as_mut_ptr() as *mut u8;
 
         for i in 0..2 {
@@ -152,8 +227,8 @@ impl FileSystem {
         Ok(unsafe { super_block.assume_init() })
     }
 
-    fn write_super_block(dev: DevId, super_block: &SuperBlock) -> Result<(), FileSystemError> {
-        let super_block_ptr = super_block as *const SuperBlock as *const u8;
+    fn write_super_block(dev: DevId, super_block: DiskSuperBlock) -> Result<(), FileSystemError> {
+        let super_block_ptr = &super_block as *const DiskSuperBlock as *const u8;
 
         for i in 0..2 {
             let mut buf = global_buffer_manager()
@@ -240,7 +315,7 @@ impl FileSystem {
 
     pub fn load_super_block(&mut self) -> Result<(), FileSystemError> {
         let time = compat_get_time() as i32;
-        self.install_loaded_super_block(&Self::read_super_block()?, time);
+        self.install_loaded_super_block(Self::read_super_block()?, time);
 
         Ok(())
     }
@@ -256,9 +331,9 @@ impl FileSystem {
             };
 
             let mut sb = spb.lock();
-            if sb.s_nfree > 100 || sb.s_ninode > 100 {
-                sb.s_nfree = 0;
-                sb.s_ninode = 0;
+            if sb.disk.s_nfree > 100 || sb.disk.s_ninode > 100 {
+                sb.disk.s_nfree = 0;
+                sb.disk.s_ninode = 0;
             }
 
             return Ok(spb.clone());
@@ -291,12 +366,12 @@ impl FileSystem {
 
             {
                 let mut sb = spb.lock();
-                sb.s_fmod = 0;
-                sb.s_time = time;
+                sb.set_modified(false);
+                sb.set_time(time);
             }
 
-            let sb = *spb.lock();
-            let _ = Self::write_super_block(mount.m_dev, &sb);
+            let sb = spb.lock().to_disk();
+            let _ = Self::write_super_block(mount.m_dev, sb);
         }
 
         fs::global_inode_table().update_inode_table();
@@ -308,45 +383,56 @@ impl FileSystem {
 
     pub fn i_alloc(&mut self, dev: DevId) -> Result<InodeRef, FileSystemError> {
         let spb = self.get_fs(dev)?;
+        let ilock_addr = spb.lock().inode_lock_chan();
 
-        {
-            let sb = spb.lock();
-            if sb.is_ilock() {
-                // XXX: **** WE ARE USING SPINLOCKS FOR NOW ****
-                //      ******* DON'T SLEEP WITH SPINLOCKS HELD *******
-                //      ******* OR YOU ** MAY **  GET DEADLOCKS *******
-                // TODO: sleep
-            }
-        }
-
-        {
+        loop {
             let mut sb = spb.lock();
-            if sb.s_ninode <= 0 {
-                sb.s_ilock = 1;
+            while sb.is_ilock() {
+                drop(sb);
+                Userspace::get().proc().sleep_kernel(ilock_addr, PINOD);
+                sb = spb.lock();
+            }
 
-                let isize = sb.s_isize;
-                let refill_result = Self::scan_free_inodes(dev, isize);
+            if sb.disk.s_ninode > 0 {
+                break;
+            }
 
-                sb.s_ilock = 0;
+            sb.lock_inode_list();
+            let isize = sb.disk.s_isize;
+            drop(sb);
 
-                let (ninode, inode) = refill_result?;
-                sb.s_ninode = ninode;
-                sb.s_inode = inode;
+            let refill_result = Self::scan_free_inodes(dev, isize);
 
-                if sb.s_ninode <= 0 {
-                    return Err(FileSystemError::NoSpace);
+            let mut sb = spb.lock();
+            sb.unlock_inode_list();
+            let (ninode, inode) = match refill_result {
+                Ok(refill) => refill,
+                Err(err) => {
+                    drop(sb);
+                    ProcessManager::get().wakeup_all(ilock_addr);
+                    return Err(err);
                 }
+            };
+            sb.disk.s_ninode = ninode;
+            sb.disk.s_inode = inode;
+            let has_free_inode = sb.disk.s_ninode > 0;
+            drop(sb);
+
+            ProcessManager::get().wakeup_all(ilock_addr);
+
+            if !has_free_inode {
+                return Err(FileSystemError::NoSpace);
             }
         }
 
         loop {
             let ino = {
                 let mut sb = spb.lock();
-                if sb.s_ninode <= 0 {
+                if sb.disk.s_ninode <= 0 {
                     return Err(FileSystemError::NoSpace);
                 }
-                sb.s_ninode -= 1;
-                sb.s_inode[sb.s_ninode as usize]
+                sb.disk.s_ninode -= 1;
+                sb.disk.s_inode[sb.disk.s_ninode as usize]
             };
 
             let inode = fs::global_inode_table()
@@ -360,7 +446,7 @@ impl FileSystem {
 
             if is_free {
                 inode.lock().clean();
-                spb.lock().s_fmod = 1;
+                spb.lock().set_modified(true);
                 return Ok(inode.into_inner());
             }
         }
@@ -370,14 +456,14 @@ impl FileSystem {
         let spb = self.get_fs(dev)?;
         let mut sb = spb.lock();
 
-        if sb.is_ilock() || sb.s_ninode >= 100 {
+        if sb.is_ilock() || sb.disk.s_ninode >= 100 {
             return Ok(());
         }
 
-        let idx = sb.s_ninode as usize;
-        sb.s_inode[idx] = number;
-        sb.s_ninode += 1;
-        sb.s_fmod = 1;
+        let idx = sb.disk.s_ninode as usize;
+        sb.disk.s_inode[idx] = number;
+        sb.disk.s_ninode += 1;
+        sb.set_modified(true);
         Ok(())
     }
 
@@ -385,21 +471,21 @@ impl FileSystem {
         let spb = self.get_fs(dev)?;
 
         let mut sb = spb.lock();
-        let flock_addr = (&raw const sb.s_flock) as usize;
+        let flock_addr = sb.free_lock_chan();
         while sb.is_flock() {
             drop(sb);
             Userspace::get().proc().sleep_kernel(flock_addr, PINOD);
             sb = spb.lock();
         }
 
-        if sb.s_nfree <= 0 {
+        if sb.disk.s_nfree <= 0 {
             return Err(FileSystemError::NoSpace);
         }
 
-        sb.s_nfree -= 1;
-        let blkno = sb.s_free[sb.s_nfree as usize];
+        sb.disk.s_nfree -= 1;
+        let blkno = sb.disk.s_free[sb.disk.s_nfree as usize];
         if blkno == 0 {
-            sb.s_nfree = 0;
+            sb.disk.s_nfree = 0;
             return Err(FileSystemError::NoSpace);
         }
 
@@ -407,8 +493,8 @@ impl FileSystem {
             return Err(FileSystemError::BadBlock);
         }
 
-        if sb.s_nfree <= 0 {
-            sb.s_flock = 1;
+        if sb.disk.s_nfree <= 0 {
+            sb.lock_free_list();
             drop(sb);
 
             let refill_result = global_buffer_manager()
@@ -417,13 +503,13 @@ impl FileSystem {
                 .map(|buf| {
                     let table = buf.as_slice::<i32>();
                     let mut sb = spb.lock();
-                    sb.s_nfree = table[0];
-                    sb.s_free.copy_from_slice(&table[1..101]);
-                    sb.s_flock = 0;
+                    sb.disk.s_nfree = table[0];
+                    sb.disk.s_free.copy_from_slice(&table[1..101]);
+                    sb.unlock_free_list();
                 });
 
             if refill_result.is_err() {
-                spb.lock().s_flock = 0;
+                spb.lock().unlock_free_list();
             }
 
             ProcessManager::get().wakeup_all(flock_addr);
@@ -435,7 +521,7 @@ impl FileSystem {
             .get_blk(dev, PhysicalBlock(blkno as u32))
             .map_err(|_| FileSystemError::BufferUnavailable)?;
         global_buffer_manager().clr_buf(&mut buf);
-        sb.s_fmod = 1;
+        sb.set_modified(true);
 
         Ok(buf)
     }
@@ -444,9 +530,9 @@ impl FileSystem {
         let spb = self.get_fs(dev)?;
 
         let mut sb = spb.lock();
-        sb.s_fmod = 1;
+        sb.set_modified(true);
 
-        let flock_addr = (&raw const sb.s_flock) as usize;
+        let flock_addr = sb.free_lock_chan();
         while sb.is_flock() {
             drop(sb);
             Userspace::get().proc().sleep_kernel(flock_addr, PINOD);
@@ -457,15 +543,15 @@ impl FileSystem {
             return Err(FileSystemError::BadBlock);
         }
 
-        if sb.s_nfree <= 0 {
-            sb.s_nfree = 1;
-            sb.s_free[0] = 0;
+        if sb.disk.s_nfree <= 0 {
+            sb.disk.s_nfree = 1;
+            sb.disk.s_free[0] = 0;
         }
 
-        if sb.s_nfree >= 100 {
-            sb.s_flock = 1;
-            let nfree = sb.s_nfree;
-            let free = sb.s_free;
+        if sb.disk.s_nfree >= 100 {
+            sb.lock_free_list();
+            let nfree = sb.disk.s_nfree;
+            let free = sb.disk.s_free;
             drop(sb);
 
             let write_result = global_buffer_manager()
@@ -482,16 +568,16 @@ impl FileSystem {
                 });
 
             sb = spb.lock();
-            sb.s_nfree = 0;
-            sb.s_flock = 0;
+            sb.disk.s_nfree = 0;
+            sb.unlock_free_list();
             ProcessManager::get().wakeup_all(flock_addr);
             write_result?;
         }
 
-        let idx = sb.s_nfree as usize;
-        sb.s_free[idx] = blkno;
-        sb.s_nfree += 1;
-        sb.s_fmod = 1;
+        let idx = sb.disk.s_nfree as usize;
+        sb.disk.s_free[idx] = blkno;
+        sb.disk.s_nfree += 1;
+        sb.set_modified(true);
         Ok(())
     }
 

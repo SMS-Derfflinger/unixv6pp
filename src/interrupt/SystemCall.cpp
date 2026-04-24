@@ -82,7 +82,8 @@ int SystemCall::Sys_SBreak()
 /*	31 = stty	count = 1	*/
 int SystemCall::Sys_Stty()
 {
-	Inode* pInode;
+    // TODO
+	/*Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
 	int fd = User_get_arg()[0];
 	TTy* pTTy = (TTy *)User_get_arg()[1];
@@ -97,7 +98,7 @@ int SystemCall::Sys_Stty()
 		return 0;
 	}
 	short dev = Inode_get_dev(pInode);
-        g_ConsoleDevice.SgTTy(dev, pTTy);
+        g_ConsoleDevice.SgTTy(dev, pTTy);*/
 
 	return 0;	/* GCC likes it ! */
 }
@@ -105,7 +106,8 @@ int SystemCall::Sys_Stty()
 /*	32 = gtty	count = 1	*/
 int SystemCall::Sys_Gtty()
 {
-	Inode* pInode;
+    // TODO
+	/*Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
 	int fd = User_get_arg()[0];
 	TTy* pTTy = (TTy *)User_get_arg()[1];
@@ -120,7 +122,7 @@ int SystemCall::Sys_Gtty()
 		return 0;
 	}
 	short dev = Inode_get_dev(pInode);
-        g_ConsoleDevice.SgTTy(dev, pTTy);
+        g_ConsoleDevice.SgTTy(dev, pTTy);*/
 
 	return 0;	/* GCC likes it ! */
 }

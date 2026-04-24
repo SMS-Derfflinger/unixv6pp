@@ -1,6 +1,5 @@
 use eonix_spin::Spin;
 use eonix_sync_base::LazyLock;
-use kernel_macros::define_class_compat;
 
 use crate::{
     compat::compat_get_time,
@@ -11,9 +10,9 @@ use crate::{
     },
     fs::{
         self,
-        file::{File, FileFlags, FileRefCompat, OpenFiles},
+        file::{File, FileFlags, OpenFiles},
         file_system::FileSystem,
-        inode::{fileref_leak, DiskInode, Inode, InodeFlag, InodeMode},
+        inode::{DiskInode, Inode, InodeFlag, InodeMode},
         FileRef, InodeRef, InodeRefGuard, InodeRefPutExt,
     },
     proc::{Channel, ProcessManager, PINOD},
@@ -24,28 +23,6 @@ use crate::{
 
 pub static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
     LazyLock::new(|| Spin::new(OpenFileTable::new()));
-
-define_class_compat! {impl OpenFileTable {
-    pub fn f_alloc() -> Option<FileRefCompat> {
-        let mut this = GLOBAL_OPEN_FILE_TABLE.lock();
-        let open_files = &mut Userspace::get().open_files;
-        match this.f_alloc(open_files) {
-            Ok((fd, fileref)) => {
-                Userspace::get().set_user_retval(fd as u32);
-                Some(fileref_leak(fileref))
-            }
-            Err(e) => {
-                Userspace::get().set_error(e);
-                None
-            }
-        }
-    }
-
-    pub fn f_close(file: FileRefCompat) {
-        let mut this = GLOBAL_OPEN_FILE_TABLE.lock();
-        this.close_f(&file.own());
-    }
-}}
 
 pub(crate) struct OpenFileTable {
     m_file: [FileRef; Self::NFILE],
@@ -62,7 +39,7 @@ impl OpenFileTable {
 
     fn find_free(&mut self) -> Option<&mut FileRef> {
         for file in &mut self.m_file {
-            if file.lock().f_count != 0 {
+            if !file.lock().is_free() {
                 continue;
             }
 
@@ -81,10 +58,7 @@ impl OpenFileTable {
 
         {
             let mut file = free_file.lock();
-            file.f_count = 1;
-            file.f_offset = 0;
-            file.f_flag = FileFlags::empty();
-            file.f_inode = None;
+            file.reset_for_open();
         }
         open_files.set_f(fd, free_file.clone());
         Ok((fd, free_file.clone()))

@@ -1,14 +1,12 @@
 use alloc::sync::Arc;
 use bitflags::bitflags;
-use core::{array, ops::Deref, ptr::NonNull};
+use core::{array, ptr::NonNull};
 use eonix_spin::Spin;
-use kernel_macros::define_class_compat;
 
 use crate::{
     constants::PosixError,
-    fs::{inode::fileref_leak, FileRef, InodeRef},
+    fs::{FileRef, InodeRef},
     sync::SpinExt,
-    user::Userspace,
 };
 
 use super::inode::Inode;
@@ -53,43 +51,6 @@ impl InodeRefCompat {
     }
 }
 
-#[repr(transparent)]
-#[derive(Clone, Copy)]
-pub struct FileRefCompat(NonNull<File>);
-
-unsafe impl Send for FileRefCompat {}
-unsafe impl Sync for FileRefCompat {}
-
-impl FileRefCompat {
-    /// Create a reference to File for compatibility use.
-    ///
-    /// # Safety
-    /// The created FileRefCompat holds **NO REFCOUNTS**. The caller MUST
-    /// manage the lifetime manually.
-    pub unsafe fn new(file: &File) -> Self {
-        Self(NonNull::from_ref(file))
-    }
-
-    pub fn own(&self) -> FileRef {
-        let arc = unsafe { Arc::from_raw((&**self) as *const Spin<File>) };
-        let ret = arc.clone();
-        core::mem::forget(arc);
-
-        ret
-    }
-}
-
-impl Deref for FileRefCompat {
-    type Target = Spin<File>;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe {
-            // SAFETY: InodeRefCompat invariant guarantees this.
-            &*Spin::ref_from_inner(self.0.as_ptr())
-        }
-    }
-}
-
 #[repr(C)]
 pub struct File {
     pub f_flag: FileFlags,
@@ -110,6 +71,17 @@ impl File {
 
     pub fn new() -> FileRef {
         Arc::new(Spin::new(Self::new_const()))
+    }
+
+    pub fn is_free(&self) -> bool {
+        self.f_count == 0
+    }
+
+    pub fn reset_for_open(&mut self) {
+        self.f_count = 1;
+        self.f_offset = 0;
+        self.f_flag = FileFlags::empty();
+        self.f_inode = None;
     }
 }
 
@@ -164,40 +136,6 @@ impl OpenFiles {
         }
     }
 }
-
-define_class_compat! {impl OpenFiles {
-    pub fn get_file(fd: i32) -> Option<FileRefCompat> {
-        let this = &Userspace::get().open_files;
-
-        if fd < 0 {
-            Userspace::get().set_error(PosixError::EBADF);
-            return None;
-        }
-
-        this.get_f(fd as usize)
-            .inspect_err(|&err| Userspace::get().set_error(err)).ok().map(fileref_leak)
-    }
-
-    pub fn get_inode(fd: i32) -> Option<InodeRefCompat> {
-        let this = &Userspace::get().open_files;
-
-        if fd < 0 {
-            Userspace::get().set_error(PosixError::EBADF);
-            return None;
-        }
-
-        let file = this
-            .get_f(fd as usize)
-            .inspect_err(|&err| Userspace::get().set_error(err))
-            .ok()?;
-        let inode = file.lock().f_inode.as_ref()?.clone();
-        let compat = {
-            let inode = inode.lock();
-            unsafe { InodeRefCompat::new(&inode) }
-        };
-        Some(compat)
-    }
-}}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]

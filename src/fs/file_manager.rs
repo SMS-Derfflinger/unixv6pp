@@ -15,7 +15,7 @@ use crate::{
         inode::{InodeFlag, InodeMode},
         File, FileRef, Inode, InodeRef, InodeRefGuard, InodeRefPutExt,
     },
-    proc::{Channel, Process, ProcessManager},
+    proc::{Channel, ProcessManager},
     sync::SpinExt,
     user::Userspace,
 };
@@ -40,11 +40,8 @@ pub struct FileManager;
 
 extern "C" {
     fn Userspace_is_root() -> bool;
-
     fn User_get_arg_() -> *mut [usize; 5];
     fn User_get_curdir_() -> *mut [u8; 128];
-    fn User_get_procp_() -> *mut *mut Process;
-
 }
 
 impl DirectoryEntry {

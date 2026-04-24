@@ -7,9 +7,9 @@ use crate::{
         char_device::{char_device_for_dev, char_device_read, char_device_write},
     },
     fs::{
-        file::{FileFlags, FileRefCompat},
+        file::FileFlags,
         file_system::FileSystem,
-        global_file_system, FileRef, InodeRef,
+        global_file_system, InodeRef,
     },
     proc::{Channel, ProcessManager},
     sync::{KernelSpinGuard, SpinExt},
@@ -92,17 +92,6 @@ pub struct Inode {
     pub i_addr: [PhysicalBlock; I_ADDR_SIZE], // 文件逻辑块号和物理块号转换的基本索引表
 
     pub i_lastr: i32, // 最近一次读取文件的逻辑块号（用于判断是否预读）
-}
-
-pub fn fileref_leak(file_ref: FileRef) -> FileRefCompat {
-    let fileref_compat = unsafe {
-        // SAFETY: Leaking the Inode is always safe.
-        //         Just make sure we don't leak too much...
-        FileRefCompat::new(&file_ref.lock())
-    };
-
-    core::mem::forget(file_ref);
-    fileref_compat
 }
 
 impl Inode {
@@ -216,7 +205,7 @@ impl Inode {
         while Userspace::get().error.is_none() && buffer.len() != 0 {
             let lbn = offset / Self::BLOCK_SIZE;
             let inner_offset = offset % Self::BLOCK_SIZE;
-            let mut nbytes = (Self::BLOCK_SIZE - inner_offset).min(buffer.len());
+            let nbytes = (Self::BLOCK_SIZE - inner_offset).min(buffer.len());
 
             let mut ra = None;
             let (bn, dev);
@@ -326,7 +315,7 @@ impl Inode {
             6..262 => {
                 let indir_slot = LBN_SMALL_OFF + (lbn - LBN_SMALL) / INDIR_SLOTS;
                 let mut indir_blk = self.get_direct_blk(indir_slot)?;
-                let mut indir_table = indir_blk.as_slice_mut::<u32>();
+                let indir_table = indir_blk.as_slice_mut::<u32>();
                 let indir_idx = (lbn - LBN_SMALL) % INDIR_SLOTS;
                 let blk = self.get_indirect_blk(&mut indir_table[indir_idx as usize])?;
 
@@ -449,7 +438,7 @@ impl Inode {
             return;
         }
 
-        global_file_system().free(self.i_dev, blk.0 as _);
+        let _ = global_file_system().free(self.i_dev, blk.0 as _);
     }
 
     fn release_table(&self, table_blk: PhysicalBlock, level: usize) {
