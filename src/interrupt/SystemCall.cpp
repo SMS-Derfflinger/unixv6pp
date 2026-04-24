@@ -82,17 +82,15 @@ int SystemCall::Sys_SBreak()
 /*	31 = stty	count = 1	*/
 int SystemCall::Sys_Stty()
 {
-	File* pFile;
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
 	int fd = User_get_arg()[0];
 	TTy* pTTy = (TTy *)User_get_arg()[1];
 
-	if ( (pFile = OpenFiles_get_file(fd)) == NULL )
+	if ( (pInode = OpenFiles_get_inode(fd)) == NULL )
 	{
 		return 0;
 	}
-	pInode = pFile->f_inode;
 	if ( (pInode->i_mode & Inode::IFMT) != Inode::IFCHR )
 	{
 		User_get_error() = User::ENOTTY;
@@ -107,17 +105,15 @@ int SystemCall::Sys_Stty()
 /*	32 = gtty	count = 1	*/
 int SystemCall::Sys_Gtty()
 {
-	File* pFile;
 	Inode* pInode;
 	User& u = Kernel::Instance().GetUser();
 	int fd = User_get_arg()[0];
 	TTy* pTTy = (TTy *)User_get_arg()[1];
 
-	if ( (pFile = OpenFiles_get_file(fd)) == NULL )
+	if ( (pInode = OpenFiles_get_inode(fd)) == NULL )
 	{
 		return 0;
 	}
-	pInode = pFile->f_inode;
 	if ( (pInode->i_mode & Inode::IFMT) != Inode::IFCHR )
 	{
 		User_get_error() = User::ENOTTY;
@@ -197,5 +193,3 @@ int SystemCall::Sys_Ssig()
 
 	return 0;	/* GCC likes it ! */
 }
-
-

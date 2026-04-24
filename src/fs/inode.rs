@@ -7,7 +7,7 @@ use crate::{
         char_device::{char_device_for_dev, char_device_read, char_device_write},
     },
     fs::{
-        file::{FileFlags, FileRefCompat, InodeRefCompat},
+        file::{FileFlags, FileRefCompat},
         file_system::FileSystem,
         global_file_system, FileRef, InodeRef,
     },
@@ -92,17 +92,6 @@ pub struct Inode {
     pub i_addr: [PhysicalBlock; I_ADDR_SIZE], // 文件逻辑块号和物理块号转换的基本索引表
 
     pub i_lastr: i32, // 最近一次读取文件的逻辑块号（用于判断是否预读）
-}
-
-pub fn inoderef_leak(inode_ref: InodeRef) -> InodeRefCompat {
-    let inoderef_compat = unsafe {
-        // SAFETY: Leaking the Inode is always safe.
-        //         Just make sure we don't leak too much...
-        InodeRefCompat::new(&inode_ref.lock())
-    };
-
-    core::mem::forget(inode_ref);
-    inoderef_compat
 }
 
 pub fn fileref_leak(file_ref: FileRef) -> FileRefCompat {

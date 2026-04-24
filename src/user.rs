@@ -414,8 +414,6 @@ define_user_compat! {
     mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
     ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
     proc: *mut Process => get_procp_ := core::ptr::null_mut();
-    cwd: Option<InodeRef> => get_cdir_ := None;
-    cwd_parent: Option<InodeRef> => get_pdir_ := None;
     error: Option<PosixError> => get_error_ := None;
     rsav: [Pointer; 2] => get_rsav_ := [Pointer(0); 2];
     ssav: [Pointer; 2] => get_ssav_ := [Pointer(0); 2];

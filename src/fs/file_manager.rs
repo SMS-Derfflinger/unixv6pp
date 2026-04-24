@@ -1,7 +1,5 @@
 use core::{cmp::min, ffi::CStr, ptr};
 
-use kernel_macros::define_class_compat;
-
 use crate::{
     compat::compat_get_time,
     constants::{PosixError, Signal},
@@ -14,8 +12,8 @@ use crate::{
         self,
         file::FileFlags,
         file_system::FileSystem,
-        inode::{inoderef_leak, InodeFlag, InodeMode},
-        File, FileRef, Inode, InodeRef, InodeRefCompat, InodeRefGuard, InodeRefPutExt,
+        inode::{InodeFlag, InodeMode},
+        File, FileRef, Inode, InodeRef, InodeRefGuard, InodeRefPutExt,
     },
     proc::{Channel, Process, ProcessManager},
     sync::SpinExt,
@@ -626,7 +624,8 @@ impl FileManager {
     }
 
     pub fn creat() {
-        let new_acc_mode = (args()[1] as u32) & (InodeMode::IRWXU | InodeMode::IRWXG | InodeMode::IRWXO).bits();
+        let new_acc_mode =
+            (args()[1] as u32) & (InodeMode::IRWXU | InodeMode::IRWXG | InodeMode::IRWXO).bits();
 
         match FileManager.namei(DirSearchMode::Create as u32) {
             None => {
@@ -634,7 +633,8 @@ impl FileManager {
                     return;
                 }
 
-                let Some(inode) = FileManager.maknode(new_acc_mode & !InodeMode::ISVTX.bits()) else {
+                let Some(inode) = FileManager.maknode(new_acc_mode & !InodeMode::ISVTX.bits())
+                else {
                     return;
                 };
 
@@ -692,11 +692,7 @@ impl FileManager {
             0 => file.f_offset = offset,
             1 => file.f_offset += offset,
             2 => {
-                let inode = file
-                    .f_inode
-                    .as_ref()
-                    .expect("file without inode")
-                    .clone();
+                let inode = file.f_inode.as_ref().expect("file without inode").clone();
                 file.f_offset = inode.lock().i_size as i32 + offset;
             }
             _ => {}
@@ -798,10 +794,7 @@ impl FileManager {
             let (inode_ref, foff) = {
                 let file = file_ref.lock();
                 (
-                    file.f_inode
-                        .as_ref()
-                        .expect("file without inode")
-                        .clone(),
+                    file.f_inode.as_ref().expect("file without inode").clone(),
                     file.f_offset,
                 )
             };
@@ -820,7 +813,8 @@ impl FileManager {
             file.f_offset += moved as i32;
         }
 
-        Userspace::get().set_user_retval((count.saturating_sub(Userspace::get().ioparam.m_count)) as u32);
+        Userspace::get()
+            .set_user_retval((count.saturating_sub(Userspace::get().ioparam.m_count)) as u32);
     }
 
     pub fn pipe() {
@@ -831,25 +825,27 @@ impl FileManager {
                 return;
             }
         };
-        let (fd_r, file_r) = match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
-            Ok(v) => v,
-            Err(err) => {
-                set_error(err);
-                i_put(inode_ref);
-                return;
-            }
-        };
+        let (fd_r, file_r) =
+            match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
+                Ok(v) => v,
+                Err(err) => {
+                    set_error(err);
+                    i_put(inode_ref);
+                    return;
+                }
+            };
 
-        let (fd_w, file_w) = match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
-            Ok(v) => v,
-            Err(err) => {
-                set_error(err);
-                Userspace::get().open_files.clear_f(fd_r);
-                file_r.lock().f_count = 0;
-                i_put(inode_ref);
-                return;
-            }
-        };
+        let (fd_w, file_w) =
+            match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
+                Ok(v) => v,
+                Err(err) => {
+                    set_error(err);
+                    Userspace::get().open_files.clear_f(fd_r);
+                    file_r.lock().f_count = 0;
+                    i_put(inode_ref);
+                    return;
+                }
+            };
 
         let fdarr = args()[0] as *mut i32;
         unsafe {

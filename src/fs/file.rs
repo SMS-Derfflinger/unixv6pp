@@ -35,27 +35,21 @@ impl InodeRefCompat {
     /// # Safety
     /// The created InodeRefCompat holds **NO REFCOUNTS**. The caller MUST
     /// manage the lifetime manually.
-    pub unsafe fn new(inode: &Inode) -> Self {
+    pub(crate) unsafe fn new(inode: &Inode) -> Self {
         Self(NonNull::from_ref(inode))
     }
 
-    pub fn own(&self) -> InodeRef {
-        let arc = unsafe { Arc::from_raw((&**self) as *const Spin<Inode>) };
+    pub(crate) fn to_ref(self) -> InodeRef {
+        let spin = unsafe {
+            // SAFETY: InodeRefCompat is only constructed from an Inode inside
+            // a Spin<Inode> allocated by Arc.
+            Spin::ref_from_inner(self.0.as_ptr())
+        };
+        let arc = unsafe { Arc::from_raw(spin as *const Spin<Inode>) };
         let ret = arc.clone();
         core::mem::forget(arc);
 
         ret
-    }
-}
-
-impl Deref for InodeRefCompat {
-    type Target = Spin<Inode>;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe {
-            // SAFETY: InodeRefCompat invariant guarantees this.
-            &*Spin::ref_from_inner(self.0.as_ptr())
-        }
     }
 }
 
@@ -182,6 +176,26 @@ define_class_compat! {impl OpenFiles {
 
         this.get_f(fd as usize)
             .inspect_err(|&err| Userspace::get().set_error(err)).ok().map(fileref_leak)
+    }
+
+    pub fn get_inode(fd: i32) -> Option<InodeRefCompat> {
+        let this = &Userspace::get().open_files;
+
+        if fd < 0 {
+            Userspace::get().set_error(PosixError::EBADF);
+            return None;
+        }
+
+        let file = this
+            .get_f(fd as usize)
+            .inspect_err(|&err| Userspace::get().set_error(err))
+            .ok()?;
+        let inode = file.lock().f_inode.as_ref()?.clone();
+        let compat = {
+            let inode = inode.lock();
+            unsafe { InodeRefCompat::new(&inode) }
+        };
+        Some(compat)
     }
 }}
 

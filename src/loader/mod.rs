@@ -2,9 +2,12 @@ use alloc::boxed::Box;
 use eonix_mm::paging::PAGE_SIZE;
 use kernel_macros::define_class_compat;
 
-use crate::fs::InodeRef;
+use crate::fs::{InodeRef, InodeRefCompat};
 use crate::sync::SpinExt;
-use crate::{Ext, compat::{compat_flush_page_directory, compat_user_pt}, fs::InodeRefCompat};
+use crate::{
+    compat::{compat_flush_page_directory, compat_user_pt},
+    Ext,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -89,8 +92,10 @@ const PA_RW: usize = 1 << 1;
 
 impl SectionHeader {
     fn name_stripped(&self) -> &[u8] {
-        let end_idx = self.name
-            .iter().position(|&c| c == 0)
+        let end_idx = self
+            .name
+            .iter()
+            .position(|&c| c == 0)
             .unwrap_or(self.name.len());
 
         &self.name[..end_idx]
@@ -103,19 +108,23 @@ impl PEParser {
     }
 
     fn wanted_sections(&self, skip_text: bool) -> impl Iterator<Item = &SectionHeader> {
-        const SECTIONS: &[&[u8]] = &[
-            b".text", b".data", b".rdata", b".rodata", b".bss",
-        ];
+        const SECTIONS: &[&[u8]] = &[b".text", b".data", b".rdata", b".rodata", b".bss"];
 
-        self.section_headers.as_deref().unwrap().iter().filter(move |section| {
-            let start_idx = if skip_text { 1 } else { 0 };
-            SECTIONS[start_idx..].iter()
-                .find(|&&n| n == section.name_stripped()).is_some()
-        })
+        self.section_headers
+            .as_deref()
+            .unwrap()
+            .iter()
+            .filter(move |section| {
+                let start_idx = if skip_text { 1 } else { 0 };
+                SECTIONS[start_idx..]
+                    .iter()
+                    .find(|&&n| n == section.name_stripped())
+                    .is_some()
+            })
     }
 
     fn relocate_compat(&mut self, inode: InodeRefCompat, shared_text: bool) {
-        self.relocate(&inode.own(), shared_text);
+        self.relocate(&inode.to_ref(), shared_text);
     }
 
     pub fn relocate(&mut self, inode: &InodeRef, shared_text: bool) {
@@ -162,7 +171,7 @@ impl PEParser {
     }
 
     fn load_compat(&mut self, inode: InodeRefCompat) -> bool {
-        self.load(&inode.own())
+        self.load(&inode.to_ref())
     }
 
     pub fn load(&mut self, inode: &InodeRef) -> bool {
@@ -181,14 +190,19 @@ impl PEParser {
 
         offset += size_of::<NTHeader>();
         let section_count = nt_header.file_header.section_count as usize;
-        let mut section_headers: Box<[SectionHeader]> = unsafe {
-            Box::new_uninit_slice(section_count).assume_init()
-        };
+        let mut section_headers: Box<[SectionHeader]> =
+            unsafe { Box::new_uninit_slice(section_count).assume_init() };
         inode.lock().read(section_headers.as_buffer(), offset);
 
         let OptionalHeader32 {
-            image_base, code_base, data_base, data_dir, stack_size,
-            heap_size, entry, ..
+            image_base,
+            code_base,
+            data_base,
+            data_dir,
+            stack_size,
+            heap_size,
+            entry,
+            ..
         } = &nt_header.opt_header;
 
         self.text = image_base + code_base;

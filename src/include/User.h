@@ -180,18 +180,6 @@ inline bool &User_get_intflg() {
 	return ref;
 }
 
-extern "C" Inode* *User_get_cdir_();
-inline Inode* &User_get_cdir() {
-	auto& ref = *User_get_cdir_();
-	return ref;
-}
-
-extern "C" Inode* *User_get_pdir_();
-inline Inode* &User_get_pdir() {
-	auto& ref = *User_get_pdir_();
-	return ref;
-}
-
 extern "C" char (*User_get_curdir_())[128];
 inline char (&User_get_curdir())[128] {
 	auto& ref = *User_get_curdir_();
@@ -241,4 +229,3 @@ inline IOParameter &User_get_IOParam() {
 }
 
 #endif
-

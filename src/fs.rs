@@ -53,7 +53,8 @@ impl InodeRefPutExt for InodeRef {
     }
 }
 
-pub use file::{File, IOParameter, InodeRefCompat, OpenFiles};
+pub(crate) use file::InodeRefCompat;
+pub use file::{File, IOParameter, OpenFiles};
 pub use file_manager::{DirSearchMode, DirectoryEntry, FileManager, InodeRefExt};
 pub use file_system::SuperBlock;
 pub use inode::{Inode, InodeFlag, InodeMode};

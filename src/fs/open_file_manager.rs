@@ -106,17 +106,6 @@ impl OpenFileTable {
             self.close_pipe(&mut file);
         }
 
-        // if file.f_count <= 1 {
-        //     if let Some(inode) = file.f_inode.take() {
-        //         let write_flag = if file.f_flag.contains(FileFlags::FWRITE) {
-        //             1
-        //         } else {
-        //             0
-        //         };
-        //         inode.lock().close_i(write_flag);
-        //         fs::global_inode_table().i_put(inode.own());
-        //     }
-        // }
         if file.f_count <= 1 {
             let inode = file.f_inode.as_ref().expect("file without inode").clone();
             inode.lock().close_i(file.f_flag & FileFlags::FWRITE);

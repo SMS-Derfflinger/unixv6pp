@@ -699,9 +699,9 @@ static TEMPORARY_STACK: [usize; 6] = [0; 6];
 #[unsafe(naked)]
 extern "C" fn go_kernelspace() {
     naked_asm!(
-        "push $0x200",    // eflags = IF
-        "push $0x08",     // cs
-        "push %ebx",      // eip = entry
+        "push $0x200", // eflags = IF
+        "push $0x08",  // cs
+        "push %ebx",   // eip = entry
         "iret",
         options(att_syntax),
     )
