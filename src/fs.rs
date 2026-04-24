@@ -56,7 +56,7 @@ impl InodeRefPutExt for InodeRef {
 pub use file::{File, IOParameter, InodeRefCompat, OpenFiles};
 pub use file_manager::{DirSearchMode, DirectoryEntry, FileManager, InodeRefExt};
 pub use file_system::SuperBlock;
-pub use inode::{inoderef_leak, Inode, InodeMode, InodeFlag};
+pub use inode::{Inode, InodeFlag, InodeMode};
 pub use open_file_manager::{GLOBAL_INODE_TABLE, GLOBAL_OPEN_FILE_TABLE};
 
 use crate::sync::{KernelSpinGuard, SpinExt};
@@ -79,65 +79,60 @@ pub(crate) fn global_file_system() -> SpinGuard<'static, FileSystem, NoContext> 
     GLOBAL_FILE_SYSTEM.lock_ctx::<NoContext>()
 }
 
-// TODO
-fn with_file_manager(f: extern "C" fn()) {
-    f();
-}
-
 pub(crate) fn syscall_read() {
-    with_file_manager(file_manager::FileManager_read);
+    file_manager::FileManager::read()
 }
 
 pub(crate) fn syscall_write() {
-    with_file_manager(file_manager::FileManager_write);
+    file_manager::FileManager::write()
 }
 
 pub(crate) fn syscall_open() {
-    with_file_manager(file_manager::FileManager_open);
+    file_manager::FileManager::open()
 }
 
 pub(crate) fn syscall_close() {
-    with_file_manager(file_manager::FileManager_close);
+    file_manager::FileManager::close()
 }
 
 pub(crate) fn syscall_creat() {
-    with_file_manager(file_manager::FileManager_creat);
+    file_manager::FileManager::creat()
 }
 
 pub(crate) fn syscall_link() {
-    with_file_manager(file_manager::FileManager_link);
+    file_manager::FileManager::link()
 }
 
 pub(crate) fn syscall_unlink() {
-    with_file_manager(file_manager::FileManager_unlink);
+    file_manager::FileManager::unlink()
 }
 
 pub(crate) fn syscall_chdir() {
-    with_file_manager(file_manager::FileManager_chdir);
+    file_manager::FileManager::chdir()
 }
 
 pub(crate) fn syscall_mknod() {
-    with_file_manager(file_manager::FileManager_mknod);
+    file_manager::FileManager::mknod()
 }
 
 pub(crate) fn syscall_chmod() {
-    with_file_manager(file_manager::FileManager_chmod);
+    file_manager::FileManager::chmod()
 }
 
 pub(crate) fn syscall_chown() {
-    with_file_manager(file_manager::FileManager_chown);
+    file_manager::FileManager::chown()
 }
 
 pub(crate) fn syscall_stat() {
-    with_file_manager(file_manager::FileManager_stat);
+    file_manager::FileManager::stat()
 }
 
 pub(crate) fn syscall_seek() {
-    with_file_manager(file_manager::FileManager_seek);
+    file_manager::FileManager::seek()
 }
 
 pub(crate) fn syscall_fstat() {
-    with_file_manager(file_manager::FileManager_fstat);
+    file_manager::FileManager::fstat()
 }
 
 pub(crate) fn syscall_sync() {
@@ -145,9 +140,9 @@ pub(crate) fn syscall_sync() {
 }
 
 pub(crate) fn syscall_dup() {
-    with_file_manager(file_manager::FileManager_dup);
+    file_manager::FileManager::dup()
 }
 
 pub(crate) fn syscall_pipe() {
-    with_file_manager(file_manager::FileManager_pipe);
+    file_manager::FileManager::pipe()
 }

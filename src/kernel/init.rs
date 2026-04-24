@@ -2,12 +2,14 @@ use core::{arch::naked_asm, mem::MaybeUninit, ptr};
 
 use crate::{
     dev::{buffer::DevId, device_manager::ROOTDEV},
-    fs::{global_file_system, GLOBAL_INODE_TABLE, InodeFlag, inoderef_leak},
+    fs::{global_file_system, InodeFlag, GLOBAL_INODE_TABLE},
     interrupt::set_time,
     kernel::kernel::rust_kernel_initialize,
     machine::{
         asm::enable_interrupts,
-        chip::{SystemTime, cmos_read_byte_high, cmos_read_byte_low, cmos_read_time, init_peripherals},
+        chip::{
+            cmos_read_byte_high, cmos_read_byte_low, cmos_read_time, init_peripherals, SystemTime,
+        },
         enable_page_protection, init_gdt, init_idt, init_page_directory, init_user_page_table,
         load_gdt, load_idt,
     },
@@ -16,7 +18,7 @@ use crate::{
     proc::{KernelStack, ProcessManager},
     sync::SpinExt,
     user::Userspace,
-    vesa::{VbeModeInfo, vesa_init},
+    vesa::{vesa_init, VbeModeInfo},
 };
 
 use super::{diagnose::_diagnose_trace_on, syscall::_lib_open, utility::_make_kernel_time};
@@ -104,7 +106,7 @@ fn rust_kernel_next() {
         let mut inode = iref.lock();
         inode.i_flag.remove(InodeFlag::ILOCK);
         drop(inode);
-        Userspace::get().cwd = Some(inoderef_leak(iref.into_inner()));
+        Userspace::get().cwd = Some(iref.into_inner());
     }
 
     open_tty();

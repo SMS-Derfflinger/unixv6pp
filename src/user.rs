@@ -7,7 +7,7 @@ use kernel_macros::define_class_compat;
 use crate::{
     compat::compat_flush_page_directory,
     constants::{PosixError, Signal, SIGMAX},
-    fs::{inoderef_leak, DirectoryEntry, IOParameter, InodeRef, InodeRefCompat, OpenFiles},
+    fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
     machine::{global_user_page_table, EntryFlags, PageTable, PageTableEntry},
     mm::PAGE_SIZE,
     proc::Process,
@@ -68,11 +68,9 @@ pub struct Userspace {
     pub signal_pending: bool,
 
     /// Inode of our working directory
-    pub cwd: Option<InodeRefCompat>,
-    // cwd: InodeRef,
+    pub cwd: Option<InodeRef>,
     /// Inode of our pwd's parent
-    pub cwd_parent: Option<InodeRefCompat>,
-    // cwd_parent: InodeRef,
+    pub cwd_parent: Option<InodeRef>,
     /// Dentry of our pwd
     pub dentry: DirectoryEntry,
 
@@ -120,7 +118,9 @@ impl Userspace {
             args: [0; 5],
             dirp: core::ptr::null_mut(),
             cwd_full: {
-                let mut arr = [0; 128]; arr[0] = b'/'; arr
+                let mut arr = [0; 128];
+                arr[0] = b'/';
+                arr
             },
             dentry: DirectoryEntry::new(),
             cwd_name: [0; 28],
@@ -203,11 +203,13 @@ impl Userspace {
     }
 
     pub fn getcwd(&self) -> InodeRef {
-        self.cwd.unwrap().own()
+        self.cwd
+            .clone()
+            .expect("current working directory is not set")
     }
 
     pub fn set_cwd_parent(&mut self, parent: InodeRef) {
-        self.cwd_parent = Some(inoderef_leak(parent));
+        self.cwd_parent = Some(parent);
     }
 
     pub fn proc(&self) -> &'static mut Process {
@@ -412,8 +414,8 @@ define_user_compat! {
     mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
     ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
     proc: *mut Process => get_procp_ := core::ptr::null_mut();
-    cwd: Option<InodeRefCompat> => get_cdir_ := None;
-    cwd_parent: Option<InodeRefCompat> => get_pdir_ := None;
+    cwd: Option<InodeRef> => get_cdir_ := None;
+    cwd_parent: Option<InodeRef> => get_pdir_ := None;
     error: Option<PosixError> => get_error_ := None;
     rsav: [Pointer; 2] => get_rsav_ := [Pointer(0); 2];
     ssav: [Pointer; 2] => get_ssav_ := [Pointer(0); 2];

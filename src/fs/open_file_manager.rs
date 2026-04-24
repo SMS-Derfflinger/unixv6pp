@@ -91,11 +91,8 @@ impl OpenFileTable {
     }
 
     fn close_pipe(&mut self, file: &mut File) {
-        // let Some(inode) = file.f_inode else { return };
-
-        // let mut inode = inode.lock();
-        let mut inoderef = file.f_inode.expect("Pipe without inodes");
-        let inode = unsafe { inoderef.deref_compat() };
+        let inoderef = file.f_inode.as_ref().expect("Pipe without inodes");
+        let mut inode = inoderef.lock();
 
         inode.i_mode &= !(InodeMode::IREAD | InodeMode::IWRITE);
         ProcessManager::get().wakeup_all(inode.channel_read());
@@ -121,7 +118,7 @@ impl OpenFileTable {
         //     }
         // }
         if file.f_count <= 1 {
-            let inode = file.f_inode.unwrap().own();
+            let inode = file.f_inode.as_ref().expect("file without inode").clone();
             inode.lock().close_i(file.f_flag & FileFlags::FWRITE);
             GLOBAL_INODE_TABLE.lock().i_put(inode);
         }

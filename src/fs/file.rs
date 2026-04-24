@@ -46,10 +46,6 @@ impl InodeRefCompat {
 
         ret
     }
-
-    pub unsafe fn deref_compat(&mut self) -> &mut Inode {
-        unsafe { self.0.as_mut() }
-    }
 }
 
 impl Deref for InodeRefCompat {
@@ -104,7 +100,7 @@ impl Deref for FileRefCompat {
 pub struct File {
     pub f_flag: FileFlags,
     pub f_count: i32,
-    pub f_inode: Option<InodeRefCompat>,
+    pub f_inode: Option<InodeRef>,
     pub f_offset: i32,
 }
 

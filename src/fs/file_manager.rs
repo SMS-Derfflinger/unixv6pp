@@ -44,7 +44,6 @@ extern "C" {
     fn Userspace_is_root() -> bool;
 
     fn User_get_arg_() -> *mut [usize; 5];
-    fn User_get_cdir_() -> *mut Option<InodeRefCompat>;
     fn User_get_curdir_() -> *mut [u8; 128];
     fn User_get_procp_() -> *mut *mut Process;
 
@@ -82,8 +81,8 @@ fn is_root() -> bool {
     unsafe { Userspace_is_root() }
 }
 
-fn i_put(inode: InodeRefCompat) {
-    fs::global_inode_table().i_put(inode.own());
+fn i_put(inode: InodeRef) {
+    fs::global_inode_table().i_put(inode);
 }
 
 fn i_get(dev: DevId, ino: i32) -> Result<InodeRefGuard, PosixError> {
@@ -344,11 +343,13 @@ impl FileManager {
 
     fn readp_inner(&self, file_ref: &FileRef) {
         loop {
-            let (inode_compat, foff) = {
+            let (inode_ref, foff) = {
                 let file = file_ref.lock();
-                (file.f_inode.expect("pipe without inode"), file.f_offset)
+                (
+                    file.f_inode.as_ref().expect("pipe without inode").clone(),
+                    file.f_offset,
+                )
             };
-            let inode_ref = inode_compat.own();
             let mut inode = Inode::lock_pipe(&inode_ref);
 
             if foff == inode.i_size as i32 {
@@ -397,11 +398,10 @@ impl FileManager {
         let mut count = Userspace::get().ioparam.m_count as i32;
 
         loop {
-            let inode_compat = {
+            let inode_ref = {
                 let file = file_ref.lock();
-                file.f_inode.expect("pipe without inode")
+                file.f_inode.as_ref().expect("pipe without inode").clone()
             };
-            let inode_ref = inode_compat.own();
             let mut inode = Inode::lock_pipe(&inode_ref);
 
             if count == 0 {
@@ -446,59 +446,23 @@ impl FileManager {
             }
         }
     }
-}
 
-define_class_compat! {impl FileManager {
-    pub fn open() {
-        let Some(inode) = FileManager_namei(DirSearchMode::Open as u32) else {
-            return;
-        };
-
-        FileManager_open1(inode, args()[1] as i32, 0);
-    }
-
-    pub fn creat() {
-        let new_acc_mode = (args()[1] as u32) & (InodeMode::IRWXU | InodeMode::IRWXG | InodeMode::IRWXO).bits();
-
-        match FileManager_namei(DirSearchMode::Create as u32) {
-            None => {
-                if Userspace::get().error.is_some() {
-                    return;
-                }
-
-                let Some(inode) = FileManager_maknode(new_acc_mode & !InodeMode::ISVTX.bits()) else {
-                    return;
-                };
-
-                FileManager_open1(inode, FileFlags::FWRITE.bits() as i32, 2);
-            }
-            Some(inode) => {
-                FileManager_open1(inode, FileFlags::FWRITE.bits() as i32, 1);
-                inode
-                    .own()
-                    .lock()
-                    .i_mode
-                    .insert(InodeMode::from_bits_retain(new_acc_mode));
-            }
-        }
-    }
-
-    pub fn open1(pinode: InodeRefCompat, mode: i32, trf: i32) {
+    pub fn open1(&self, pinode: InodeRef, mode: i32, trf: i32) {
         if trf != 2 {
             if (mode & FileFlags::FREAD.bits() as i32) != 0
-                && FileManager_access(pinode, InodeMode::IREAD.bits())
+                && self.access(&pinode, InodeMode::IREAD.bits())
             {
                 i_put(pinode);
                 return;
             }
 
             if (mode & FileFlags::FWRITE.bits() as i32) != 0 {
-                if FileManager_access(pinode, InodeMode::IWRITE.bits()) {
+                if self.access(&pinode, InodeMode::IWRITE.bits()) {
                     i_put(pinode);
                     return;
                 }
 
-                if (pinode.own().lock().i_mode & InodeMode::IFMT) == InodeMode::IFDIR {
+                if (pinode.lock().i_mode & InodeMode::IFMT) == InodeMode::IFDIR {
                     set_error(PosixError::EISDIR);
                     i_put(pinode);
                     return;
@@ -507,29 +471,33 @@ define_class_compat! {impl FileManager {
         }
 
         if trf == 1 {
-            pinode.own().lock().release();
+            pinode.lock().release();
         }
 
-        pinode.own().lock().prele();
+        pinode.lock().prele();
 
-        let (fd, fileref) = match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
-            Ok(v) => v,
-            Err(err) => {
-                set_error(err);
-                i_put(pinode);
-                return;
-            }
-        };
+        let (fd, fileref) =
+            match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
+                Ok(v) => v,
+                Err(err) => {
+                    set_error(err);
+                    i_put(pinode);
+                    return;
+                }
+            };
         Userspace::get().set_user_retval(fd as u32);
 
         {
             let mut file = fileref.lock();
-            file.f_flag = FileFlags::from_bits_truncate(mode as u32)
-                & (FileFlags::FREAD | FileFlags::FWRITE);
-            file.f_inode = Some(pinode);
+            file.f_flag =
+                FileFlags::from_bits_truncate(mode as u32) & (FileFlags::FREAD | FileFlags::FWRITE);
+            file.f_inode = Some(pinode.clone());
         }
 
-        if let Err(err) = pinode.own().lock().open_i((mode as u32) & FileFlags::FWRITE.bits()) {
+        if let Err(err) = pinode
+            .lock()
+            .open_i((mode as u32) & FileFlags::FWRITE.bits())
+        {
             set_error(err);
         }
 
@@ -537,6 +505,148 @@ define_class_compat! {impl FileManager {
             Userspace::get().open_files.clear_f(fd);
             fileref.lock().f_count -= 1;
             i_put(pinode);
+        }
+    }
+
+    pub fn stat1(&self, pinode: &InodeRef, stat_buf: usize) {
+        let inode = pinode.lock();
+        let ino = inode.i_number;
+        let dev = inode.i_dev;
+        inode.i_update(compat_get_time() as i32);
+        drop(inode);
+
+        let sector = FileSystem::INODE_ZONE_START_SECTOR as u32
+            + ino as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32;
+
+        let buf = match global_buffer_manager().bread(dev, PhysicalBlock(sector)) {
+            Ok(buf) => buf,
+            Err(err) => {
+                set_error(err.into());
+                return;
+            }
+        };
+
+        const DISK_INODE_SIZE: usize = 64;
+        let off = (ino as usize % FileSystem::INODE_NUMBER_PER_SECTOR) * DISK_INODE_SIZE;
+        unsafe {
+            ptr::copy_nonoverlapping(
+                buf.as_slice::<u8>().as_ptr().add(off),
+                stat_buf as *mut u8,
+                DISK_INODE_SIZE,
+            );
+        }
+    }
+
+    pub fn namei(&self, mode: u32) -> Option<InodeRef> {
+        let path = Userspace::get().argdir();
+        match self.find(path, self.mode(mode)) {
+            Ok(Some(iref)) => Some(iref.into_inner()),
+            Ok(None) => None,
+            Err(err) => {
+                set_error(err);
+                None
+            }
+        }
+    }
+
+    pub fn maknode(&self, mode: u32) -> Option<InodeRef> {
+        let parent = Userspace::get().cwd_parent.as_ref()?.clone();
+        let dev = parent.lock().i_dev;
+
+        let inode = match fs::global_file_system().i_alloc(dev) {
+            Ok(inode) => inode,
+            Err(_) => {
+                set_error(PosixError::ENOSPC);
+                return None;
+            }
+        };
+
+        {
+            let mut inode_l = inode.lock();
+            inode_l.i_flag.insert(InodeFlag::IACC | InodeFlag::IUPD);
+            inode_l.i_mode = InodeMode::from_bits_retain(mode) | InodeMode::IALLOC;
+            inode_l.i_nlink = 1;
+            inode_l.i_uid = Userspace::get().uid;
+            inode_l.i_gid = Userspace::get().gid;
+        }
+
+        self.writedir(&inode);
+        Some(inode)
+    }
+
+    pub fn writedir(&self, pinode: &InodeRef) {
+        Userspace::get().dentry.m_ino = pinode.lock().i_number;
+
+        for i in 0..DirectoryEntry::DIRSIZ {
+            Userspace::get().dentry.m_name[i] = Userspace::get().argdir_mut()[i];
+        }
+
+        Userspace::get().ioparam.m_count = DirectoryEntry::DIRSIZ + 4;
+        Userspace::get().ioparam.m_base = (&raw mut Userspace::get().dentry) as usize;
+
+        let Some(parent) = Userspace::get().cwd_parent.as_ref().cloned() else {
+            return;
+        };
+
+        let mut parent = parent.lock();
+        write_i(&mut parent);
+        drop(parent);
+        i_put(
+            Userspace::get()
+                .cwd_parent
+                .take()
+                .expect("cwd parent missing"),
+        );
+    }
+
+    pub fn access(&self, pinode: &InodeRef, mode: u32) -> bool {
+        !access_inode(&pinode.lock(), InodeMode::from_bits_retain(mode))
+    }
+
+    pub fn owner(&self) -> Option<InodeRef> {
+        let inode = self.namei(DirSearchMode::Open as u32)?;
+
+        let uid = inode.lock().i_uid;
+        if Userspace::get().uid == uid || is_root() {
+            return Some(inode);
+        }
+
+        i_put(inode);
+        None
+    }
+}
+
+impl FileManager {
+    pub fn open() {
+        let Some(inode) = FileManager.namei(DirSearchMode::Open as u32) else {
+            return;
+        };
+
+        FileManager.open1(inode, args()[1] as i32, 0);
+    }
+
+    pub fn creat() {
+        let new_acc_mode = (args()[1] as u32) & (InodeMode::IRWXU | InodeMode::IRWXG | InodeMode::IRWXO).bits();
+
+        match FileManager.namei(DirSearchMode::Create as u32) {
+            None => {
+                if Userspace::get().error.is_some() {
+                    return;
+                }
+
+                let Some(inode) = FileManager.maknode(new_acc_mode & !InodeMode::ISVTX.bits()) else {
+                    return;
+                };
+
+                FileManager.open1(inode, FileFlags::FWRITE.bits() as i32, 2);
+            }
+            Some(inode) => {
+                FileManager.open1(inode.clone(), FileFlags::FWRITE.bits() as i32, 1);
+                inode
+                    .lock()
+                    .i_mode
+                    .insert(InodeMode::from_bits_retain(new_acc_mode));
+            }
         }
     }
 
@@ -582,7 +692,11 @@ define_class_compat! {impl FileManager {
             0 => file.f_offset = offset,
             1 => file.f_offset += offset,
             2 => {
-                let inode = file.f_inode.expect("file without inode").own();
+                let inode = file
+                    .f_inode
+                    .as_ref()
+                    .expect("file without inode")
+                    .clone();
                 file.f_offset = inode.lock().i_size as i32 + offset;
             }
             _ => {}
@@ -623,53 +737,30 @@ define_class_compat! {impl FileManager {
             }
         };
 
-        let inode = file_ref.lock().f_inode.expect("file without inode");
-        FileManager_stat1(inode, args()[1]);
+        let inode = file_ref
+            .lock()
+            .f_inode
+            .as_ref()
+            .expect("file without inode")
+            .clone();
+        FileManager.stat1(&inode, args()[1]);
     }
 
     pub fn stat() {
-        let Some(inode) = FileManager_namei(DirSearchMode::Open as u32) else {
+        let Some(inode) = FileManager.namei(DirSearchMode::Open as u32) else {
             return;
         };
 
-        FileManager_stat1(inode, args()[1]);
+        FileManager.stat1(&inode, args()[1]);
         i_put(inode);
     }
 
-    pub fn stat1(pinode: InodeRefCompat, stat_buf: usize) {
-        let ino = pinode.own().lock().i_number;
-        let dev = pinode.own().lock().i_dev;
-
-        pinode.own().lock().i_update(compat_get_time() as i32);
-
-        let sector = FileSystem::INODE_ZONE_START_SECTOR as u32
-            + ino as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32;
-
-        let buf = match global_buffer_manager().bread(dev, PhysicalBlock(sector)) {
-            Ok(buf) => buf,
-            Err(err) => {
-                set_error(err.into());
-                return;
-            }
-        };
-
-        const DISK_INODE_SIZE: usize = 64;
-        let off = (ino as usize % FileSystem::INODE_NUMBER_PER_SECTOR) * DISK_INODE_SIZE;
-        unsafe {
-            ptr::copy_nonoverlapping(
-                buf.as_slice::<u8>().as_ptr().add(off),
-                stat_buf as *mut u8,
-                DISK_INODE_SIZE,
-            );
-        }
-    }
-
     pub fn read() {
-        FileManager_rdwr(FileFlags::FREAD.bits());
+        FileManager::rdwr(FileFlags::FREAD.bits());
     }
 
     pub fn write() {
-        FileManager_rdwr(FileFlags::FWRITE.bits());
+        FileManager::rdwr(FileFlags::FWRITE.bits());
     }
 
     pub fn rdwr(mode: u32) {
@@ -704,11 +795,16 @@ define_class_compat! {impl FileManager {
                 FileManager.writep_inner(&file_ref);
             }
         } else {
-            let (inode_compat, foff) = {
+            let (inode_ref, foff) = {
                 let file = file_ref.lock();
-                (file.f_inode.expect("file without inode"), file.f_offset)
+                (
+                    file.f_inode
+                        .as_ref()
+                        .expect("file without inode")
+                        .clone(),
+                    file.f_offset,
+                )
             };
-            let inode_ref = inode_compat.own();
 
             let mut inode = Inode::lock_file(&inode_ref);
             Userspace::get().ioparam.m_offset = foff as usize;
@@ -735,13 +831,11 @@ define_class_compat! {impl FileManager {
                 return;
             }
         };
-        let inode_compat = inoderef_leak(inode_ref.clone());
-
         let (fd_r, file_r) = match fs::global_open_file_table().f_alloc(&mut Userspace::get().open_files) {
             Ok(v) => v,
             Err(err) => {
                 set_error(err);
-                i_put(inode_compat);
+                i_put(inode_ref);
                 return;
             }
         };
@@ -752,7 +846,7 @@ define_class_compat! {impl FileManager {
                 set_error(err);
                 Userspace::get().open_files.clear_f(fd_r);
                 file_r.lock().f_count = 0;
-                i_put(inode_compat);
+                i_put(inode_ref);
                 return;
             }
         };
@@ -766,12 +860,12 @@ define_class_compat! {impl FileManager {
         {
             let mut fr = file_r.lock();
             fr.f_flag = FileFlags::FREAD | FileFlags::FPIPE;
-            fr.f_inode = Some(inode_compat);
+            fr.f_inode = Some(inode_ref.clone());
         }
         {
             let mut fw = file_w.lock();
             fw.f_flag = FileFlags::FWRITE | FileFlags::FPIPE;
-            fw.f_inode = Some(inode_compat);
+            fw.f_inode = Some(inode_ref.clone());
         }
 
         let mut inode = inode_ref.lock();
@@ -786,63 +880,6 @@ define_class_compat! {impl FileManager {
 
     pub fn writep(_file: *mut File) {
         // Compatibility entrypoint is currently unused; rdwr() calls Rust-native implementation.
-    }
-
-    pub fn namei(mode: u32) -> Option<InodeRefCompat> {
-        let path = Userspace::get().argdir();
-        match FileManager.find(path, FileManager.mode(mode)) {
-            Ok(Some(iref)) => Some(inoderef_leak(iref.into_inner())),
-            Ok(None) => None,
-            Err(err) => {
-                set_error(err);
-                None
-            }
-        }
-    }
-
-    pub fn maknode(mode: u32) -> Option<InodeRefCompat> {
-        let parent = Userspace::get().cwd_parent?;
-        let dev = parent.own().lock().i_dev;
-
-        let inode = match fs::global_file_system().i_alloc(dev) {
-            Ok(inode) => inode,
-            Err(_) => {
-                set_error(PosixError::ENOSPC);
-                return None;
-            }
-        };
-
-        {
-            let mut inode_l = inode.lock();
-            inode_l.i_flag.insert(InodeFlag::IACC | InodeFlag::IUPD);
-            inode_l.i_mode = InodeMode::from_bits_retain(mode) | InodeMode::IALLOC;
-            inode_l.i_nlink = 1;
-            inode_l.i_uid = Userspace::get().uid;
-            inode_l.i_gid = Userspace::get().gid;
-        }
-
-        let inode_compat = inoderef_leak(inode);
-        FileManager_writedir(inode_compat);
-        Some(inode_compat)
-    }
-
-    pub fn writedir(mut pinode: InodeRefCompat) {
-        let inode = unsafe { pinode.deref_compat() };
-        Userspace::get().dentry.m_ino = inode.i_number;
-
-        for i in 0..DirectoryEntry::DIRSIZ {
-            Userspace::get().dentry.m_name[i] = Userspace::get().argdir_mut()[i];
-        }
-
-        Userspace::get().ioparam.m_count = DirectoryEntry::DIRSIZ + 4;
-        Userspace::get().ioparam.m_base = (&raw mut Userspace::get().dentry) as usize;
-
-        let Some(mut parent) = Userspace::get().cwd_parent else {
-            return;
-        };
-
-        write_i(unsafe { parent.deref_compat() });
-        i_put(parent);
     }
 
     pub fn setcurdir(pathname: usize) {
@@ -871,34 +908,18 @@ define_class_compat! {impl FileManager {
         }
     }
 
-    pub fn access(mut pinode: InodeRefCompat, mode: u32) -> bool {
-        let inode = unsafe { pinode.deref_compat() };
-        !access_inode(inode, InodeMode::from_bits_retain(mode))
-    }
-
-    pub fn owner() -> Option<InodeRefCompat> {
-        let mut inode = FileManager_namei(DirSearchMode::Open as u32)?;
-
-        let ino = unsafe { inode.deref_compat() };
-        if Userspace::get().uid == ino.i_uid || is_root() {
-            return Some(inode);
-        }
-
-        i_put(inode);
-        None
-    }
-
     pub fn chmod() {
         let mode = args()[1] as u32;
 
-        let Some(mut iref) = FileManager_owner() else {
+        let Some(iref) = FileManager.owner() else {
             return;
         };
 
-        let inode = unsafe { iref.deref_compat() };
+        let mut inode = iref.lock();
         inode.i_mode &= !InodeMode::from_bits_retain(0xFFF);
         inode.i_mode |= InodeMode::from_bits_retain(mode & 0xFFF);
         inode.i_flag.insert(InodeFlag::IUPD);
+        drop(inode);
 
         i_put(iref);
     }
@@ -908,61 +929,64 @@ define_class_compat! {impl FileManager {
             return;
         }
 
-        let Some(mut iref) = FileManager_owner() else {
+        let Some(iref) = FileManager.owner() else {
             return;
         };
 
-        let inode = unsafe { iref.deref_compat() };
+        let mut inode = iref.lock();
         inode.i_uid = args()[1] as u16;
         inode.i_gid = args()[2] as u16;
         inode.i_flag.insert(InodeFlag::IUPD);
+        drop(inode);
 
         i_put(iref);
     }
 
     pub fn chdir() {
-        let Some(mut inode) = FileManager_namei(DirSearchMode::Open as u32) else {
+        let Some(inode) = FileManager.namei(DirSearchMode::Open as u32) else {
             return;
         };
 
         {
-            let inod = unsafe { inode.deref_compat() };
+            let inod = inode.lock();
             if (inod.i_mode & InodeMode::IFMT) != InodeMode::IFDIR {
                 set_error(PosixError::ENOTDIR);
+                drop(inod);
                 i_put(inode);
                 return;
             }
         }
 
-        if FileManager_access(inode, InodeMode::IEXEC.bits()) {
+        if FileManager.access(&inode, InodeMode::IEXEC.bits()) {
             i_put(inode);
             return;
         }
 
-        let cdir = unsafe { &mut *User_get_cdir_() };
-        if let Some(old) = cdir.take() {
+        if let Some(old) = Userspace::get().cwd.take() {
             i_put(old);
         }
-        *cdir = Some(inode);
+        Userspace::get().cwd = Some(inode.clone());
 
-        unsafe { inode.deref_compat() }.prele();
-        FileManager_setcurdir(args()[0]);
+        inode.lock().prele();
+        FileManager::setcurdir(args()[0]);
     }
 
     pub fn link() {
-        let Some(mut inode) = FileManager_namei(DirSearchMode::Open as u32) else {
+        let Some(inode) = FileManager.namei(DirSearchMode::Open as u32) else {
             return;
         };
 
         {
-            let i = unsafe { inode.deref_compat() };
+            let mut i = inode.lock();
             if i.i_nlink >= 255 {
                 set_error(PosixError::EMLINK);
+                drop(i);
                 i_put(inode);
                 return;
             }
 
             if (i.i_mode & InodeMode::IFMT) == InodeMode::IFDIR && !is_root() {
+                drop(i);
                 i_put(inode);
                 return;
             }
@@ -972,7 +996,7 @@ define_class_compat! {impl FileManager {
 
         let old_dirp = Userspace::get().dirp;
         Userspace::get().dirp = args()[1] as *mut u8;
-        let new_inode = FileManager_namei(DirSearchMode::Create as u32);
+        let new_inode = FileManager.namei(DirSearchMode::Create as u32);
         Userspace::get().dirp = old_dirp;
 
         if let Some(new_inode) = new_inode {
@@ -985,21 +1009,21 @@ define_class_compat! {impl FileManager {
             return;
         }
 
-        let Some(parent) = Userspace::get().cwd_parent else {
+        let Some(parent) = Userspace::get().cwd_parent.as_ref().cloned() else {
             i_put(inode);
             return;
         };
 
-        if parent.own().lock().i_dev != unsafe { inode.deref_compat() }.i_dev {
+        if parent.lock().i_dev != inode.lock().i_dev {
             i_put(parent);
             set_error(PosixError::EXDEV);
             i_put(inode);
             return;
         }
 
-        FileManager_writedir(inode);
+        FileManager.writedir(&inode);
         {
-            let i = unsafe { inode.deref_compat() };
+            let mut i = inode.lock();
             i.i_nlink += 1;
             i.i_flag.insert(InodeFlag::IUPD);
         }
@@ -1007,13 +1031,13 @@ define_class_compat! {impl FileManager {
     }
 
     pub fn unlink() {
-        let Some(mut d_inode) = FileManager_namei(DirSearchMode::Delete as u32) else {
+        let Some(d_inode) = FileManager.namei(DirSearchMode::Delete as u32) else {
             return;
         };
 
-        unsafe { d_inode.deref_compat() }.prele();
+        d_inode.lock().prele();
 
-        let dev = unsafe { d_inode.deref_compat() }.i_dev;
+        let dev = d_inode.lock().i_dev;
         let ino = Userspace::get().dentry.m_ino;
 
         let inode = match i_get(dev, ino) {
@@ -1034,7 +1058,7 @@ define_class_compat! {impl FileManager {
         Userspace::get().ioparam.m_base = (&raw mut Userspace::get().dentry) as usize;
         Userspace::get().ioparam.m_count = DirectoryEntry::DIRSIZ + 4;
         Userspace::get().dentry.m_ino = 0;
-        write_i(unsafe { d_inode.deref_compat() });
+        write_i(&mut d_inode.lock());
 
         {
             let mut inode_l = inode.lock();
@@ -1051,7 +1075,7 @@ define_class_compat! {impl FileManager {
             return;
         }
 
-        if let Some(inode) = FileManager_namei(DirSearchMode::Create as u32) {
+        if let Some(inode) = FileManager.namei(DirSearchMode::Create as u32) {
             set_error(PosixError::EEXIST);
             i_put(inode);
             return;
@@ -1061,18 +1085,19 @@ define_class_compat! {impl FileManager {
             return;
         }
 
-        let Some(mut inode) = FileManager_maknode(args()[1] as u32) else {
+        let Some(inode) = FileManager.maknode(args()[1] as u32) else {
             return;
         };
 
-        let inode_l = unsafe { inode.deref_compat() };
+        let mut inode_l = inode.lock();
         if inode_l
             .i_mode
             .intersects(InodeMode::IFBLK | InodeMode::IFCHR)
         {
             inode_l.i_addr[0].0 = args()[2] as u32;
         }
+        drop(inode_l);
 
         i_put(inode);
     }
-}}
+}

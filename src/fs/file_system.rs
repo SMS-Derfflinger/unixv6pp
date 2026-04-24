@@ -2,8 +2,6 @@ use alloc::sync::Arc;
 use core::{array, ptr};
 use eonix_spin::Spin;
 
-use kernel_macros::define_class_compat;
-
 use crate::{
     compat::compat_get_time,
     constants::PosixError,
@@ -14,8 +12,8 @@ use crate::{
     },
     fs::{
         self,
-        inode::{inoderef_leak, DiskInode, Inode},
-        InodeRef, InodeRefCompat, SuperBlockRef,
+        inode::{DiskInode, Inode},
+        InodeRef, SuperBlockRef,
     },
     proc::{ProcessManager, PINOD},
     sync::SpinExt,

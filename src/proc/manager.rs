@@ -16,6 +16,7 @@ use crate::{
     constants::{PosixError, Signal},
     dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt, OpenFiles},
+    interrupt::Registers,
     loader::PEParser,
     machine::{asm::disable_interrupts, set_tss_esp0, switch_user_struct},
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
@@ -27,7 +28,6 @@ use crate::{
     serial::KResult,
     sync::{IrqGuard, SpinExt, SuperCell},
     user::{MemoryDescriptor, Userspace, Userspace_init},
-    interrupt::Registers,
 };
 
 unsafe extern "C" {
@@ -135,15 +135,6 @@ impl ProcessManager {
             };
 
             file.lock().f_count += 1;
-        }
-
-        // TODO: increase cwd inode refcount
-        if let Some(cwd) = new_user.cwd {
-            core::mem::forget(cwd.own());
-        }
-
-        if let Some(cwd) = new_user.cwd_parent {
-            core::mem::forget(cwd.own());
         }
 
         let aligned_size = cur_size.next_power_of_two();
