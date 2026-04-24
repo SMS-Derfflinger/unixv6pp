@@ -413,8 +413,3 @@ pub extern "C" fn tty_input_byte(ch: u8) {
 pub extern "C" fn tty_flush() {
     console_tty().with_mut(Tty::flush);
 }
-
-#[no_mangle]
-pub extern "C" fn clear_screan() {
-    TEXT_CONSOLE.with_mut(TextModeConsole::clear_screen);
-}

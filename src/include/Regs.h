@@ -105,18 +105,4 @@ struct pte_context{
 							addl $0x8, %0 "		\
 							: "+m" (pContext) );
 
-#define MoveToUserStack()	\
-		__asm__ __volatile__("	movl $0x800000,%%eax;	\
-								pushl $0x23;			\
-								pushl %%eax;			\
-								pushfl;					\
-								pushl $0x1b;			\
-								pushl $1f - 0xC0000000;	\
-								iret;					\
-								1:						\
-								movl %%esp, %%ebp;		\
-								movl $0x23, %%eax;		\
-								movw %%ax, %%ds;		\
-								movw %%ax, %%es;"::);
-
 #endif

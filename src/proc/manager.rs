@@ -30,10 +30,6 @@ use crate::{
     user::{MemoryDescriptor, Userspace, Userspace_init},
 };
 
-unsafe extern "C" {
-    fn InitProcessEntry();
-}
-
 static NEXT_PID: AtomicU32 = AtomicU32::new(0);
 
 pub static GLOBAL_PROC_MANAGER: LazyLock<SuperCell<ProcessManager>> =
@@ -110,13 +106,13 @@ impl ProcessManager {
         }
     }
 
-    fn set_kernel_entry_context(child: &mut Process, entry: unsafe extern "C" fn()) {
+    fn set_init_context(child: &mut Process) {
         let stack_top = child.kstack.as_ref().unwrap().top();
 
-        child.ctx.eip = go_kernelspace as usize;
+        child.ctx.eip = go_init as usize;
         child.ctx.esp = stack_top;
         child.ctx.ebp = stack_top;
-        child.ctx.ebx = entry as usize;
+        child.ctx.ebx = 0;
         child.ctx.esi = 0;
         child.ctx.edi = 0;
     }
@@ -633,7 +629,7 @@ impl ProcessManager {
         let mut child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
 
         let pid = child.pid;
-        Self::set_kernel_entry_context(&mut child, InitProcessEntry);
+        Self::set_init_context(&mut child);
         self.procs.push(child);
         pid
     }
@@ -687,14 +683,35 @@ impl ProcessManager {
 }
 
 static TEMPORARY_STACK: [usize; 6] = [0; 6];
+static SHELL_PATH: [u8; 11] = *b"/Shell.exe\0";
 
 #[unsafe(naked)]
-extern "C" fn go_kernelspace() {
+extern "C" fn exec_shell() {
     naked_asm!(
-        "push $0x200", // eflags = IF
-        "push $0x08",  // cs
-        "push %ebx",   // eip = entry
+        "mov ${shell}, %ebx", // path
+        "mov $11, %eax",      // execv
+        "xor %ecx, %ecx",     // argc
+        "xor %edx, %edx",     // argv
+        "int $0x80",
+        shell = sym SHELL_PATH,
+        options(att_syntax),
+    );
+}
+
+#[unsafe(naked)]
+extern "C" fn go_init() {
+    naked_asm!(
+        "mov ${exec_shell}, %esi",
+        "mov $0x800, %edi",
+        "mov $0x10, %ecx",
+        "rep movsl",
+        "push $0x23",     // ss
+        "push $0x800000", // esp
+        "push $0x200",    // eflags = IF
+        "push $0x1b",     // cs
+        "push $0x800",    // eip = entry
         "iret",
+        exec_shell = sym exec_shell,
         options(att_syntax),
     )
 }
@@ -707,7 +724,7 @@ extern "C" fn go_userspace() {
         "push %edi",      // esp
         "push $0x200",    // eflags = IF
         "push $0x1b",     // cs
-        "push $0",        // eip = runtime
+        "push $0x10",        // eip = runtime
         "xor %ebx, %ebx",
         "xor %ecx, %ecx",
         "xor %edx, %edx",

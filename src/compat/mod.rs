@@ -98,6 +98,7 @@ pub fn compat_swap_free(blkno: PhysicalBlock, bytes: usize) {
 
 define_class_compat!{impl Utility {
     pub fn panic(msg: *const i8) -> ! {
-        panic!("{:?}", unsafe { CStr::from_ptr(msg) })
+        crate::println_fatal!("Love from C++: {:?}", unsafe { CStr::from_ptr(msg) });
+        panic!();
     }
 }}

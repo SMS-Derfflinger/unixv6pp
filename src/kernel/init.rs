@@ -1,6 +1,7 @@
 use core::{arch::naked_asm, mem::MaybeUninit, ptr};
 
 use crate::{
+    compat::compat_flush_page_directory,
     dev::{buffer::DevId, device_manager::ROOTDEV},
     fs::{global_file_system, InodeFlag, GLOBAL_INODE_TABLE},
     interrupt::set_time,
@@ -18,7 +19,7 @@ use crate::{
     proc::{KernelStack, ProcessManager},
     sync::SpinExt,
     user::Userspace,
-    vesa::{vesa_init, VbeModeInfo},
+    vesa::{vesa_clear, vesa_init, VbeModeInfo},
 };
 
 use super::{diagnose::_diagnose_trace_on, syscall::_lib_open, utility::_make_kernel_time};
@@ -75,11 +76,7 @@ unsafe extern "C" {
         video_memory_size: usize,
     );
     fn _load_task_register();
-    fn clear_screan();
     fn cpp_set_kernel_time(value: u32);
-
-    fn runtime();
-    fn ExecShell();
 }
 
 fn rust_kernel_next() {
@@ -113,7 +110,13 @@ fn rust_kernel_next() {
     _diagnose_trace_on();
 
     // splash();
+
+    init_user_page_table();
+    compat_flush_page_directory();
+
     copy_runtime_to_userspace();
+
+    vesa_clear(0);
 
     let pid = ProcessManager::get().new_init_proc();
     if pid <= 0 {
@@ -170,31 +173,23 @@ fn open_tty() {
     }
 }
 
-static SHELL_PATH: [u8; 11] = *b"/Shell.exe\0";
 #[unsafe(naked)]
-unsafe extern "C" fn exec_shell() {
+unsafe extern "C" fn runtime() {
     naked_asm!(
-        "mov ${}, %ebx", // path
-        "mov $11, %eax", // execv
-        "xor %ecx, %ecx", // argc
-        "xor %edx, %edx", // argv
+        "mov %esp, %ebp",
+        "call *%eax",   // entry
+        "mov $1, %eax", // sys_exit
+        "mov $0, %ebx", // $? = 0
         "int $0x80",
-        sym SHELL_PATH,
         options(att_syntax),
     )
 }
 
 fn copy_runtime_to_userspace() {
-    let runtime_addr = runtime as *const () as usize;
-    let exec_shell_addr = ExecShell as *const () as usize;
-    let runtime_src = runtime_addr as *const u8;
-    let runtime_len = exec_shell_addr - runtime_addr;
+    let runtime_addr = runtime as *const u8;
 
-    for offset in 0..runtime_len {
-        unsafe {
-            let byte = runtime_src.add(offset).read_volatile();
-            (offset as *mut u8).write_volatile(byte);
-        }
+    unsafe {
+        (0x10 as *mut u8).copy_from_nonoverlapping(runtime_addr, 0x20);
     }
 }
 
