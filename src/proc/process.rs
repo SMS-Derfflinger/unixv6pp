@@ -564,45 +564,12 @@ impl Process {
 }
 
 define_class_compat! {impl Process {
-    pub fn send_signal(&mut self) {
-        let signal = Userspace::get().args[0] as u32;
-        let func = Userspace::get().args[1];
-
-        this.send_signal(signal, func).pass_to_user();
-    }
-
     pub fn process_signal(&mut self, context: &mut TrapFrame) {
         this.process_signal(context);
     }
 
     pub fn should_process(&mut self) -> bool {
         this.should_process()
-    }
-
-    pub fn raise(&mut self, signal: u32) {
-        this.raise_raw(signal).pass_to_user();
-    }
-
-    pub fn set_nice(&mut self) {
-        let nice = Userspace::get().args[0] as i32;
-        this.set_nice(nice);
-    }
-
-    pub fn set_pri(&mut self) {
-        this.set_pri();
-    }
-
-    pub fn exit(&mut self) {
-        this.exit();
-    }
-
-    pub fn sstack(&mut self) {
-        this.sstack().pass_to_user();
-    }
-
-    pub fn sbrk(&mut self) {
-        let brk = Userspace::get().args[0];
-        this.sbrk(brk).pass_to_user();
     }
 
     pub fn sleep_kernel(&mut self, chan: usize, pri: i32) {

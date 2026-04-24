@@ -1,15 +1,10 @@
 #include "Process.h"
 
 extern "C" {
-	void Process_send_signal(Process*);
 	void Process_process_signal(Process*, struct pt_context*);
-	void Process_set_nice(Process*);
 	bool Process_should_process(Process*);
 	void Process_raise(Process*, int);
-	void Process_set_pri(Process*);
-	void Process_exit(Process*);
 	void Process_sstack(Process*);
-	void Process_sbrk(Process*);
 	void Process_sleep_kernel(Process*, unsigned long, int);
 }
 
@@ -35,28 +30,8 @@ void Process::PSig(struct pt_context* pContext) {
 	Process_process_signal(this, pContext);
 }
 
-void Process::Nice() {
-	Process_set_nice(this);
-}
-
-void Process::Ssig() {
-	Process_send_signal(this);
-}
-
-void Process::SetPri() {
-	Process_set_pri(this);
-}
-
-void Process::Exit() {
-	Process_exit(this);
-}
-
 void Process::SStack() {
 	Process_sstack(this);
-}
-
-void Process::SBreak() {
-	Process_sbrk(this);
 }
 
 void Process::Sleep(unsigned long chan, int pri) {

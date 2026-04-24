@@ -30,6 +30,7 @@ mod syscall_number {
     pub const MKNOD: usize = 14;
     pub const CHMOD: usize = 15;
     pub const CHOWN: usize = 16;
+    pub const SBREAK: usize = 17;
     pub const STAT: usize = 18;
     pub const SEEK: usize = 19;
     pub const GETPID: usize = 20;
@@ -221,6 +222,14 @@ fn handle_in_rust(number: usize) -> bool {
         }
         sys::CHOWN => {
             trap1(crate::fs::syscall_chown);
+            true
+        }
+        sys::SBREAK => {
+            let brk = Userspace::get().args[0];
+            match Userspace::get().proc().sbrk(brk) {
+                Ok(retval) => Userspace::get().set_user_retval(retval as u32),
+                Err(err) => Userspace::get().set_error(err),
+            }
             true
         }
         sys::STAT => {

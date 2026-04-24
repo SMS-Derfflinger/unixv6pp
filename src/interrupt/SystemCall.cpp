@@ -33,7 +33,6 @@ void SystemCall::Trap1ByNumber(unsigned int number)
 {
 	switch ( number )
 	{
-	case 17: Trap1(Sys_SBreak); return;
 	case 31: Trap1(Sys_Stty); return;
 	case 32: Trap1(Sys_Gtty); return;
 	case 35: Trap1(Sys_Sslep); return;
@@ -46,15 +45,6 @@ void SystemCall::Trap1ByNumber(unsigned int number)
 extern "C" void cpp_system_call_trap1(unsigned int number)
 {
 	SystemCall::Trap1ByNumber(number);
-}
-
-/*	17 = sbreak	count = 1	*/
-int SystemCall::Sys_SBreak()
-{
-	User& u = Kernel::Instance().GetUser();
-	User_get_procp()->SBreak();
-
-	return 0;	/* GCC likes it ! */
 }
 
 /*	31 = stty	count = 1	*/

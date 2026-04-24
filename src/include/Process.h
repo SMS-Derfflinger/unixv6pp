@@ -34,29 +34,14 @@ public:
 public:
 	Process();
 	~Process();
-	void SetRun();								/* 唤醒当前进程，转入就绪状态 */
-	
-	void SetPri();								/* 根据占用CPU时间计算当前进程优先数 */
-	
-	bool IsSleepOn(unsigned long chan);			/* 检查当前进程睡眠原因是否为chan */
-	
+
 	void Sleep(unsigned long chan, int pri);	/* 使当前进程转入睡眠状态 */
-	
-	void Expand(unsigned int newSize);			/* 改变进程占用的内存大小 */
-	
-	void Exit();								/* Exit()系统调用处理过程 */
-	
-	void Clone(Process& proc);					/* 除p_pid之外，子进程拷贝父进程Process结构 */
-	
+
 	void SStack();                              /* 堆栈溢出时，自动扩展堆栈 */
 
-	void SBreak();								/* brk()系统调用处理过程 */
-	
 	void PSignal(int signal);					/* 向当前进程发送信号。signal是要发送的信号数 */
 
 	void PSig(struct pt_context* pContext);		/* 对当前进程接收到的信号进行处理 */
-
-	void Nice();								/* 用户设置计算进程优先数的偏置值 */
 
 	void Ssig();								/* 设置用户自定信号处理方式的系统调用处理函数 */
 
