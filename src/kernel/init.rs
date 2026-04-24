@@ -1,4 +1,4 @@
-use core::{mem::MaybeUninit, ptr};
+use core::{arch::naked_asm, mem::MaybeUninit, ptr};
 
 use crate::{
     dev::{buffer::DevId, device_manager::ROOTDEV},
@@ -169,6 +169,20 @@ fn open_tty() {
     if fd_tty != 1 {
         panic!("STDOUT Error!");
     }
+}
+
+static SHELL_PATH: [u8; 11] = *b"/Shell.exe\0";
+#[unsafe(naked)]
+unsafe extern "C" fn exec_shell() {
+    naked_asm!(
+        "mov ${}, %ebx", // path
+        "mov $11, %eax", // execv
+        "xor %ecx, %ecx", // argc
+        "xor %edx, %edx", // argv
+        "int $0x80",
+        sym SHELL_PATH,
+        options(att_syntax),
+    )
 }
 
 fn copy_runtime_to_userspace() {

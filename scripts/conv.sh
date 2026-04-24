@@ -1,11 +1,11 @@
 #!/bin/sh
 
 while read -r filename; do
-        if file -I "$filename" | grep -q 'utf-8'; then
+        if ! file src/kernel/main.cpp | grep -q CRLF; then
                 continue
         fi
 
-        if ! iconv -f cp936 -t utf-8 "$filename" > "$filename.new"; then
+        if ! cat "$filename" | tr -d "\r" > "$filename.new"; then
                 echo "$filename failed"
                 continue
         fi
