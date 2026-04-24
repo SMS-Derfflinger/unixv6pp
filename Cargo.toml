@@ -27,3 +27,7 @@ eonix_mm = { git = "https://github.com/project-eonix/eonix-mm.git", version = "0
 intrusive-collections = { version = "0.9.7", default-features = false, features = [ "nightly" ] }
 bitflags = "2.11.0"
 kernel-macros = { path = "./macros" }
+
+[features]
+default = []
+debug_irq = []

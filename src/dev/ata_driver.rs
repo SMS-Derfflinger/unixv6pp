@@ -47,6 +47,9 @@ impl ATADriver {
             Complete(BufRef),
         }
 
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("Device IRQ");
+
         let bdev = ata_block_device();
         let action = bdev.devtab().with_mut(|tab| {
             if tab.d_active == 0 {
@@ -92,6 +95,9 @@ impl ATADriver {
         if Self::is_controller_ready() == 0 {
             panic!("Disk Hang Up!");
         }
+
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("Device start");
 
         let bp_ref = bp.as_mut();
         let minor = minor(bp_ref.b_dev) as u8;

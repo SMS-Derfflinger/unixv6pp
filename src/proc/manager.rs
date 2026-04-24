@@ -219,6 +219,9 @@ impl ProcessManager {
     }
 
     pub fn wakeup_all(&mut self, chan: impl Channel) {
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("waking up chan={:#x}", chan.channel_addr());
+
         for proc in &mut self.procs {
             if !proc.is_sleeping_on(chan.channel_addr()) {
                 continue;

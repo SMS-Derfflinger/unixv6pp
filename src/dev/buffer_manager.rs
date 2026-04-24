@@ -173,16 +173,20 @@ impl BufferManager {
     }
 
     pub fn io_wait(&mut self, bp: BufRef) -> BufferResult<()> {
-        let mut ctx = IrqGuard::disable_save();
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("IO wait on {:#x}", bp.as_ref() as *const _ as usize);
+
         while !bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
+            let _ctx = IrqGuard::disable_save();
+            if bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
+                break;
+            }
+
             bp.as_mut().b_flags.insert(BufFlag::B_WANTED);
-            drop(ctx);
             unsafe {
                 sleep_on(bp.chan(), PRIBIO);
             }
-            ctx = IrqGuard::disable_save();
         }
-        drop(ctx);
 
         self.get_error(bp)
     }
@@ -211,6 +215,7 @@ impl BufferManager {
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
         device.strategy(bp);
+
         self.io_wait(bp)?;
 
         Ok(Buffer::new(bp))

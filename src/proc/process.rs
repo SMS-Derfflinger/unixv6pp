@@ -382,14 +382,15 @@ impl Process {
     }
 
     pub fn sleep_kernel(&mut self, chan: impl Channel, pri: i32) {
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("pid{} sleep kernel chan={:#x}", self.pid, chan.channel_addr());
+
         {
             let ctx = IrqGuard::disable_save();
             self.wchan = chan.channel_addr();
             self.stat = ProcessState::SSLEEP;
             self.pri = pri;
         }
-
-        // crate::println_debug!("pid{} sleep kernel chan={:#x}", self.pid, chan.channel_addr());
 
         ProcessManager::get().switch();
     }
@@ -399,7 +400,9 @@ impl Process {
     /// # Returns
     /// Whether we have pending signals.
     pub fn sleep_user(&mut self, chan: usize, pri: u32) -> bool {
-        // crate::println_debug!("sleep user chan={chan:#x}");
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("pid{} sleep user chan={chan:#x}", self.pid);
+
         if self.should_process() {
             return true;
         }

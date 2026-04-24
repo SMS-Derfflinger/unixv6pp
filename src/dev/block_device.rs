@@ -43,6 +43,8 @@ impl Devtab {
 
     pub fn push_io_request(&mut self, bp: BufRef) {
         if bp.as_ref().is_on_io_queue() {
+            #[cfg(feature = "debug_irq")]
+            crate::println_debug!("Already on queue");
             return;
         }
 
@@ -91,6 +93,8 @@ impl BlockDevice for ATABlockDevice {
         let should_start = {
             let ctx = IrqGuard::disable_save();
             let should_start = self.tab.with_mut(|tab| {
+                #[cfg(feature = "debug_irq")]
+                crate::println_debug!("push request");
                 tab.push_io_request(bp);
                 tab.d_active == 0
             });
@@ -106,12 +110,20 @@ impl BlockDevice for ATABlockDevice {
     }
 
     fn start(&self) {
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("Trying to start device");
+
         let bp = self.tab.with_mut(|tab| {
+            let _ctx = IrqGuard::disable_save();
             if tab.d_active != 0 {
+                #[cfg(feature = "debug_irq")]
+                crate::println_debug!("Reason: Running");
                 return None;
             }
 
             let Some(bp) = tab.peek_io_request() else {
+                #[cfg(feature = "debug_irq")]
+                crate::println_debug!("Reason: No request");
                 return None;
             };
 
@@ -120,6 +132,8 @@ impl BlockDevice for ATABlockDevice {
         });
 
         let Some(bp) = bp else {
+            #[cfg(feature = "debug_irq")]
+            crate::println_debug!("Start skipped");
             return;
         };
 
