@@ -8,7 +8,7 @@ use crate::{
     compat::compat_get_time,
     constants::PosixError,
     dev::{
-        buffer::{Buf, DevId, PhysicalBlock},
+        buffer::{Buf, Buffer, DevId, PhysicalBlock},
         buffer_manager::global_buffer_manager,
         device_manager::ROOTDEV,
     },
@@ -158,7 +158,7 @@ impl FileSystem {
         let super_block_ptr = super_block as *const SuperBlock as *const u8;
 
         for i in 0..2 {
-            let buf = global_buffer_manager()
+            let mut buf = global_buffer_manager()
                 .get_blk(
                     dev,
                     PhysicalBlock((Self::SUPER_BLOCK_SECTOR_NUMBER + i) as u32),
@@ -168,7 +168,7 @@ impl FileSystem {
             unsafe {
                 ptr::copy_nonoverlapping(
                     super_block_ptr.add(i * Buf::BLOCK_SIZE),
-                    (*buf).as_slice_mut().as_mut_ptr(),
+                    buf.as_bytes_mut().as_mut_ptr(),
                     Buf::BLOCK_SIZE,
                 );
             }
@@ -383,7 +383,7 @@ impl FileSystem {
         Ok(())
     }
 
-    pub fn alloc(&mut self, dev: DevId) -> Result<*mut Buf, FileSystemError> {
+    pub fn alloc(&mut self, dev: DevId) -> Result<Buffer, FileSystemError> {
         let spb = self.get_fs(dev)?;
 
         let mut sb = spb.lock();
@@ -433,10 +433,10 @@ impl FileSystem {
             sb = spb.lock();
         }
 
-        let buf = global_buffer_manager()
+        let mut buf = global_buffer_manager()
             .get_blk(dev, PhysicalBlock(blkno as u32))
             .map_err(|_| FileSystemError::BufferUnavailable)?;
-        global_buffer_manager().clr_buf(buf);
+        global_buffer_manager().clr_buf(&mut buf);
         sb.s_fmod = 1;
 
         Ok(buf)
@@ -473,15 +473,10 @@ impl FileSystem {
             let write_result = global_buffer_manager()
                 .get_blk(dev, PhysicalBlock(blkno as u32))
                 .map_err(|_| FileSystemError::BufferUnavailable)
-                .and_then(|buf| {
-                    unsafe {
-                        let table = core::slice::from_raw_parts_mut(
-                            (*buf).as_slice_mut().as_mut_ptr() as *mut i32,
-                            101,
-                        );
-                        table[0] = nfree;
-                        table[1..101].copy_from_slice(&free);
-                    }
+                .and_then(|mut buf| {
+                    let table = buf.as_slice_mut::<i32>();
+                    table[0] = nfree;
+                    table[1..101].copy_from_slice(&free);
 
                     global_buffer_manager()
                         .bwrite(buf)
@@ -553,12 +548,12 @@ define_class_compat! {impl FileSystem {
         let _ = fs::global_file_system().i_free(dev, number);
     }
 
-    pub fn alloc(dev: DevId) -> *mut Buf {
+    pub fn alloc(dev: DevId) -> usize {
         match fs::global_file_system().alloc(dev) {
-            Ok(buf) => buf,
+            Ok(buf) => buf.into_ref().chan(),
             Err(err) => {
                 Userspace::get().set_error(FileSystem::map_error_to_posix(err));
-                ptr::null_mut()
+                0
             }
         }
     }

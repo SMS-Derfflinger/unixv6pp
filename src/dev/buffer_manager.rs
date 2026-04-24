@@ -2,13 +2,12 @@ use crate::dev::buffer::Buffer;
 use crate::proc::ProcessManager;
 use crate::sync::{IrqGuard, SuperCell};
 use crate::{constants::PosixError, user::Userspace};
-use intrusive_collections::UnsafeRef;
 
 use super::{
     block_device::block_device_for_dev,
     buffer::{
-        Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufFreeAdapter, BufFreeList, BufferSlot,
-        DevId, PhysicalBlock,
+        Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufFreeAdapter, BufFreeList, BufRef,
+        BufferSlot, DevId, PhysicalBlock,
     },
     device_manager::{set_minor, ROOTDEV},
 };
@@ -77,62 +76,66 @@ impl BufferManager {
             let bp = {
                 let slot = &mut self.slots[index];
                 slot.initialize();
-                &mut slot.buf as *mut Buf
+                BufRef::from_mut(&mut slot.buf)
             };
 
-            unsafe {
-                (*bp).b_dev = -1;
-                self.insert_into_unassigned_queue(bp);
-                self.push_free_back(bp);
-            }
+            bp.as_mut().b_dev = -1;
+            self.insert_into_unassigned_queue(bp);
+            self.push_free_back(bp);
         }
     }
 
-    pub fn get_blk(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<*mut Buf> {
+    pub fn get_blk(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<Buffer> {
+        let bp = self.get_blk_ref(dev, blkno)?;
+        Ok(Buffer::new(bp))
+    }
+
+    fn get_blk_ref(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<BufRef> {
         self.validate_device(dev)?;
 
         loop {
             if let Some(bp) = self.in_core(dev, blkno) {
-                unsafe {
-                    let ctx = IrqGuard::disable_save();
-                    if (*bp).b_flags.contains(BufFlag::B_BUSY) {
-                        (*bp).b_flags.insert(BufFlag::B_WANTED);
-                        sleep_on(bp as usize, PRIBIO);
-                        continue;
+                let ctx = IrqGuard::disable_save();
+                if bp.as_ref().b_flags.contains(BufFlag::B_BUSY) {
+                    bp.as_mut().b_flags.insert(BufFlag::B_WANTED);
+                    drop(ctx);
+                    unsafe {
+                        sleep_on(bp.chan(), PRIBIO);
                     }
+                    continue;
                 }
+                drop(ctx);
 
                 self.not_avail(bp);
                 return Ok(bp);
             }
 
             let bp = loop {
-                unsafe {
-                    let ctx = IrqGuard::disable_save();
-                    if !self.is_free_list_empty() {
-                        let bp = self.free_list_head().expect("free list is not empty");
-                        break bp;
-                    }
+                let ctx = IrqGuard::disable_save();
+                if !self.is_free_list_empty() {
+                    let bp = self.free_list_head().expect("free list is not empty");
+                    break bp;
+                }
 
-                    self.b_free_list.b_flags.insert(BufFlag::B_WANTED);
+                self.b_free_list.b_flags.insert(BufFlag::B_WANTED);
+                drop(ctx);
+                unsafe {
                     sleep_on(self.free_list_wait_chan(), PRIBIO);
                 }
             };
 
             self.not_avail(bp);
 
-            unsafe {
-                if (*bp).b_flags.contains(BufFlag::B_DELWRI) {
-                    (*bp).b_flags.insert(BufFlag::B_ASYNC);
-                    self.bwrite(bp)?;
-                    continue;
-                }
-
-                (*bp).b_flags = BufFlag::B_BUSY;
-                self.remove_from_current_device_queue(bp);
-                (*bp).b_dev = dev.0;
-                (*bp).b_blkno = blkno;
+            if bp.as_ref().b_flags.contains(BufFlag::B_DELWRI) {
+                bp.as_mut().b_flags.insert(BufFlag::B_ASYNC);
+                self.bwrite_ref(bp)?;
+                continue;
             }
+
+            bp.as_mut().b_flags = BufFlag::B_BUSY;
+            self.remove_from_current_device_queue(bp);
+            bp.as_mut().b_dev = dev.0;
+            bp.as_mut().b_blkno = blkno;
 
             self.insert_into_device_queue(dev, bp)?;
 
@@ -140,87 +143,77 @@ impl BufferManager {
         }
     }
 
-    pub fn brelse(&mut self, bp: *mut Buf) {
-        if bp.is_null() {
-            return;
+    pub fn brelse(&mut self, bp: BufRef) {
+        if bp.as_ref().b_flags.contains(BufFlag::B_WANTED) {
+            unsafe {
+                wakeup_all(bp.chan());
+            }
         }
 
-        unsafe {
-            if (*bp).b_flags.contains(BufFlag::B_WANTED) {
-                wakeup_all(bp as usize);
-            }
-
-            if self.b_free_list.b_flags.contains(BufFlag::B_WANTED) {
-                self.b_free_list.b_flags.remove(BufFlag::B_WANTED);
+        if self.b_free_list.b_flags.contains(BufFlag::B_WANTED) {
+            self.b_free_list.b_flags.remove(BufFlag::B_WANTED);
+            unsafe {
                 wakeup_all(self.free_list_wait_chan());
             }
-
-            if (*bp).b_flags.contains(BufFlag::B_ERROR) {
-                (*bp).b_dev = set_minor((*bp).b_dev, -1);
-            }
-
-            let ctx = IrqGuard::disable_save();
-            (*bp)
-                .b_flags
-                .remove(BufFlag::B_WANTED | BufFlag::B_BUSY | BufFlag::B_ASYNC);
-
-            if !(*bp).is_on_free_list() {
-                self.push_free_back(bp);
-            }
         }
+
+        if bp.as_ref().b_flags.contains(BufFlag::B_ERROR) {
+            bp.as_mut().b_dev = set_minor(bp.as_ref().b_dev, -1);
+        }
+
+        let ctx = IrqGuard::disable_save();
+        bp.as_mut()
+            .b_flags
+            .remove(BufFlag::B_WANTED | BufFlag::B_BUSY | BufFlag::B_ASYNC);
+
+        if !bp.as_ref().is_on_free_list() {
+            self.push_free_back(bp);
+        }
+        drop(ctx);
     }
 
-    pub fn io_wait(&mut self, bp: *mut Buf) -> BufferResult<()> {
-        if bp.is_null() {
-            return Err(BufferError::InvalidBuffer);
-        }
-
-        unsafe {
-            let mut ctx = IrqGuard::disable_save();
-            while !(*bp).b_flags.contains(BufFlag::B_DONE) {
-                (*bp).b_flags.insert(BufFlag::B_WANTED);
-                drop(ctx);
-                sleep_on(bp as usize, PRIBIO);
-                ctx = IrqGuard::disable_save();
+    pub fn io_wait(&mut self, bp: BufRef) -> BufferResult<()> {
+        let mut ctx = IrqGuard::disable_save();
+        while !bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
+            bp.as_mut().b_flags.insert(BufFlag::B_WANTED);
+            drop(ctx);
+            unsafe {
+                sleep_on(bp.chan(), PRIBIO);
             }
+            ctx = IrqGuard::disable_save();
         }
+        drop(ctx);
 
         self.get_error(bp)
     }
 
-    pub fn io_done(&mut self, bp: *mut Buf) {
-        if bp.is_null() {
-            return;
-        }
-
-        unsafe {
-            (*bp).b_flags.insert(BufFlag::B_DONE);
-            if (*bp).b_flags.contains(BufFlag::B_ASYNC) {
-                self.brelse(bp);
-            } else {
-                (*bp).b_flags.remove(BufFlag::B_WANTED);
-                wakeup_all(bp as usize);
+    pub fn io_done(&mut self, bp: BufRef) {
+        bp.as_mut().b_flags.insert(BufFlag::B_DONE);
+        if bp.as_ref().b_flags.contains(BufFlag::B_ASYNC) {
+            self.brelse(bp);
+        } else {
+            bp.as_mut().b_flags.remove(BufFlag::B_WANTED);
+            unsafe {
+                wakeup_all(bp.chan());
             }
         }
     }
 
     pub fn bread(&mut self, dev: DevId, blkno: PhysicalBlock) -> BufferResult<Buffer> {
-        let bp = self.get_blk(dev, blkno)?;
+        let bp = self.get_blk_ref(dev, blkno)?;
 
-        unsafe {
-            if (*bp).b_flags.contains(BufFlag::B_DONE) {
-                return Ok(Buffer::new(bp));
-            }
-
-            (*bp).b_flags.insert(BufFlag::B_READ);
-            (*bp).b_wcount = Self::BUFFER_SIZE as i32;
+        if bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
+            return Ok(Buffer::new(bp));
         }
+
+        bp.as_mut().b_flags.insert(BufFlag::B_READ);
+        bp.as_mut().b_wcount = Self::BUFFER_SIZE as i32;
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
         device.strategy(bp);
         self.io_wait(bp)?;
 
-        unsafe { Ok(Buffer::new(bp)) }
+        Ok(Buffer::new(bp))
     }
 
     pub fn breada(
@@ -235,16 +228,14 @@ impl BufferManager {
         let mut should_read_ahead = read_ahead_blkno;
 
         if self.in_core(dev, blkno).is_none() {
-            let new_bp = self.get_blk(dev, blkno)?;
+            let new_bp = self.get_blk_ref(dev, blkno)?;
 
-            unsafe {
-                if !(*new_bp).b_flags.contains(BufFlag::B_DONE) {
-                    (*new_bp).b_flags.insert(BufFlag::B_READ);
-                    (*new_bp).b_wcount = Self::BUFFER_SIZE as i32;
+            if !new_bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
+                new_bp.as_mut().b_flags.insert(BufFlag::B_READ);
+                new_bp.as_mut().b_wcount = Self::BUFFER_SIZE as i32;
 
-                    let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
-                    device.strategy(new_bp);
-                }
+                let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
+                device.strategy(new_bp);
             }
 
             bp = Some(new_bp);
@@ -254,21 +245,19 @@ impl BufferManager {
 
         if let Some(read_ahead_blkno) = should_read_ahead {
             if self.in_core(dev, read_ahead_blkno).is_none() {
-                let read_ahead_bp = self.get_blk(dev, read_ahead_blkno)?;
+                let read_ahead_bp = self.get_blk_ref(dev, read_ahead_blkno)?;
 
-                unsafe {
-                    if (*read_ahead_bp).b_flags.contains(BufFlag::B_DONE) {
-                        self.brelse(read_ahead_bp);
-                    } else {
-                        (*read_ahead_bp)
-                            .b_flags
-                            .insert(BufFlag::B_READ | BufFlag::B_ASYNC);
-                        (*read_ahead_bp).b_wcount = Self::BUFFER_SIZE as i32;
+                if read_ahead_bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
+                    self.brelse(read_ahead_bp);
+                } else {
+                    read_ahead_bp
+                        .as_mut()
+                        .b_flags
+                        .insert(BufFlag::B_READ | BufFlag::B_ASYNC);
+                    read_ahead_bp.as_mut().b_wcount = Self::BUFFER_SIZE as i32;
 
-                        let device =
-                            block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
-                        device.strategy(read_ahead_bp);
-                    }
+                    let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
+                    device.strategy(read_ahead_bp);
                 }
             }
         }
@@ -276,28 +265,25 @@ impl BufferManager {
         match bp {
             Some(bp) => {
                 self.io_wait(bp)?;
-                unsafe { Ok(Buffer::new(bp)) }
+                Ok(Buffer::new(bp))
             }
             None => self.bread(dev, blkno),
         }
     }
 
-    pub fn bwrite(&mut self, bp: *mut Buf) -> BufferResult<()> {
-        if bp.is_null() {
-            return Err(BufferError::InvalidBuffer);
-        }
+    pub fn bwrite(&mut self, buf: Buffer) -> BufferResult<()> {
+        self.bwrite_ref(buf.into_ref())
+    }
 
-        let old_flags = unsafe {
-            let bp_ref = &mut *bp;
-            let old_flags = bp_ref.b_flags;
-            bp_ref
-                .b_flags
-                .remove(BufFlag::B_READ | BufFlag::B_DONE | BufFlag::B_ERROR | BufFlag::B_DELWRI);
-            bp_ref.b_wcount = Self::BUFFER_SIZE as i32;
-            old_flags
-        };
+    fn bwrite_ref(&mut self, bp: BufRef) -> BufferResult<()> {
+        let bp_ref = bp.as_mut();
+        let old_flags = bp_ref.b_flags;
+        bp_ref
+            .b_flags
+            .remove(BufFlag::B_READ | BufFlag::B_DONE | BufFlag::B_ERROR | BufFlag::B_DELWRI);
+        bp_ref.b_wcount = Self::BUFFER_SIZE as i32;
 
-        let dev = unsafe { (*bp).b_dev };
+        let dev = bp.as_ref().b_dev;
         let device = block_device_for_dev(dev).ok_or(BufferError::InvalidDevice)?;
         device.strategy(bp);
 
@@ -311,45 +297,29 @@ impl BufferManager {
         Ok(())
     }
 
-    pub fn bdwrite(&mut self, bp: *mut Buf) {
-        if bp.is_null() {
-            return;
-        }
-
-        unsafe {
-            (*bp).b_flags.insert(BufFlag::B_DELWRI | BufFlag::B_DONE);
-        }
+    pub fn bdwrite(&mut self, buf: Buffer) {
+        let bp = buf.into_ref();
+        bp.as_mut()
+            .b_flags
+            .insert(BufFlag::B_DELWRI | BufFlag::B_DONE);
         self.brelse(bp);
     }
 
-    pub fn bawrite(&mut self, bp: *mut Buf) {
-        if bp.is_null() {
-            return;
-        }
-
-        unsafe {
-            (*bp).b_flags.insert(BufFlag::B_ASYNC);
-        }
-        let _ = self.bwrite(bp);
+    pub fn bawrite(&mut self, buf: Buffer) {
+        let bp = buf.into_ref();
+        bp.as_mut().b_flags.insert(BufFlag::B_ASYNC);
+        let _ = self.bwrite_ref(bp);
     }
 
-    pub fn clr_buf(&mut self, bp: *mut Buf) {
-        if bp.is_null() {
-            return;
-        }
-
-        unsafe {
-            (*bp).as_slice_mut().fill(0);
-        }
+    pub fn clr_buf(&mut self, buf: &mut Buffer) {
+        buf.as_bytes_mut().fill(0);
     }
 
     pub fn bflush(&mut self, dev: Option<DevId>) -> BufferResult<()> {
         while let Some(bp) = self.find_delayed_write_buffer(dev) {
-            unsafe {
-                (*bp).b_flags.insert(BufFlag::B_ASYNC);
-            }
+            bp.as_mut().b_flags.insert(BufFlag::B_ASYNC);
             self.not_avail(bp);
-            self.bwrite(bp)?;
+            self.bwrite_ref(bp)?;
         }
 
         Ok(())
@@ -366,7 +336,7 @@ impl BufferManager {
             let ctx = IrqGuard::disable_save();
             while self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
-                sleep_on(self.swap_buf_ptr() as usize, PSWP);
+                sleep_on(self.swap_buf_ref().chan(), PSWP);
             }
         }
 
@@ -378,7 +348,7 @@ impl BufferManager {
             self.swap_buf.set_transfer(addr as *mut u8, count);
         }
 
-        let bp = self.swap_buf_ptr();
+        let bp = self.swap_buf_ref();
         let device = block_device_for_dev(ROOTDEV).ok_or(BufferError::InvalidDevice)?;
         device.strategy(bp);
 
@@ -386,7 +356,7 @@ impl BufferManager {
             let ctx = IrqGuard::disable_save();
             while !self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
-                sleep_on(self.swap_buf_ptr() as usize, PSWP);
+                sleep_on(self.swap_buf_ref().chan(), PSWP);
             }
         }
 
@@ -394,11 +364,11 @@ impl BufferManager {
     }
 
     fn finish_swap(&mut self) -> BufferResult<()> {
-        let bp = self.swap_buf_ptr();
+        let bp = self.swap_buf_ref();
 
         if self.swap_buf.b_flags.contains(BufFlag::B_WANTED) {
             unsafe {
-                wakeup_all(bp as usize);
+                wakeup_all(bp.chan());
             }
         }
 
@@ -434,35 +404,24 @@ impl BufferManager {
         &mut self.slots
     }
 
-    fn get_error(&mut self, bp: *mut Buf) -> BufferResult<()> {
-        if bp.is_null() {
-            return Err(BufferError::InvalidBuffer);
-        }
-
-        unsafe {
-            if (*bp).b_flags.contains(BufFlag::B_ERROR) {
-                Err(BufferError::IoError)
-            } else {
-                Ok(())
-            }
+    fn get_error(&mut self, bp: BufRef) -> BufferResult<()> {
+        if bp.as_ref().b_flags.contains(BufFlag::B_ERROR) {
+            Err(BufferError::IoError)
+        } else {
+            Ok(())
         }
     }
 
-    fn not_avail(&mut self, bp: *mut Buf) {
-        if bp.is_null() {
-            return;
+    fn not_avail(&mut self, bp: BufRef) {
+        let ctx = IrqGuard::disable_save();
+        if bp.as_ref().is_on_free_list() {
+            self.remove_from_free_list(bp);
         }
-
-        unsafe {
-            let ctx = IrqGuard::disable_save();
-            if (*bp).is_on_free_list() {
-                self.remove_from_free_list(bp);
-            }
-            (*bp).b_flags.insert(BufFlag::B_BUSY);
-        }
+        bp.as_mut().b_flags.insert(BufFlag::B_BUSY);
+        drop(ctx);
     }
 
-    fn in_core(&self, dev: DevId, blkno: PhysicalBlock) -> Option<*mut Buf> {
+    fn in_core(&self, dev: DevId, blkno: PhysicalBlock) -> Option<BufRef> {
         if dev.0 < 0 {
             return self.in_device_list(&self.unassigned_list, blkno, dev.0);
         }
@@ -481,38 +440,38 @@ impl BufferManager {
         }
     }
 
-    fn find_delayed_write_buffer(&self, dev: Option<DevId>) -> Option<*mut Buf> {
+    fn find_delayed_write_buffer(&self, dev: Option<DevId>) -> Option<BufRef> {
         for bp in self.free_list.iter() {
             let matches_dev = dev.is_none_or(|dev| bp.b_dev == dev.0);
 
             if matches_dev && bp.b_flags.contains(BufFlag::B_DELWRI) {
-                return Some(bp as *const Buf as *mut Buf);
+                return Some(BufRef::from_ref(bp));
             }
         }
 
         None
     }
 
-    fn insert_into_device_queue(&mut self, dev: DevId, bp: *mut Buf) -> BufferResult<()> {
+    fn insert_into_device_queue(&mut self, dev: DevId, bp: BufRef) -> BufferResult<()> {
         if dev.0 < 0 {
             self.insert_into_unassigned_queue(bp);
             return Ok(());
         }
 
         let device = block_device_for_dev(dev.0).ok_or(BufferError::InvalidDevice)?;
-        device.devtab().with_mut(|devtab| unsafe {
+        device.devtab().with_mut(|devtab| {
             Self::insert_device_front(&mut devtab.buffer_list, bp, dev.0);
         });
 
         Ok(())
     }
 
-    unsafe fn remove_from_current_device_queue(&mut self, bp: *mut Buf) {
-        if !(*bp).is_on_device_list() {
+    fn remove_from_current_device_queue(&mut self, bp: BufRef) {
+        if !bp.as_ref().is_on_device_list() {
             return;
         }
 
-        let queue_dev = (*bp).b_queue_dev;
+        let queue_dev = bp.as_ref().b_queue_dev;
         if queue_dev < 0 {
             Self::remove_from_device_list(&mut self.unassigned_list, bp);
             return;
@@ -530,51 +489,46 @@ impl BufferManager {
         list: &BufDeviceList,
         blkno: PhysicalBlock,
         dev: i16,
-    ) -> Option<*mut Buf> {
+    ) -> Option<BufRef> {
         for bp in list.iter() {
             if bp.b_blkno == blkno && bp.b_dev == dev {
-                return Some(bp as *const Buf as *mut Buf);
+                return Some(BufRef::from_ref(bp));
             }
         }
 
         None
     }
 
-    fn insert_into_unassigned_queue(&mut self, bp: *mut Buf) {
-        unsafe {
-            Self::insert_device_front(&mut self.unassigned_list, bp, -1);
-        }
+    fn insert_into_unassigned_queue(&mut self, bp: BufRef) {
+        Self::insert_device_front(&mut self.unassigned_list, bp, -1);
     }
 
-    unsafe fn insert_device_front(list: &mut BufDeviceList, bp: *mut Buf, queue_dev: i16) {
-        if (*bp).is_on_device_list() {
+    fn insert_device_front(list: &mut BufDeviceList, bp: BufRef, queue_dev: i16) {
+        if bp.as_ref().is_on_device_list() {
             return;
         }
 
-        (*bp).b_queue_dev = queue_dev;
-        list.push_front(UnsafeRef::from_raw(bp as *const Buf));
+        bp.as_mut().b_queue_dev = queue_dev;
+        list.push_front(bp.into_unsafe_ref());
     }
 
-    fn remove_from_device_list(list: &mut BufDeviceList, bp: *mut Buf) {
-        let mut cursor = unsafe { list.cursor_mut_from_ptr(bp as *const Buf) };
+    fn remove_from_device_list(list: &mut BufDeviceList, bp: BufRef) {
+        let mut cursor = unsafe { list.cursor_mut_from_ptr(bp.cursor_ptr()) };
         cursor.remove();
 
-        unsafe {
-            (*bp).b_queue_dev = -1;
-        }
+        bp.as_mut().b_queue_dev = -1;
     }
 
-    unsafe fn push_free_back(&mut self, bp: *mut Buf) {
-        if (*bp).is_on_free_list() {
+    fn push_free_back(&mut self, bp: BufRef) {
+        if bp.as_ref().is_on_free_list() {
             return;
         }
 
-        self.free_list
-            .push_back(UnsafeRef::from_raw(bp as *const Buf));
+        self.free_list.push_back(bp.into_unsafe_ref());
     }
 
-    unsafe fn remove_from_free_list(&mut self, bp: *mut Buf) {
-        let mut cursor = self.free_list.cursor_mut_from_ptr(bp as *const Buf);
+    fn remove_from_free_list(&mut self, bp: BufRef) {
+        let mut cursor = unsafe { self.free_list.cursor_mut_from_ptr(bp.cursor_ptr()) };
         cursor.remove();
     }
 
@@ -582,19 +536,19 @@ impl BufferManager {
         self.free_list.is_empty()
     }
 
-    fn free_list_head(&self) -> Option<*mut Buf> {
+    fn free_list_head(&self) -> Option<BufRef> {
         self.free_list
             .front()
             .clone_pointer()
-            .map(|bp| UnsafeRef::into_raw(bp) as *mut Buf)
+            .map(BufRef::from_unsafe_ref)
     }
 
     fn free_list_wait_chan(&mut self) -> usize {
-        &mut self.b_free_list as *mut Buf as usize
+        BufRef::from_mut(&mut self.b_free_list).chan()
     }
 
-    fn swap_buf_ptr(&mut self) -> *mut Buf {
-        &mut self.swap_buf as *mut Buf
+    fn swap_buf_ref(&mut self) -> BufRef {
+        BufRef::from_mut(&mut self.swap_buf)
     }
 }
 

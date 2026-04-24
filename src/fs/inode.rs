@@ -311,8 +311,7 @@ impl Inode {
 
             let mut blk;
             if nbytes == Self::BLOCK_SIZE {
-                let bp = global_buffer_manager().get_blk(dev, bn)?;
-                blk = unsafe { Buffer::new(bp) };
+                blk = global_buffer_manager().get_blk(dev, bn)?;
             } else {
                 blk = global_buffer_manager().bread(dev, bn)?;
             }
@@ -325,9 +324,9 @@ impl Inode {
             nwrite += nbytes;
 
             if offset % Self::BLOCK_SIZE == 0 {
-                global_buffer_manager().bawrite(blk.into_raw());
+                global_buffer_manager().bawrite(blk);
             } else {
-                global_buffer_manager().bdwrite(blk.into_raw());
+                global_buffer_manager().bdwrite(blk);
             }
 
             if !is_blk && !is_chr && self.i_size < offset as _ {
@@ -349,11 +348,9 @@ impl Inode {
     }
 
     fn alloc_blk(&mut self) -> Option<(PhysicalBlock, Buffer)> {
-        Some(unsafe {
-            let buf = Buffer::new(global_file_system().alloc(self.i_dev).ok()?);
-            assert_ne!(buf.phyblk(), PhysicalBlock::ZERO);
-            (buf.phyblk(), buf)
-        })
+        let buf = global_file_system().alloc(self.i_dev).ok()?;
+        assert_ne!(buf.phyblk(), PhysicalBlock::ZERO);
+        Some((buf.phyblk(), buf))
     }
 
     /// Get the buffer corresponding to some direct block.
@@ -441,7 +438,7 @@ impl Inode {
         let buf = fs::global_file_system()
             .alloc(dev)
             .map_err(map_fs_alloc_error)?;
-        Ok(unsafe { (*buf).b_blkno })
+        Ok(buf.phyblk())
     }
 
     pub fn open_i(&self, mode: u32) -> Result<(), PosixError> {
@@ -528,7 +525,7 @@ impl Inode {
         let offset = self.i_number as usize % FileSystem::INODE_NUMBER_PER_SECTOR;
         buf.as_slice_mut()[offset] = disk_inode;
 
-        global_buffer_manager().bwrite(buf.into_raw()).unwrap();
+        global_buffer_manager().bwrite(buf).unwrap();
     }
 
     fn release_blk(&self, blk: PhysicalBlock) {

@@ -48,25 +48,23 @@ impl PhysicalBlock {
 ///
 /// Dropping the [`Buffer`] calls `bm.release(buf)`.
 pub struct Buffer {
-    bp: NonNull<Buf>,
+    bp: BufRef,
 }
 
 unsafe impl Send for Buffer {}
 unsafe impl Sync for Buffer {}
 
 impl Buffer {
-    pub const unsafe fn new(bp: *mut Buf) -> Self {
-        Self {
-            bp: NonNull::new_unchecked(bp),
-        }
+    pub(crate) const fn new(bp: BufRef) -> Self {
+        Self { bp }
     }
 
     fn deref(&self) -> &Buf {
-        unsafe { self.bp.as_ref() }
+        self.bp.as_ref()
     }
 
     fn deref_mut(&mut self) -> &mut Buf {
-        unsafe { self.bp.as_mut() }
+        self.bp.as_mut()
     }
 
     pub fn as_slice_mut<T: Copy>(&mut self) -> &mut [T] {
@@ -103,8 +101,8 @@ impl Buffer {
         self.deref().b_blkno
     }
 
-    pub fn into_raw(self) -> *mut Buf {
-        let bp = self.bp.as_ptr();
+    pub(crate) fn into_ref(self) -> BufRef {
+        let bp = self.bp;
         core::mem::forget(self);
         bp
     }
@@ -112,7 +110,44 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        global_buffer_manager().brelse(self.bp.as_ptr());
+        global_buffer_manager().brelse(self.bp);
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct BufRef(NonNull<Buf>);
+
+impl BufRef {
+    pub fn from_mut(buf: &mut Buf) -> Self {
+        Self(NonNull::from(buf))
+    }
+
+    pub fn from_ref(buf: &Buf) -> Self {
+        Self(NonNull::from(buf))
+    }
+
+    pub fn from_unsafe_ref(buf: UnsafeRef<Buf>) -> Self {
+        unsafe { Self(NonNull::new_unchecked(UnsafeRef::into_raw(buf))) }
+    }
+
+    pub fn as_ref(self) -> &'static Buf {
+        unsafe { self.0.as_ref() }
+    }
+
+    pub fn as_mut(mut self) -> &'static mut Buf {
+        unsafe { self.0.as_mut() }
+    }
+
+    pub fn chan(self) -> usize {
+        self.0.as_ptr() as usize
+    }
+
+    pub fn cursor_ptr(self) -> *const Buf {
+        self.0.as_ptr()
+    }
+
+    pub fn into_unsafe_ref(self) -> UnsafeRef<Buf> {
+        unsafe { UnsafeRef::from_raw(self.cursor_ptr()) }
     }
 }
 

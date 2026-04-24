@@ -2,7 +2,7 @@ use crate::{dev::buffer_manager::global_buffer_manager, sync::SuperCell};
 
 use super::{
     block_device::{ata_block_device, BlockDevice},
-    buffer::{Buf, BufFlag},
+    buffer::{Buf, BufFlag, BufRef},
     device_manager::minor,
     dma::{DMAType, PRDTable, PhysicalRegionDescriptor, DMA},
     io_port::IOPort,
@@ -44,7 +44,7 @@ impl ATADriver {
         enum HandlerAction {
             Ignore,
             Retry,
-            Complete(*mut Buf),
+            Complete(BufRef),
         }
 
         let bdev = ata_block_device();
@@ -65,9 +65,7 @@ impl ATADriver {
                     return HandlerAction::Retry;
                 }
 
-                unsafe {
-                    (*bp).b_flags.insert(BufFlag::B_ERROR);
-                }
+                bp.as_mut().b_flags.insert(BufFlag::B_ERROR);
             }
 
             tab.d_errcnt = 0;
@@ -95,16 +93,12 @@ impl ATADriver {
         }
     }
 
-    pub fn dev_start(bp: *mut Buf) {
-        if bp.is_null() {
-            panic!("Invalid Buf in DevStart()!");
-        }
-
+    pub fn dev_start(bp: BufRef) {
         if Self::is_controller_ready() == 0 {
             panic!("Disk Hang Up!");
         }
 
-        let bp_ref = unsafe { &mut *bp };
+        let bp_ref = bp.as_mut();
         let minor = minor(bp_ref.b_dev) as u8;
         let blkno = bp_ref.b_blkno.0;
         let sectors = (bp_ref.b_wcount as usize / Buf::BLOCK_SIZE) as u8;
