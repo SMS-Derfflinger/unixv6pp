@@ -1,7 +1,6 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
-#include "Text.h"
 #include "Regs.h"
 
 /*
@@ -69,32 +68,6 @@ public:
 												 * 
 												 * 返回值：信号数，无信号则返回0。
 												 */
-
-public:
-	/* 用于标识进程的标识 */
-	short p_uid;		/* 用户ID */
-	int p_pid;			/* 进程标识数，进程编号 */
-	int p_ppid;			/* 父进程标识数 */
-
-	/* 进程内存中图像信息位置 */
-	unsigned long	p_addr; /* TBD user结构即ppda区在物理内存中的地址，用于替代页表中的某一项 */
-	unsigned int	p_size; /* 除共享正文段的长度，以字节单位 */
-	Text*	p_textp;		/* 指向该进程所运行的代码段的描述符 */
-
-	/* 进程调度状态 */
-	ProcessState	p_stat;	/* 进程当前状态 */
-	int p_flag;			/* 进程标志位，可以将多个状态组合 */
-
-	int p_pri;			/* 进程优先数 */
-	int p_cpu;			/* cpu值，用于计算p_pri */
-	int p_nice;			/* 进程优先数微调参数 */
-	int p_time;			/* 进程在盘上(内存内)驻留时间 */
-
-	unsigned long	p_wchan;	/* 进程睡眠原因，一般为内存地址，等待某个内核数据 */
-	
-	/* 信号与控制台终端 */
-	int p_sig;			/* 进程信号 */
-	unsigned long p_sigmap;
 };
 
 #endif
