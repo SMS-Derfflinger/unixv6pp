@@ -1,4 +1,4 @@
-use core::{arch::naked_asm, mem::MaybeUninit, ptr};
+use core::{arch::naked_asm, mem::MaybeUninit, ptr, sync::atomic::compiler_fence};
 
 use crate::{
     compat::compat_flush_page_directory,
@@ -194,7 +194,12 @@ fn copy_runtime_to_userspace() {
 }
 
 #[no_mangle]
-pub extern "C" fn main0() -> ! {
+pub extern "C" fn kernelBridge() -> ! {
+    init_bss();
+
+    // Don't move things across here
+    compiler_fence(core::sync::atomic::Ordering::SeqCst);
+
     init_peripherals();
 
     init_gdt();
@@ -227,5 +232,20 @@ pub extern "C" fn main0() -> ! {
         );
     }
 
-    unreachable!();
+    unreachable!("main0() should never return");
+}
+
+fn init_bss() {
+    extern "C" {
+        fn __BSS_START__();
+        fn __BSS_END__();
+    }
+
+    let bss_start = __BSS_START__ as usize;
+    let bss_end = __BSS_END__ as usize;
+    let bss_len = bss_end - bss_start;
+
+    unsafe {
+        core::slice::from_raw_parts_mut(bss_start as *mut u8, bss_len).fill(0);
+    }
 }
