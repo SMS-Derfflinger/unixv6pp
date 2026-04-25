@@ -1,5 +1,6 @@
-use core::{mem::MaybeUninit, ptr::NonNull};
+use core::{mem::MaybeUninit, ops::Deref, ptr::NonNull};
 
+use buddy_allocator::BuddyAllocator;
 use eonix_mm::{
     address::PAddr,
     paging::{Folio, FolioList, FolioListSized, Zone, PFN},
@@ -7,9 +8,13 @@ use eonix_mm::{
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
 use slab_allocator::{SlabPage, SlabSlot};
 
-use crate::mm::{
-    allocator::{phys_to_virt, virt_to_phys},
-    zone::ZONE,
+use crate::{
+    mm::{
+        allocator::{phys_to_virt, virt_to_phys},
+        zone::{MemoryZone, ZONE},
+        KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,
+    },
+    sync::{KernelSpinGuard, SpinExt},
 };
 
 pub const PAGE_SIZE: usize = 0x1000;
@@ -20,8 +25,14 @@ struct SlabPageData {
     alloced: usize,
 }
 
+#[derive(Clone, Copy)]
+struct UserPageData {
+    refcount: usize,
+}
+
 union PageData {
     slab: SlabPageData,
+    user: UserPageData,
 }
 
 pub struct PhysPage {
@@ -31,6 +42,13 @@ pub struct PhysPage {
     pub is_buddy: bool,
     data: PageData,
 }
+
+pub struct Pages<const USER: bool> {
+    raw_handle: Option<&'static mut PhysPage>,
+}
+
+pub type KernelPages = Pages<false>;
+pub type UserPages = Pages<true>;
 
 impl PageData {
     pub const fn uninit() -> Self {
@@ -63,6 +81,69 @@ impl PhysPage {
                 alloced: 0,
             },
         };
+    }
+}
+
+impl<const USER: bool> Pages<USER> {
+    fn allocator() -> KernelSpinGuard<'static, BuddyAllocator<MemoryZone, PageList>> {
+        if USER {
+            USER_PAGE_MANAGER.lock()
+        } else {
+            KERNEL_PAGE_MANAGER.lock()
+        }
+    }
+}
+
+impl UserPages {
+    #[inline(always)]
+    pub fn alloc_bytes(bytes: usize) -> Option<Self> {
+        assert_ne!(bytes, 0, "Can't alloc 0 size");
+        let aligned_size = bytes.next_power_of_two();
+        let order = aligned_size.trailing_zeros() - 12;
+        Self::alloc(order)
+    }
+
+    pub fn alloc(order: u32) -> Option<Self> {
+        let raw = Self::allocator().alloc_order(order)?;
+
+        Some(Self {
+            raw_handle: Some(raw),
+        })
+    }
+}
+
+impl KernelPages {
+    #[inline(always)]
+    pub fn alloc_bytes(bytes: usize) -> Self {
+        assert_ne!(bytes, 0, "Can't alloc 0 size");
+        let aligned_size = bytes.next_power_of_two();
+        let order = aligned_size.trailing_zeros() - 12;
+        Self::alloc(order)
+    }
+
+    pub fn alloc(order: u32) -> Self {
+        let raw = Self::allocator().alloc_order(order).expect("Out of memory");
+
+        Self {
+            raw_handle: Some(raw),
+        }
+    }
+}
+
+impl<const USER: bool> Deref for Pages<USER> {
+    type Target = PhysPage;
+
+    fn deref(&self) -> &Self::Target {
+        self.raw_handle.as_ref().unwrap()
+    }
+}
+
+impl<const USER: bool> Drop for Pages<USER> {
+    fn drop(&mut self) {
+        let raw = self.raw_handle.take().unwrap();
+        unsafe {
+            Self::allocator().dealloc(raw);
+        }
     }
 }
 
