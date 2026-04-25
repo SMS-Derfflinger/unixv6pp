@@ -141,30 +141,36 @@ impl BufferManager {
     }
 
     pub fn brelse(&mut self, bp: BufRef) {
-        if bp.as_ref().b_flags.contains(BufFlag::B_WANTED) {
-            unsafe {
-                wakeup_all(bp.chan());
-            }
-        }
-
-        if self.b_free_list.b_flags.contains(BufFlag::B_WANTED) {
-            self.b_free_list.b_flags.remove(BufFlag::B_WANTED);
-            unsafe {
-                wakeup_all(self.free_list_wait_chan());
-            }
-        }
+        let _ctx = IrqGuard::disable_save();
+        let wake_buf = bp.as_ref().b_flags.contains(BufFlag::B_WANTED);
+        let wake_free = self.b_free_list.b_flags.contains(BufFlag::B_WANTED);
 
         if bp.as_ref().b_flags.contains(BufFlag::B_ERROR) {
             bp.as_mut().b_dev = set_minor(bp.as_ref().b_dev, -1);
         }
 
-        let _ctx = IrqGuard::disable_save();
+        if wake_free {
+            self.b_free_list.b_flags.remove(BufFlag::B_WANTED);
+        }
+
         bp.as_mut()
             .b_flags
             .remove(BufFlag::B_WANTED | BufFlag::B_BUSY | BufFlag::B_ASYNC);
 
         if !bp.as_ref().is_on_free_list() {
             self.push_free_back(bp);
+        }
+
+        if wake_buf {
+            unsafe {
+                wakeup_all(bp.chan());
+            }
+        }
+
+        if wake_free {
+            unsafe {
+                wakeup_all(self.free_list_wait_chan());
+            }
         }
     }
 

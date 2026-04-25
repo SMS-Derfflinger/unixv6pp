@@ -443,6 +443,30 @@ impl Process {
         self.should_process()
     }
 
+    pub fn sleep_user_with_irq_guard(&mut self, chan: usize, pri: u32, ctx: IrqGuard) -> bool {
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!("pid{} sleep user with guard chan={chan:#x}", self.pid);
+
+        if self.should_process() {
+            drop(ctx);
+            return true;
+        }
+
+        self.wchan = chan;
+        self.stat = ProcessState::SWAIT;
+        self.pri = pri as i32;
+        drop(ctx);
+
+        if ProcessManager::get().run_in != 0 {
+            ProcessManager::get().run_in = 0;
+            ProcessManager::get().wakeup_runin();
+        }
+
+        ProcessManager::get().switch();
+
+        self.should_process()
+    }
+
     pub fn expand(&mut self, newlen: usize) {
         let oldlen = self.size as usize;
         self.size = newlen as u32;
