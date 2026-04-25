@@ -47,6 +47,8 @@ mod syscall_number {
     pub const FSTAT: usize = 28;
     pub const SMDATE: usize = 30;
     pub const TRACE: usize = 29;
+    pub const STTY: usize = 31;
+    pub const GTTY: usize = 32;
     pub const NICE: usize = 34;
     pub const SLEEP: usize = 35;
     pub const SYNC: usize = 36;
@@ -64,10 +66,6 @@ mod syscall_number {
     pub fn is_unimplemented(number: usize) -> bool {
         matches!(number, 27 | 33 | 40 | 45 | 49..=63)
     }
-}
-
-unsafe extern "C" {
-    safe fn cpp_system_call_trap1(number: usize);
 }
 
 #[no_mangle]
@@ -98,9 +96,7 @@ fn trap(regs: *mut Registers, context: &mut TrapFrame) {
     let syscall_no = regs.eax;
     copy_args(regs);
 
-    if !handle_in_rust(syscall_no) {
-        cpp_system_call_trap1(syscall_no);
-    }
+    handle_in_rust(syscall_no);
 
     if Userspace::get().signal_pending {
         Userspace::get().error = Some(PosixError::EINTR);
@@ -300,6 +296,8 @@ fn handle_in_rust(number: usize) -> bool {
             copy_pwd();
             true
         }
+        // TODO: stty and gtty are blank implementations for now.
+        sys::STTY | sys::GTTY => true,
         sys::NICE => {
             let nice = Userspace::get().args[0] as i32;
             Userspace::get().proc().set_nice(nice);
