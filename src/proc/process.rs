@@ -383,7 +383,11 @@ impl Process {
 
     pub fn sleep_kernel(&mut self, chan: impl Channel, pri: i32) {
         #[cfg(feature = "debug_irq")]
-        crate::println_debug!("pid{} sleep kernel chan={:#x}", self.pid, chan.channel_addr());
+        crate::println_debug!(
+            "pid{} sleep kernel chan={:#x}",
+            self.pid,
+            chan.channel_addr()
+        );
 
         {
             let ctx = IrqGuard::disable_save();
@@ -391,6 +395,21 @@ impl Process {
             self.stat = ProcessState::SSLEEP;
             self.pri = pri;
         }
+
+        ProcessManager::get().switch();
+    }
+
+    pub fn sleep_kernel_with_irq_guard(&mut self, chan: impl Channel, pri: i32, ctx: IrqGuard) {
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!(
+            "pid{} sleep kernel with guard chan={:#x}",
+            self.pid,
+            chan.channel_addr()
+        );
+        self.wchan = chan.channel_addr();
+        self.stat = ProcessState::SSLEEP;
+        self.pri = pri;
+        drop(ctx);
 
         ProcessManager::get().switch();
     }

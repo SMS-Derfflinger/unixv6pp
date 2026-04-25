@@ -98,13 +98,11 @@ impl BufferManager {
                 let ctx = IrqGuard::disable_save();
                 if bp.as_ref().b_flags.contains(BufFlag::B_BUSY) {
                     bp.as_mut().b_flags.insert(BufFlag::B_WANTED);
-                    drop(ctx);
                     unsafe {
-                        sleep_on(bp.chan(), PRIBIO);
+                        sleep_on_with_irq_guard(bp.chan(), PRIBIO, ctx);
                     }
                     continue;
                 }
-                drop(ctx);
 
                 self.not_avail(bp);
                 return Ok(bp);
@@ -118,9 +116,8 @@ impl BufferManager {
                 }
 
                 self.b_free_list.b_flags.insert(BufFlag::B_WANTED);
-                drop(ctx);
                 unsafe {
-                    sleep_on(self.free_list_wait_chan(), PRIBIO);
+                    sleep_on_with_irq_guard(self.free_list_wait_chan(), PRIBIO, ctx);
                 }
             };
 
@@ -161,7 +158,7 @@ impl BufferManager {
             bp.as_mut().b_dev = set_minor(bp.as_ref().b_dev, -1);
         }
 
-        let ctx = IrqGuard::disable_save();
+        let _ctx = IrqGuard::disable_save();
         bp.as_mut()
             .b_flags
             .remove(BufFlag::B_WANTED | BufFlag::B_BUSY | BufFlag::B_ASYNC);
@@ -169,22 +166,20 @@ impl BufferManager {
         if !bp.as_ref().is_on_free_list() {
             self.push_free_back(bp);
         }
-        drop(ctx);
     }
 
     pub fn io_wait(&mut self, bp: BufRef) -> BufferResult<()> {
         #[cfg(feature = "debug_irq")]
         crate::println_debug!("IO wait on {:#x}", bp.as_ref() as *const _ as usize);
-
         while !bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
-            let _ctx = IrqGuard::disable_save();
+            let ctx = IrqGuard::disable_save();
             if bp.as_ref().b_flags.contains(BufFlag::B_DONE) {
                 break;
             }
 
             bp.as_mut().b_flags.insert(BufFlag::B_WANTED);
             unsafe {
-                sleep_on(bp.chan(), PRIBIO);
+                sleep_on_with_irq_guard(bp.chan(), PRIBIO, ctx);
             }
         }
 
@@ -341,8 +336,7 @@ impl BufferManager {
             let mut ctx = IrqGuard::disable_save();
             while self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
-                drop(ctx);
-                sleep_on(self.swap_buf_ref().chan(), PSWP);
+                sleep_on_with_irq_guard(self.swap_buf_ref().chan(), PSWP, ctx);
                 ctx = IrqGuard::disable_save();
             }
 
@@ -351,7 +345,6 @@ impl BufferManager {
             self.swap_buf.b_wcount = count as i32;
             self.swap_buf.b_blkno = blkno;
             self.swap_buf.set_transfer(addr as *mut u8, count);
-            drop(ctx);
         }
 
         let bp = self.swap_buf_ref();
@@ -362,11 +355,9 @@ impl BufferManager {
             let mut ctx = IrqGuard::disable_save();
             while !self.swap_buf.b_flags.contains(BufFlag::B_DONE) {
                 self.swap_buf.b_flags.insert(BufFlag::B_WANTED);
-                drop(ctx);
-                sleep_on(self.swap_buf_ref().chan(), PSWP);
+                sleep_on_with_irq_guard(self.swap_buf_ref().chan(), PSWP, ctx);
                 ctx = IrqGuard::disable_save();
             }
-            drop(ctx);
         }
 
         self.finish_swap()
@@ -423,12 +414,11 @@ impl BufferManager {
     }
 
     fn not_avail(&mut self, bp: BufRef) {
-        let ctx = IrqGuard::disable_save();
+        let _ctx = IrqGuard::disable_save();
         if bp.as_ref().is_on_free_list() {
             self.remove_from_free_list(bp);
         }
         bp.as_mut().b_flags.insert(BufFlag::B_BUSY);
-        drop(ctx);
     }
 
     fn in_core(&self, dev: DevId, blkno: PhysicalBlock) -> Option<BufRef> {
@@ -574,8 +564,10 @@ pub(crate) fn global_buffer_manager() -> &'static mut BufferManager {
     GLOBAL_BUFFER_MANAGER.get_mut()
 }
 
-unsafe fn sleep_on(chan: usize, pri: i32) {
-    Userspace::get().proc().sleep_kernel(chan, pri);
+unsafe fn sleep_on_with_irq_guard(chan: usize, pri: i32, ctx: IrqGuard) {
+    Userspace::get()
+        .proc()
+        .sleep_kernel_with_irq_guard(chan, pri, ctx);
 }
 
 unsafe fn wakeup_all(chan: usize) {
