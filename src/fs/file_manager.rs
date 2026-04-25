@@ -16,7 +16,7 @@ use crate::{
         File, FileRef, Inode, InodeRef, InodeRefGuard,
     },
     proc::{Channel, ProcessManager},
-    sync::SpinExt,
+    sync::{IrqGuard, SpinExt},
     user::Userspace,
 };
 
@@ -372,8 +372,11 @@ impl FileManager {
                 let mut inode = inode_ref.lock();
                 inode.i_mode.insert(InodeMode::IREAD);
                 let chan = inode.channel_read().channel_addr();
+                let ctx = IrqGuard::disable_save();
                 drop(inode);
-                Userspace::get().proc().sleep_user(chan, PPIPE);
+                Userspace::get()
+                    .proc()
+                    .sleep_user_with_irq_guard(chan, PPIPE, ctx);
                 continue;
             }
 
@@ -415,8 +418,11 @@ impl FileManager {
             if inode.i_size as usize == Inode::PIPSIZ {
                 inode.i_mode.insert(InodeMode::IWRITE);
                 let chan = inode.channel_write().channel_addr();
+                let ctx = IrqGuard::disable_save();
                 inode.prele();
-                Userspace::get().proc().sleep_user(chan, PPIPE);
+                Userspace::get()
+                    .proc()
+                    .sleep_user_with_irq_guard(chan, PPIPE, ctx);
                 continue;
             }
 

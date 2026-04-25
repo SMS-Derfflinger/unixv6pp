@@ -16,7 +16,7 @@ use crate::{
         InodeRef, SuperBlockRef,
     },
     proc::{ProcessManager, PINOD},
-    sync::SpinExt,
+    sync::{IrqGuard, SpinExt},
     user::Userspace,
 };
 
@@ -388,8 +388,11 @@ impl FileSystem {
         loop {
             let mut sb = spb.lock();
             while sb.is_ilock() {
+                let ctx = IrqGuard::disable_save();
                 drop(sb);
-                Userspace::get().proc().sleep_kernel(ilock_addr, PINOD);
+                Userspace::get()
+                    .proc()
+                    .sleep_kernel_with_irq_guard(ilock_addr, PINOD, ctx);
                 sb = spb.lock();
             }
 
@@ -473,8 +476,11 @@ impl FileSystem {
         let mut sb = spb.lock();
         let flock_addr = sb.free_lock_chan();
         while sb.is_flock() {
+            let ctx = IrqGuard::disable_save();
             drop(sb);
-            Userspace::get().proc().sleep_kernel(flock_addr, PINOD);
+            Userspace::get()
+                .proc()
+                .sleep_kernel_with_irq_guard(flock_addr, PINOD, ctx);
             sb = spb.lock();
         }
 
@@ -534,8 +540,11 @@ impl FileSystem {
 
         let flock_addr = sb.free_lock_chan();
         while sb.is_flock() {
+            let ctx = IrqGuard::disable_save();
             drop(sb);
-            Userspace::get().proc().sleep_kernel(flock_addr, PINOD);
+            Userspace::get()
+                .proc()
+                .sleep_kernel_with_irq_guard(flock_addr, PINOD, ctx);
             sb = spb.lock();
         }
 

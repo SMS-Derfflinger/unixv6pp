@@ -16,7 +16,7 @@ use crate::{
         FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot,
     },
     proc::{Channel, ProcessManager, PINOD},
-    sync::SpinExt,
+    sync::{IrqGuard, SpinExt},
     user::Userspace,
     Ext,
 };
@@ -147,8 +147,11 @@ impl InodeTable {
             if inode.i_flag.contains(InodeFlag::ILOCK) {
                 inode.i_flag.insert(InodeFlag::IWANT);
                 let chan = (&*inode).channel_addr();
+                let ctx = IrqGuard::disable_save();
                 drop(inode);
-                Userspace::get().proc().sleep_kernel(chan, PINOD);
+                Userspace::get()
+                    .proc()
+                    .sleep_kernel_with_irq_guard(chan, PINOD, ctx);
                 continue;
             }
 

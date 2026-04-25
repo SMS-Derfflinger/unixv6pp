@@ -12,7 +12,7 @@ use crate::{
         global_file_system,
     },
     proc::{Channel, ProcessManager},
-    sync::{KernelSpinGuard, SpinExt},
+    sync::{IrqGuard, KernelSpinGuard, SpinExt},
     user::Userspace,
 };
 use alloc::sync::Arc;
@@ -509,12 +509,17 @@ impl Inode {
 
             inode.i_flag.insert(InodeFlag::IWANT);
             let chan = (&*inode).channel_addr();
+            let ctx = IrqGuard::disable_save();
 
             drop(inode);
             if (pri as i32) < 0 {
-                Userspace::get().proc().sleep_kernel(chan, pri as i32);
+                Userspace::get()
+                    .proc()
+                    .sleep_kernel_with_irq_guard(chan, pri as i32, ctx);
             } else {
-                Userspace::get().proc().sleep_user(chan, pri);
+                let _ = Userspace::get()
+                    .proc()
+                    .sleep_user_with_irq_guard(chan, pri, ctx);
             }
         }
     }
