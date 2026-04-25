@@ -11,11 +11,12 @@ use eonix_mm::address::{Addr, PAddr};
 use eonix_sync_base::LazyLock;
 
 use crate::{
-    compat::{compat_phys_copy, compat_swap_alloc},
+    compat::compat_swap_alloc,
     constants::{PosixError, Signal},
     dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
     interrupt::Registers,
+    kernel::utility::phys_copy,
     loader::PEParser,
     machine::{set_tss_esp0, switch_user_struct, TrapFrame},
     mm::{PAGE_SIZE, USER_PAGE_MANAGER},
@@ -137,7 +138,7 @@ impl ProcessManager {
             child.addr = pages.phys().addr();
             while cnt != 0 {
                 cnt -= 1;
-                compat_phys_copy(cur_addr, to_addr, 1);
+                phys_copy(cur_addr, to_addr, 1);
                 cur_addr = cur_addr + 1;
                 to_addr = to_addr + 1;
             }

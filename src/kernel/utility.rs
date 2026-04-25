@@ -1,8 +1,10 @@
+use eonix_mm::address::{Addr, PAddr};
 use eonix_mm::paging::PFN;
 
 use crate::compat::compat_flush_page_directory;
 use crate::machine::chip::SystemTime;
 use crate::machine::{global_user_page_table, kernel_page_table_mut, EntryFlags};
+use crate::sync::IrqGuard;
 
 const SECONDS_IN_MINUTE: u32 = 60;
 const SECONDS_IN_HOUR: u32 = 3600;
@@ -212,9 +214,9 @@ fn copy_seg2(src: usize, dst: usize) {
 
 /// 对应 C++ 的 phys_copy
 /// 逐字节将物理地址 from 处的 len 个字节复制到物理地址 to 处。
-#[no_mangle]
-pub extern "C" fn phys_copy(from: usize, to: usize, len: usize) {
+pub fn phys_copy(from: PAddr, to: PAddr, len: usize) {
+    let _ctx = IrqGuard::disable_save();
     for i in 0..len {
-        copy_seg(from + i, to + i);
+        copy_seg(from.addr() + i, to.addr() + i);
     }
 }

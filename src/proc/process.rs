@@ -11,10 +11,11 @@ use eonix_mm::{
 };
 
 use crate::{
-    compat::{compat_phys_copy, compat_swap_alloc, compat_swap_free},
+    compat::{compat_swap_alloc, compat_swap_free},
     constants::Signal,
     dev::buffer::PhysicalBlock,
     fs::{InodeRef, OpenFiles},
+    kernel::utility::phys_copy,
     machine::TrapFrame,
     mm::{PhysPage, KERNEL_PAGE_MANAGER, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
@@ -487,7 +488,7 @@ impl Process {
         self.addr = new_addr.addr();
 
         let copylen = oldlen.min(newlen);
-        compat_phys_copy(PAddr::from_val(old_addr), new_addr, copylen);
+        phys_copy(PAddr::from_val(old_addr), new_addr, copylen);
 
         if let Some(pages) = self.pages.replace(new_page) {
             unsafe {
@@ -513,7 +514,7 @@ impl Process {
         while cnt != 0 {
             cnt -= 1;
             dst = dst - 1;
-            compat_phys_copy(dst - change, dst, 1);
+            phys_copy(dst - change, dst, 1);
         }
 
         mem.map_to_actual_pt(self);
@@ -545,7 +546,7 @@ impl Process {
 
             while cnt != 0 {
                 cnt -= 1;
-                compat_phys_copy(dst + change_abs, dst, 1);
+                phys_copy(dst + change_abs, dst, 1);
                 dst = dst + 1;
             }
             self.expand(newlen);
@@ -557,7 +558,7 @@ impl Process {
             while cnt != 0 {
                 cnt -= 1;
                 dst = dst - 1;
-                compat_phys_copy(dst - change as usize, dst, 1);
+                phys_copy(dst - change as usize, dst, 1);
             }
         }
 

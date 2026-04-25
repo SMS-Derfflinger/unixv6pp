@@ -1,7 +1,6 @@
 use core::{ffi::CStr, num::NonZero};
 
 use alloc::boxed::Box;
-use eonix_mm::address::{Addr, PAddr};
 use kernel_macros::define_class_compat;
 
 use crate::{dev::buffer::PhysicalBlock, mm::SWAPPER_AREAS, sync::SpinExt, user::Userspace};
@@ -17,9 +16,7 @@ pub fn compat_flush_page_directory() {
 }
 
 pub fn compat_user_pt() -> &'static mut [usize; 2048] {
-    unsafe {
-        &mut *(0xc0202000 as *mut [usize; 2048])
-    }
+    unsafe { &mut *(0xc0202000 as *mut [usize; 2048]) }
 }
 
 pub fn compat_get_time() -> u32 {
@@ -27,9 +24,7 @@ pub fn compat_get_time() -> u32 {
         fn get_time() -> u32;
     }
 
-    unsafe {
-        get_time()
-    }
+    unsafe { get_time() }
 }
 
 define_class_compat! {impl Utils{
@@ -64,23 +59,14 @@ define_class_compat! {impl Utils{
     }
 }}
 
-pub fn compat_phys_copy(from: PAddr, to: PAddr, len: usize) {
-    extern "C" {
-        fn phys_copy(from: usize, to: usize, len: usize);
-    }
-
-    unsafe {
-        phys_copy(from.addr(), to.addr(), len);
-    }
-}
-
 const SECTOR_SIZE: usize = 512;
 
 pub fn compat_swap_alloc(bytes: usize) -> PhysicalBlock {
     let sectors = (bytes + SECTOR_SIZE - 1) / SECTOR_SIZE;
     assert_ne!(sectors, 0);
 
-    let block = SWAPPER_AREAS.lock()
+    let block = SWAPPER_AREAS
+        .lock()
         .alloc(NonZero::new(sectors).expect("Alloc 0 swap blocks"))
         .expect("Out of swap space");
 
@@ -88,15 +74,14 @@ pub fn compat_swap_alloc(bytes: usize) -> PhysicalBlock {
 }
 
 pub fn compat_swap_free(blkno: PhysicalBlock, bytes: usize) {
-    let start_blk = NonZero::new(blkno.0 as usize)
-        .expect("Free swap block 0");
-    let sectors = NonZero::new((bytes + SECTOR_SIZE - 1) / SECTOR_SIZE)
-        .expect("Free 0 swap blocks");
+    let start_blk = NonZero::new(blkno.0 as usize).expect("Free swap block 0");
+    let sectors =
+        NonZero::new((bytes + SECTOR_SIZE - 1) / SECTOR_SIZE).expect("Free 0 swap blocks");
 
-    SWAPPER_AREAS.lock().free(start_blk,sectors);
+    SWAPPER_AREAS.lock().free(start_blk, sectors);
 }
 
-define_class_compat!{impl Utility {
+define_class_compat! {impl Utility {
     pub fn panic(msg: *const i8) -> ! {
         crate::println_fatal!("Love from C++: {:?}", unsafe { CStr::from_ptr(msg) });
         panic!();
