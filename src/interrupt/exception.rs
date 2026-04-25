@@ -113,7 +113,7 @@ pub extern "C" fn page_fault(_regs: *mut Registers, context: &mut TrapFrameWithE
         );
     }
 
-    if context.is_user() {
+    if !context.is_user() {
         panic!(
             "Kernel space page fault at pc={:#x} addr={:#x}",
             context.eip, fault_addr
