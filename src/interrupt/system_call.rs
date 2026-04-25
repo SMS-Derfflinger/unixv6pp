@@ -1,12 +1,16 @@
 use core::ptr::NonNull;
 
 use crate::{
-    constants::{PosixError, Signal},
-    interrupt::Registers,
+    constants::{PosixError, Signal, PSLEP},
+    interrupt::{
+        time::{get_time, time_set_tout, time_tout, time_tout_address},
+        Registers,
+    },
     interrupt_entry,
     kernel::diagnose::{diagnose_disable_rows, diagnose_enable_rows, diagnose_rows},
-    machine::{TrapFrame, asm::disable_interrupts},
+    machine::{asm::disable_interrupts, TrapFrame},
     proc::{ProcessManager, TaskContext},
+    sync::IrqGuard,
     user::{Pointer, Userspace},
 };
 
@@ -44,6 +48,7 @@ mod syscall_number {
     pub const SMDATE: usize = 30;
     pub const TRACE: usize = 29;
     pub const NICE: usize = 34;
+    pub const SLEEP: usize = 35;
     pub const SYNC: usize = 36;
     pub const KILL: usize = 37;
     pub const GETSWITCH: usize = 38;
@@ -298,6 +303,29 @@ fn handle_in_rust(number: usize) -> bool {
         sys::NICE => {
             let nice = Userspace::get().args[0] as i32;
             Userspace::get().proc().set_nice(nice);
+            true
+        }
+        sys::SLEEP => {
+            let _ctx = IrqGuard::disable_save();
+            let wake_time = get_time() + Userspace::get().args[0] as u32;
+
+            loop {
+                let now = get_time();
+                let tout = time_tout();
+
+                if wake_time <= now {
+                    break;
+                }
+
+                if tout <= now || tout > wake_time {
+                    time_set_tout(wake_time);
+                }
+
+                Userspace::get()
+                    .proc()
+                    .sleep_user(time_tout_address(), PSLEP);
+            }
+
             true
         }
         sys::SYNC => {

@@ -71,6 +71,8 @@ pub enum Signal {
     SIGSYS = 31,
 }
 
+pub const PSLEP: u32 = 90;
+
 impl Signal {
     pub const SIGMAX: u32 = 32;
 }
