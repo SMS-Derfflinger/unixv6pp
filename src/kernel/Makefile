@@ -1,6 +1,6 @@
 include-path := $(abs_srctree)/src $(abs_srctree)/src/include $(abs_srctree)/fs
 
-objs := Kernel.o main.o
+objs := main.o
 
 include $(abs_srctree)/scripts/Makefile
 
