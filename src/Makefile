@@ -34,7 +34,8 @@ RUSTCFLAGS = \
 	--target i686-none.json \
 	-Z build-std=core,compiler_builtins,alloc \
 	-Z build-std-features=compiler-builtins-mem \
-	-Z json-target-spec
+	-Z json-target-spec \
+	$(if $(F),--features $(F))
 
 ifeq ($(rust-profile),release)
 RUSTCFLAGS += --release
