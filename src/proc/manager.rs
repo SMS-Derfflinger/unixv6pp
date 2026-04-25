@@ -9,7 +9,6 @@ use core::{
 use alloc::{borrow::ToOwned, boxed::Box, ffi::CString, vec, vec::Vec};
 use eonix_mm::address::{Addr, PAddr};
 use eonix_sync_base::LazyLock;
-use kernel_macros::define_class_compat;
 
 use crate::{
     compat::{compat_phys_copy, compat_swap_alloc},
@@ -787,85 +786,3 @@ impl Stack {
         ret
     }
 }
-
-define_class_compat! {impl ProcessManager {
-    /// Wait() 的 Rust 实现 - 父进程等待子进程结束
-    pub fn wait() {
-        let pm = ProcessManager::get();
-        let proc = Userspace::get().proc();
-        pm.wait(proc);
-    }
-
-    /// 唤醒所有因 chan 而睡眠的进程（供 C++ 调用）
-    pub fn wakeup_all_chan(chan: usize) {
-        ProcessManager::get().wakeup_all(chan);
-    }
-
-    /// 唤醒等待 run_in 的进程（供 C++ 调用）
-    pub fn wakeup_runin() {
-        ProcessManager::get().wakeup_runin();
-    }
-
-    /// 时钟中断每秒末尾调用：更新所有进程的 p_time, p_cpu, p_pri
-    pub fn clock_tick_processes(schmag: u32) {
-        let pm = ProcessManager::get();
-        for proc in &mut pm.procs {
-            if proc.stat == ProcessState::SNULL {
-                continue;
-            }
-
-            proc.time = core::cmp::min(proc.time + 1, 127);
-
-            if proc.cpu > schmag {
-                proc.cpu -= schmag;
-            } else {
-                proc.cpu = 0;
-            }
-
-            if proc.pri > 100 {
-                // PUSER = 100
-                proc.set_pri();
-            }
-        }
-    }
-
-    /// Ctrl+C 信号处理：向所有 pid > 1 的进程发送 SIGINT
-    pub fn signal_ctrl_c() {
-        let pm = ProcessManager::get();
-        for proc in &mut pm.procs {
-            if proc.pid > 1 {
-                proc.raise(Signal::SIGINT);
-            }
-        }
-    }
-
-    /// Swtch() 的 Rust 实现 - 进程切换
-    pub fn swtch() -> i32 {
-        ProcessManager::get().switch();
-        0
-    }
-
-    pub fn new_init_proc() -> i32 {
-        let pm = ProcessManager::get();
-        pm.new_init_proc() as i32
-    }
-
-    /// XSwap() 的 Rust 实现 - 进程换出
-    pub fn xswap(proc: *mut Process, free_mem: bool, size: i32) {
-        let pm = ProcessManager::get();
-        let proc = unsafe { &mut *proc };
-        let swap_len = if size == 0 {
-            None
-        } else {
-            NonZero::new(size as usize)
-        };
-        pm.send_to_swap(proc, free_mem, swap_len);
-    }
-
-    /// Select() 的 Rust 实现 - 选择最适合运行的进程
-    pub fn select() -> *mut Process {
-        let pm = ProcessManager::get();
-        let proc = pm.select();
-        proc as *mut Process
-    }
-}}

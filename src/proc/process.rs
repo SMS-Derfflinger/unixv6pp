@@ -9,7 +9,6 @@ use eonix_mm::{
     address::{Addr, PAddr},
     paging::{Folio, PFN},
 };
-use kernel_macros::define_class_compat;
 
 use crate::{
     compat::{compat_phys_copy, compat_swap_alloc, compat_swap_free},
@@ -600,17 +599,3 @@ impl Process {
         panic!("This function should never return");
     }
 }
-
-define_class_compat! {impl Process {
-    pub fn process_signal(&mut self, context: &mut TrapFrame) {
-        this.process_signal(context);
-    }
-
-    pub fn should_process(&mut self) -> bool {
-        this.should_process()
-    }
-
-    pub fn sleep_kernel(&mut self, chan: usize, pri: i32) {
-        this.sleep_kernel(chan, pri);
-    }
-}}
