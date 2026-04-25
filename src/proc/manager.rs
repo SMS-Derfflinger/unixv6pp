@@ -27,7 +27,7 @@ use crate::{
     },
     serial::KResult,
     sync::{IrqGuard, SpinExt, SuperCell},
-    user::{MemoryDescriptor, Userspace, Userspace_init},
+    user::{MemoryDescriptor, Userspace},
 };
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(0);
@@ -664,7 +664,9 @@ impl ProcessManager {
             kstack: None,
         });
 
-        Userspace_init();
+        unsafe {
+            Userspace::init();
+        }
         Userspace::get().proc = &raw mut *proc;
 
         self.procs.push(proc);

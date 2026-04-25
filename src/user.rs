@@ -2,7 +2,6 @@ use core::ffi::CStr;
 
 use alloc::boxed::Box;
 use eonix_mm::paging::PFN;
-use kernel_macros::define_class_compat;
 
 use crate::{
     compat::compat_flush_page_directory,
@@ -134,6 +133,10 @@ impl Userspace {
             ssav: [Pointer(0); 2],
             qsav: [Pointer(0); 2],
         }
+    }
+
+    pub unsafe fn init() {
+        core::ptr::write(Self::get(), Self::new())
     }
 
     pub fn set_error(&mut self, errno: PosixError) {
@@ -365,49 +368,4 @@ impl MemoryDescriptor {
 
         Ok(())
     }
-}
-
-macro_rules! define_user_compat {
-{ $( $rust_ident:ident: $type:ty => $c_ident:ident := $init:expr; )* } => {
-    define_class_compat!{impl Userspace {
-        pub fn init() {
-            let user = Userspace::get();
-
-            unsafe {
-                $(
-                    (&raw mut user.$rust_ident).write($init);
-                )*
-            }
-        }
-    }}
-};
-}
-
-define_user_compat! {
-    signal_pending: bool => get_intflg_ := false;
-    signals: [usize; SIGMAX] => get_signal_ := [0; SIGMAX];
-    open_files: OpenFiles => get_ofiles_ := OpenFiles::new();
-    ioparam: IOParameter => get_IOParam_ := IOParameter::new();
-    utime: u32 => get_utime_ := 0;
-    stime: u32 => get_stime_ := 0;
-    children_utime: u32 => get_cutime_ := 0;
-    children_stime: u32 => get_cstime_ := 0;
-    uid: u16 => get_uid_ := 0;
-    euid: u16 => get_ruid_ := 0;
-    gid: u16 => get_gid_ := 0;
-    egid: u16 => get_rgid_ := 0;
-    args: [usize; 5] => get_arg_ := [0; 5];
-    dirp: *mut u8 => get_dirp_ := core::ptr::null_mut();
-    cwd_full: [u8; 128] => get_curdir_ := {
-        let mut arr = [0; 128]; arr[0] = b'/'; arr
-    };
-    dentry: DirectoryEntry => get_dent_ := DirectoryEntry::new();
-    cwd_name: [u8; 28] => get_dbuf_ := [0; 28];
-    mem: MemoryDescriptor => get_MemoryDescriptor_ := MemoryDescriptor::new();
-    ar0: *mut u32 => get_ar0_ := core::ptr::null_mut();
-    proc: *mut Process => get_procp_ := core::ptr::null_mut();
-    error: Option<PosixError> => get_error_ := None;
-    rsav: [Pointer; 2] => get_rsav_ := [Pointer(0); 2];
-    ssav: [Pointer; 2] => get_ssav_ := [Pointer(0); 2];
-    qsav: [Pointer; 2] => get_qsav_ := [Pointer(0); 2];
 }
