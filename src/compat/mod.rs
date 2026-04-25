@@ -1,9 +1,6 @@
-use core::{ffi::CStr, num::NonZero};
+use core::num::NonZero;
 
-use alloc::boxed::Box;
-use kernel_macros::define_class_compat;
-
-use crate::{dev::buffer::PhysicalBlock, mm::SWAPPER_AREAS, sync::SpinExt, user::Userspace};
+use crate::{dev::buffer::PhysicalBlock, mm::SWAPPER_AREAS, sync::SpinExt};
 
 pub fn compat_flush_page_directory() {
     unsafe {
@@ -27,38 +24,6 @@ pub fn compat_get_time() -> u32 {
     unsafe { get_time() }
 }
 
-define_class_compat! {impl Utils{
-    pub fn get_path() -> *mut u8 {
-        let dirp = Userspace::get().dirp;
-        let cstr = unsafe { CStr::from_ptr(dirp as *const i8) };
-        let bytes = cstr.to_bytes_with_nul();
-
-        let boxed = Box::<[u8]>::new_uninit_slice(bytes.len() + size_of::<usize>());
-        let mut boxed = unsafe { boxed.assume_init() };
-
-        let head_ptr = boxed.as_mut_ptr() as *mut usize;
-        Box::into_raw(boxed);
-
-        let data_ptr = head_ptr.wrapping_add(1) as *mut u8;
-
-        unsafe {
-            head_ptr.write(bytes.len());
-            data_ptr.copy_from_nonoverlapping(bytes.as_ptr(), bytes.len());
-        }
-
-        data_ptr
-    }
-
-    pub fn put_path(path: *mut u8) {
-        let head_ptr = (path as *mut usize).wrapping_sub(1);
-
-        unsafe {
-            let alloc_len = *head_ptr + size_of::<usize>();
-            Box::from_raw(core::ptr::slice_from_raw_parts_mut(head_ptr as *mut u8, alloc_len));
-        }
-    }
-}}
-
 const SECTOR_SIZE: usize = 512;
 
 pub fn compat_swap_alloc(bytes: usize) -> PhysicalBlock {
@@ -80,10 +45,3 @@ pub fn compat_swap_free(blkno: PhysicalBlock, bytes: usize) {
 
     SWAPPER_AREAS.lock().free(start_blk, sectors);
 }
-
-define_class_compat! {impl Utility {
-    pub fn panic(msg: *const i8) -> ! {
-        crate::println_fatal!("Love from C++: {:?}", unsafe { CStr::from_ptr(msg) });
-        panic!();
-    }
-}}

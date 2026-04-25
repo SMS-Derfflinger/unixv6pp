@@ -380,14 +380,6 @@ macro_rules! define_user_compat {
             }
         }
     }}
-
-    define_class_compat! {impl User {
-        $(
-            pub fn $c_ident() -> *mut $type {
-                &raw mut Userspace::get().$rust_ident
-            }
-        )*
-    }}
 };
 }
 
@@ -419,9 +411,3 @@ define_user_compat! {
     ssav: [Pointer; 2] => get_ssav_ := [Pointer(0); 2];
     qsav: [Pointer; 2] => get_qsav_ := [Pointer(0); 2];
 }
-
-define_class_compat! {impl Userspace {
-    pub fn is_root(&mut self) -> bool {
-        this.is_root()
-    }
-}}

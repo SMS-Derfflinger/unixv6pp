@@ -38,12 +38,6 @@ pub struct DirectoryEntry {
 #[repr(C)]
 pub struct FileManager;
 
-extern "C" {
-    fn Userspace_is_root() -> bool;
-    fn User_get_arg_() -> *mut [usize; 5];
-    fn User_get_curdir_() -> *mut [u8; 128];
-}
-
 impl DirectoryEntry {
     pub const DIRSIZ: usize = 28;
 
@@ -65,7 +59,7 @@ impl DirectoryEntry {
 }
 
 fn args() -> &'static mut [usize; 5] {
-    unsafe { &mut *User_get_arg_() }
+    &mut Userspace::get().args
 }
 
 fn set_error(err: PosixError) {
@@ -73,7 +67,7 @@ fn set_error(err: PosixError) {
 }
 
 fn is_root() -> bool {
-    unsafe { Userspace_is_root() }
+    Userspace::get().is_root()
 }
 
 fn i_put(inode: InodeRef) {
@@ -881,7 +875,7 @@ impl FileManager {
 
     pub fn setcurdir(pathname: usize) {
         let path = unsafe { CStr::from_ptr(pathname as *const i8) }.to_bytes();
-        let curdir = unsafe { &mut *User_get_curdir_() };
+        let curdir = &mut Userspace::get().cwd_full;
 
         if path.first().copied() != Some(b'/') {
             let mut len = curdir.iter().position(|&x| x == 0).unwrap_or(curdir.len());
