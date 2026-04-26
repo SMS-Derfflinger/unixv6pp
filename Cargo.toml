@@ -28,9 +28,10 @@ intrusive-collections = { version = "0.9.7", default-features = false, features 
 bitflags = "2.11.0"
 
 [features]
-default = []
+default = [ "splash" ]
 debug = [ "debug_irq", "debug_timer", "debug_scheduler", "debug_proc" ]
 debug_irq = []
 debug_timer = []
 debug_scheduler = []
 debug_proc = []
+splash = []

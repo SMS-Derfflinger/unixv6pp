@@ -67,39 +67,14 @@ pub fn alloc_kernel_page(size: usize) -> &'static mut PhysPage {
     allocator.alloc_order(order).expect("Out of memory")
 }
 
-/// Allocate a page and return its physical address
-#[no_mangle]
-pub extern "C" fn alloc_page(size: usize, user: bool) -> usize {
-    let mut allocator = if user {
-        USER_PAGE_MANAGER.lock()
-    } else {
-        KERNEL_PAGE_MANAGER.lock()
-    };
-
-    let aligned_size = size.next_power_of_two();
-    let order = aligned_size.trailing_zeros() - 12;
-
-    let page = allocator.alloc_order(order).expect("Out of memory");
-
-    #[cfg(trace_alloc)]
-    println_trace!("Allocated {:?} size={:#x}", page.pfn(), size);
-
-    page.phys().addr()
-}
-
-#[no_mangle]
-pub extern "C" fn free_page(addr: usize, size: usize, user: bool) {
+pub fn free_page(addr: usize, size: usize) {
     if size == 0 {
         return;
     }
 
     let paddr = PAddr::from_val(addr);
 
-    let mut allocator = if user {
-        USER_PAGE_MANAGER.lock()
-    } else {
-        KERNEL_PAGE_MANAGER.lock()
-    };
+    let mut allocator = KERNEL_PAGE_MANAGER.lock();
 
     let mut page_ptr = ZONE.get_page(PFN::from(paddr)).expect("Bad address");
     let page = unsafe {

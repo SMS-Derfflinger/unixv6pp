@@ -1,15 +1,15 @@
-use core::mem::size_of;
+use core::{ffi::CStr, mem::size_of};
 
 use crate::{
-    mm::{alloc_page, free_page},
-    println,
+    interrupt::{get_time, sleep_kernel_until},
+    mm::{phys_to_virt, KernelPages},
     vesa::{vesa_clear, vesa_put_pixel},
 };
 
-use super::syscall::{_lib_open, _lib_read, _lib_seek, _lib_sleep};
+use super::syscall::{_lib_open, _lib_read, _lib_seek};
 
-const KERNEL_SPACE_START_ADDRESS: usize = 0xc0000000;
-const SPLASH_BMP: *const u8 = b"/etc/v6pp_splash.bmp\0".as_ptr();
+const SPLASH_BMP: &'static CStr =
+    unsafe { CStr::from_bytes_with_nul_unchecked(b"/v6pp_splash.bmp\0") };
 const OPEN_READ_MODE: u32 = 0o111;
 
 #[repr(C, packed)]
@@ -38,20 +38,18 @@ struct BmpInfoHeader {
     number_of_important_colors: i32,
 }
 
-#[no_mangle]
-pub extern "C" fn splash() -> i32 {
+pub fn splash() {
     vesa_clear(0);
     draw_img(SPLASH_BMP);
-    _lib_sleep(1);
-    vesa_clear(0);
 
-    0
+    sleep_kernel_until(get_time() + 1, -1);
+    vesa_clear(0);
 }
 
-fn draw_img(file_path: *const u8) -> i32 {
+fn draw_img(file_path: &CStr) {
     let file = _lib_open(file_path, OPEN_READ_MODE);
     if file == -1 {
-        return -1;
+        return;
     }
 
     _lib_seek(file, 0, 0);
@@ -70,12 +68,12 @@ fn draw_img(file_path: *const u8) -> i32 {
         size_of::<BmpFileHeader>() as i32,
     ) != size_of::<BmpFileHeader>() as i32
     {
-        return -1;
+        return;
     }
 
     if file_header.magic != [b'B', b'M'] {
-        println!("splash: bad magic!");
-        return -1;
+        crate::println_warn!("splash: bad magic!");
+        return;
     }
 
     let mut info_header = BmpInfoHeader {
@@ -98,7 +96,7 @@ fn draw_img(file_path: *const u8) -> i32 {
         size_of::<BmpInfoHeader>() as i32,
     ) != size_of::<BmpInfoHeader>() as i32
     {
-        return -1;
+        return;
     }
 
     let width = info_header.width;
@@ -107,39 +105,31 @@ fn draw_img(file_path: *const u8) -> i32 {
     let image_offset = file_header.offset;
 
     if width <= 0 || height <= 0 || image_size <= 0 || image_offset < 0 {
-        return -1;
+        return;
     }
 
-    let image_size = image_size as usize;
-    let phys_buf = unsafe { alloc_page(image_size, false) };
-    if phys_buf == 0 {
-        println!("splash: failed to alloc memory for splash buffer!");
-        return -1;
+    let row_size = width as usize * size_of::<i32>();
+    if row_size > image_size as usize {
+        return;
     }
 
-    let result = {
-        let img_data = (phys_buf + KERNEL_SPACE_START_ADDRESS) as *mut u8;
+    let pages = KernelPages::alloc_bytes(row_size);
+    let row_buf = phys_to_virt(pages.phys());
 
-        _lib_seek(file, image_offset as u32, 0);
-        if _lib_read(file, img_data, image_size as i32) != image_size as i32 {
-            -1
-        } else {
-            draw_bgra_image(img_data, width, height);
-            0
+    _lib_seek(file, image_offset as u32, 0);
+    for row in 0..height {
+        if _lib_read(file, row_buf, row_size as i32) != row_size as i32 {
+            return;
         }
-    };
 
-    free_page(phys_buf, image_size, false);
-
-    result
+        draw_bgra_row(row_buf, width, height - row);
+    }
 }
 
-fn draw_bgra_image(img_data: *const u8, width: i32, height: i32) {
-    for h in (0..height).rev() {
-        for w in 0..width {
-            let pixel_offset = (w + h * width) as usize * size_of::<i32>();
-            let pixel = unsafe { img_data.add(pixel_offset).cast::<i32>().read_unaligned() };
-            vesa_put_pixel(w, height - h, pixel);
-        }
+fn draw_bgra_row(row_data: *const u8, width: i32, y: i32) {
+    for w in 0..width {
+        let pixel_offset = w as usize * size_of::<i32>();
+        let pixel = unsafe { row_data.add(pixel_offset).cast::<i32>().read_unaligned() };
+        vesa_put_pixel(w, y, pixel);
     }
 }

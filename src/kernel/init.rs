@@ -1,4 +1,4 @@
-use core::{arch::naked_asm, ptr, sync::atomic::compiler_fence};
+use core::{arch::naked_asm, ffi::CStr, ptr, sync::atomic::compiler_fence};
 
 use crate::{
     compat::compat_flush_page_directory,
@@ -26,7 +26,7 @@ const KERNEL_SPACE_START_ADDRESS: usize = 0xc0000000;
 const VESA_MODE_INFO_ADDR: usize = KERNEL_SPACE_START_ADDRESS + 0x7e00;
 const VESA_SCREEN_VADDR: usize = KERNEL_SPACE_START_ADDRESS + 128 * 1024 * 1024;
 const PAGE_DIRECTORY_BASE_ADDRESS: u32 = 0x200000;
-const TTY_PATH: *const u8 = b"/dev/tty1\0".as_ptr();
+const TTY_PATH: &'static CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/tty1\0") };
 const FREAD: u32 = 0x1;
 const FWRITE: u32 = 0x2;
 
@@ -106,7 +106,8 @@ fn rust_kernel_next() {
     open_tty();
     _diagnose_trace_on();
 
-    // splash();
+    #[cfg(feature = "splash")]
+    crate::kernel::splash::splash();
 
     init_user_page_table();
     compat_flush_page_directory();

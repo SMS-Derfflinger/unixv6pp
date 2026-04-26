@@ -130,4 +130,19 @@ pub fn sleep_user_until(wake: usize, pri: u32) -> KResult<()> {
     Ok(())
 }
 
+pub fn sleep_kernel_until(wake: usize, pri: i32) {
+    let mut irq = IrqGuard::disable_save();
+
+    while set_timer(wake) {
+        #[cfg(feature = "debug_timer")]
+        crate::println_debug!("Sleeping until {}", wake);
+
+        Userspace::get()
+            .proc()
+            .sleep_kernel_with_irq_guard((&TIMEOUT).channel_addr(), pri, irq);
+
+        irq = IrqGuard::disable_save();
+    }
+}
+
 interrupt_entry!(TimeInterruptEntrance, time_interrupt_body);

@@ -1,4 +1,4 @@
-use core::arch::asm;
+use core::{arch::asm, ffi::CStr};
 
 const SYS_EXIT: usize = 1;
 const SYS_FORK: usize = 2;
@@ -39,8 +39,12 @@ pub extern "C" fn _lib_creat(pathname: *mut u8, mode: u32) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn _lib_open(pathname: *const u8, mode: u32) -> i32 {
-    normalize(syscall2(SYS_OPEN, pathname as usize, mode as usize))
+pub extern "C" fn _lib_open(pathname: &CStr, mode: u32) -> i32 {
+    normalize(syscall2(
+        SYS_OPEN,
+        pathname.as_ptr() as usize,
+        mode as usize,
+    ))
 }
 
 #[no_mangle]
