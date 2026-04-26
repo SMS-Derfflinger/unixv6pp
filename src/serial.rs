@@ -59,6 +59,11 @@ pub fn init_serial() {
     uart_init_once();
 }
 
+pub fn enable_rx_interrupt() {
+    uart_init_once();
+    write_reg(IER_DLM, 0x01);
+}
+
 pub fn serial_write_bytes(byte_iter: impl Iterator<Item = u8>) {
     uart_init_once();
 

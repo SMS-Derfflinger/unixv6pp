@@ -6,11 +6,12 @@ use riscv::{
 };
 
 use crate::{
+    constants::platform::UART0_IRQ,
     interrupt::{
         context::{Registers, TrapContext},
-        time,
+        plic, time,
     },
-    println_fatal, println_info,
+    println_fatal, println_info, serial,
 };
 
 #[unsafe(naked)]
@@ -140,16 +141,36 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
     match context.cause() {
         Trap::Interrupt(i) => match Interrupt::from_number(i).unwrap() {
             Interrupt::SupervisorTimer => {
-                let tick = time::handle_timer_interrupt();
-                if tick <= 3 || (tick % time::INTERRUPTS_PER_SECOND as u64) == 0 {
+                time::set_next_timer();
+            }
+            Interrupt::SupervisorExternal => match plic::claim_interrupt() {
+                Some(UART0_IRQ) => {
+                    let mut count = 0usize;
+                    let mut last = None;
+                    while let Some(byte) = serial::serial_try_read_byte() {
+                        count += 1;
+                        last = Some(byte);
+                    }
+                    plic::complete_interrupt(UART0_IRQ);
                     println_info!(
-                        "trap: timer tick={} sepc={:#x} stval={:#x}",
-                        tick,
+                        "trap: external interrupt=UART0 count={} last={:#x}",
+                        count,
+                        last.unwrap_or_default()
+                    );
+                }
+                Some(irq) => {
+                    plic::complete_interrupt(irq);
+                    println_info!(
+                        "trap: external interrupt irq={} sepc={:#x} stval={:#x}",
+                        irq,
                         context.sepc,
                         context.stval
                     );
                 }
-            }
+                None => {
+                    println_info!("trap: external interrupt with empty PLIC claim");
+                }
+            },
             interrupt => {
                 println_info!(
                     "trap: interrupt scause={:#x} interrupt={:?} sepc={:#x} stval={:#x}",
