@@ -6,6 +6,7 @@ use riscv::{
 };
 
 use crate::{
+    constants::PosixError,
     constants::platform::UART0_IRQ,
     interrupt::{
         context::{Registers, TrapContext},
@@ -136,12 +137,53 @@ pub(crate) unsafe extern "C" fn _trap_entry() -> ! {
     );
 }
 
-// TODO
+#[derive(Clone, Copy, Debug)]
+enum PageFaultAccess {
+    Execute,
+    Read,
+    Write,
+}
+
+impl PageFaultAccess {
+    fn describe(self) -> &'static str {
+        match self {
+            Self::Execute => "instruction",
+            Self::Read => "load",
+            Self::Write => "store",
+        }
+    }
+}
+
+fn page_fault_access(exception: Exception) -> PageFaultAccess {
+    match exception {
+        Exception::InstructionPageFault => PageFaultAccess::Execute,
+        Exception::LoadPageFault => PageFaultAccess::Read,
+        Exception::StorePageFault => PageFaultAccess::Write,
+        _ => unreachable!("not a page fault"),
+    }
+}
+
+fn halt_forever() -> ! {
+    loop {
+        unsafe {
+            core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
+        }
+    }
+}
+
 extern "C" fn trap_handler(context: &mut TrapContext) {
     match context.cause() {
         Trap::Interrupt(i) => match Interrupt::from_number(i).unwrap() {
             Interrupt::SupervisorTimer => {
-                time::set_next_timer();
+                let tick = time::handle_timer_interrupt();
+                if tick <= 3 || (tick % time::INTERRUPTS_PER_SECOND as u64) == 0 {
+                    println_info!(
+                        "trap: timer tick={} sepc={:#x} stval={:#x}",
+                        tick,
+                        context.sepc,
+                        context.stval
+                    );
+                }
             }
             Interrupt::SupervisorExternal => match plic::claim_interrupt() {
                 Some(UART0_IRQ) => {
@@ -191,6 +233,65 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                 );
                 context.advance_sepc(2);
             }
+            Exception::IllegalInstruction => {
+                println_fatal!(
+                    "trap: illegal instruction scause={:#x} sepc={:#x} stval={:#x} user={}",
+                    context.scause.bits(),
+                    context.sepc,
+                    context.stval,
+                    context.is_user()
+                );
+                halt_forever();
+            }
+            Exception::UserEnvCall => {
+                let syscall_no = context.syscall_no();
+                let syscall_args = context.syscall_args();
+                println_info!(
+                    "trap: user ecall no={} args=[{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}] sepc={:#x}",
+                    syscall_no,
+                    syscall_args[0],
+                    syscall_args[1],
+                    syscall_args[2],
+                    syscall_args[3],
+                    syscall_args[4],
+                    syscall_args[5],
+                    context.sepc
+                );
+                context.advance_sepc(4);
+                context.set_return_value((-(PosixError::ENOSYS as isize)) as usize);
+            }
+            exception @ (
+                Exception::InstructionPageFault
+                | Exception::LoadPageFault
+                | Exception::StorePageFault
+            ) => {
+                let access = page_fault_access(exception);
+                println_fatal!(
+                    "trap: {} page fault sepc={:#x} stval={:#x} sp={:#x} user={}",
+                    access.describe(),
+                    context.sepc,
+                    context.stval,
+                    context.stack_pointer(),
+                    context.is_user()
+                );
+                halt_forever();
+            }
+            Exception::InstructionMisaligned
+            | Exception::LoadMisaligned
+            | Exception::StoreMisaligned
+            | Exception::InstructionFault
+            | Exception::LoadFault
+            | Exception::StoreFault => {
+                println_fatal!(
+                    "trap: bad access exception={:?} scause={:#x} sepc={:#x} stval={:#x} user={}",
+                    Exception::from_number(e).unwrap(),
+                    context.scause.bits(),
+                    context.sepc,
+                    context.stval,
+                    context.is_user()
+                );
+                halt_forever();
+            }
             exception => {
                 println_fatal!(
                     "trap: exception scause={:#x} exception={:?} sepc={:#x} stval={:#x} user={}",
@@ -200,12 +301,7 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                     context.stval,
                     context.is_user()
                 );
-
-                loop {
-                    unsafe {
-                        core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
-                    }
-                }
+                halt_forever();
             }
         },
     }

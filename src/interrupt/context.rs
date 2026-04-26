@@ -137,6 +137,29 @@ impl TrapContext {
         self.scause.cause()
     }
 
+    pub fn syscall_no(&self) -> usize {
+        self.regs.a7
+    }
+
+    pub fn syscall_args(&self) -> [usize; 6] {
+        [
+            self.regs.a0,
+            self.regs.a1,
+            self.regs.a2,
+            self.regs.a3,
+            self.regs.a4,
+            self.regs.a5,
+        ]
+    }
+
+    pub fn stack_pointer(&self) -> usize {
+        self.regs.sp
+    }
+
+    pub fn set_return_value(&mut self, value: usize) {
+        self.regs.a0 = value;
+    }
+
     pub fn is_user(&self) -> bool {
         self.sstatus.spp() == SPP::User
     }
