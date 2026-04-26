@@ -9,7 +9,7 @@ pub use allocator::{phys_to_virt, virt_to_phys};
 pub use kstack::KernelStack;
 pub use page::{KernelPages, PageList, PhysPage, UserPages, PAGE_SIZE};
 pub use page_manager::{
-    alloc_page, free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,
+    free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,
 };
 pub use swapper_manager::SWAPPER_AREAS;
 pub use zone::ZONE;

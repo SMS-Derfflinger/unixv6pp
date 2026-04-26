@@ -9,6 +9,7 @@ use crate::{
 const HZ: i32 = 60 * 2;
 
 static mut LBOLT: i32 = 0;
+static mut TICKS: u32 = 0;
 static mut TIME: u32 = 0;
 static mut TOUT: u32 = 0;
 
@@ -33,6 +34,7 @@ fn clock(context: &mut TrapFrame) {
     };
 
     unsafe {
+        TICKS = TICKS.wrapping_add(1);
         LBOLT += 1;
         if LBOLT < HZ {
             send_master_eoi();
@@ -76,6 +78,19 @@ fn clock(context: &mut TrapFrame) {
 pub fn set_time(value: u32) {
     unsafe {
         TIME = value;
+    }
+}
+
+pub fn kernel_delay_seconds(seconds: u32) {
+    if seconds == 0 {
+        return;
+    }
+
+    let start = unsafe { TICKS };
+    let wait_ticks = seconds.saturating_mul(HZ as u32);
+
+    while unsafe { TICKS.wrapping_sub(start) } < wait_ticks {
+        core::hint::spin_loop();
     }
 }
 

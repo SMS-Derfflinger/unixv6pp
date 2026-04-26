@@ -55,7 +55,7 @@ unsafe impl GlobalAlloc for Allocator {
             SLAB_ALLOCATOR.dealloc::<NoContext>(ptr, size);
         } else {
             let paddr = virt_to_phys(ptr);
-            free_page(paddr.addr(), size, false);
+            free_page(paddr.addr(), size);
         }
     }
 }

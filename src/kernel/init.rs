@@ -108,7 +108,8 @@ fn rust_kernel_next() {
     open_tty();
     _diagnose_trace_on();
 
-    // splash();
+    #[cfg(feature = "splash")]
+    crate::kernel::splash::splash();
 
     init_user_page_table();
     compat_flush_page_directory();
