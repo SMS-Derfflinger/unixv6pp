@@ -189,8 +189,7 @@ impl ProcessManager {
                 cur_addr = cur_addr + 1;
                 to_addr = to_addr + 1;
             }
-            // TODO: pages is leaked here...
-            //       THIS IS A BUG BUT FIXINT IT WOULD CAUSE THE KERNEL TO CRASH...
+            child.pages = Some(pages);
         } else {
             parent.stat = ProcessState::SIDL;
             child.addr = parent.addr;

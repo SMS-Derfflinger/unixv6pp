@@ -15,6 +15,7 @@ use crate::{
     dev::buffer::PhysicalBlock,
     fs::{InodeRef, OpenFiles},
     interrupt::context::TrapContext,
+    machine::switch_user_struct,
     mm::{phys_copy, swap_alloc, swap_free, KernelStack, PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
@@ -481,6 +482,7 @@ impl Process {
             }
         }
 
+        switch_user_struct(self);
         Userspace::get().mem.map_to_actual_pt(self);
     }
 
