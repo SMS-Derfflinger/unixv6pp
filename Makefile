@@ -86,6 +86,16 @@ qemug: target/disk.img
 .PHONY: all
 all: $(build-dirs) target/disk.img
 
+QEMU_RISCV64 = qemu-system-riscv64
+QEMU_RISCV64_FLAGS := -machine virt -m 128M -smp 1 -nographic -bios default -serial mon:stdio
+
+PHONY += qemu-riscv64
+qemu-riscv64: src/kernel.elf
+	$(QEMU_RISCV64) $(QEMU_RISCV64_FLAGS) -kernel src/kernel.elf
+
+src/kernel.elf: src FORCE
+	$(call cmd,submake,kernel.elf)
+
 cmd_compile_commands = make -C $(1) collect-commands.cmd \
 	&& printf "[" > $@ \
 	&& paste "-d," -s $(1)/collect-commands.cmd >> $@ \

@@ -18,5 +18,5 @@
         "__splash.h": "c"
     },
     "cmake.sourceDirectory": "src",
-    "rust-analyzer.cargo.target": "i686-unknown-linux-musl"
+    "rust-analyzer.cargo.target": "riscv64gc-unknown-none-elf"
 }
