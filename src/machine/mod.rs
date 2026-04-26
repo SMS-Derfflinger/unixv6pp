@@ -42,7 +42,7 @@ impl TrapFrame {
     pub fn is_user(&self) -> bool {
         const USER_MODE: usize = 0x3;
 
-        (self.xcs & USER_MODE) != USER_MODE
+        (self.xcs & USER_MODE) == USER_MODE
     }
 }
 
