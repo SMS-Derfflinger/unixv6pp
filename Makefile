@@ -114,6 +114,8 @@ PHONY += check
 check: src
 	$(call cmd,submake,check)
 
+COMMA :=,
+
 PHONY += debug
 debug:
 	-@RUST_GDB=x86_64-elf-gdb rust-gdb --symbols=src/kernel.exe \
@@ -122,6 +124,6 @@ debug:
 		-iex 'set print asm-demangle on' \
 		-iex 'set print pretty on' \
 		-iex 'target remote target/qemu-gdb.sock' \
-		$(foreach bp,$(B),-ex 'b $(bp)')
+		$(foreach bp,$(subst $(COMMA), ,$(B)),-ex 'b $(bp)')
 
 include $(abs_srctree)/scripts/Makefile.lib
