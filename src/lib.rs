@@ -90,9 +90,11 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     clear_bss();
     serial::init_serial();
     interrupt::init_trap();
+    interrupt::init_interrupt_controller();
     println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");
     println_info!("  hartid = {:#x}", hart_id);
     println_info!("  dtb    = {:#x}", dtb_addr);
+    println_info!("timer armed at {} Hz", interrupt::time::INTERRUPTS_PER_SECOND);
 
     #[cfg(feature = "rvdebug")]
     interrupt_test();
