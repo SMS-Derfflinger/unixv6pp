@@ -19,10 +19,10 @@ use crate::{
     kernel::utility::phys_copy,
     loader::PEParser,
     machine::{set_tss_esp0, switch_user_struct, TrapFrame},
-    mm::{PAGE_SIZE, USER_PAGE_MANAGER},
+    mm::{KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
-        process::{KernelStack, ProcessState, Terminal, Text},
+        process::{ProcessState, Terminal, Text},
         Channel, Process, EXPRI,
     },
     serial::KResult,
@@ -77,11 +77,11 @@ impl Process {
             sigmap: 0,
             pages: None,
             ctx: TaskContext::new(),
-            kstack: Some(kstack),
+            kstack,
         });
 
         // 设置子进程的内核栈指针，使其在被调度时能正确使用自己的栈
-        child.ctx.esp = stack_top;
+        child.ctx.esp = stack_top.addr().get();
 
         child
     }
@@ -107,7 +107,7 @@ impl ProcessManager {
     }
 
     fn set_init_context(child: &mut Process) {
-        let stack_top = child.kstack.as_ref().unwrap().top();
+        let stack_top = child.kstack.top().addr().get();
 
         child.ctx.eip = go_init as usize;
         child.ctx.esp = stack_top;
@@ -558,9 +558,7 @@ impl ProcessManager {
             Userspace::get().mem.map_to_actual_pt(&selected);
 
             // 更新 TSS esp0，使得从用户态陷入内核态时使用目标进程的内核栈
-            if let Some(ref kstack) = selected.kstack {
-                set_tss_esp0(kstack.top() as u32);
-            }
+            set_tss_esp0(selected.kstack.top().addr().get() as u32);
 
             unsafe {
                 let ctx = IrqGuard::disable_save();
@@ -576,7 +574,7 @@ impl ProcessManager {
         let regs = unsafe { &*regs };
         let ctx = unsafe { &*ctx };
         let mut stack = Stack {
-            sp: child.kstack.as_ref().unwrap().top() as *mut usize,
+            sp: child.kstack.top().as_ptr(),
         };
 
         stack.push_word(ctx.xss);
@@ -661,7 +659,7 @@ impl ProcessManager {
             sigmap: 0,
             pages: None,
             ctx: TaskContext::new(),
-            kstack: None,
+            kstack: KernelStack::new(),
         });
 
         unsafe {

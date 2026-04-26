@@ -247,7 +247,6 @@ impl MemoryDescriptor {
 
     pub fn new() -> Self {
         let user_pts = unsafe { Box::new_zeroed().assume_init() };
-        crate::println_debug!("alloc: {:p}", &user_pts);
 
         Self {
             user_pts,

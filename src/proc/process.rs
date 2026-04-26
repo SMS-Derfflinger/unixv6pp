@@ -17,7 +17,7 @@ use crate::{
     fs::{InodeRef, OpenFiles},
     kernel::utility::phys_copy,
     machine::TrapFrame,
-    mm::{PhysPage, KERNEL_PAGE_MANAGER, PAGE_SIZE, USER_PAGE_MANAGER},
+    mm::{KernelStack, PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
         manager::{ProcessManager, SLOAD, SSWAP},
@@ -150,43 +150,6 @@ impl Text {
 
 pub struct Terminal;
 
-pub struct KernelStack {
-    pages: Option<&'static mut PhysPage>,
-}
-
-/// 内核栈大小：order=3 即 2^3 = 8 页 = 32KB
-const KSTACK_ORDER: u32 = 3;
-const KSTACK_SIZE: usize = (1 << KSTACK_ORDER as usize) * PAGE_SIZE;
-
-impl KernelStack {
-    pub fn new() -> Self {
-        Self {
-            pages: Some(
-                KERNEL_PAGE_MANAGER
-                    .lock()
-                    .alloc_order(KSTACK_ORDER)
-                    .expect("Out of kernel memory for stack"),
-            ),
-        }
-    }
-
-    /// 返回内核栈顶的虚拟地址（栈从高地址向低地址增长）
-    pub fn top(&self) -> usize {
-        let phys = self.pages.as_ref().unwrap().phys();
-        crate::mm::phys_to_virt(phys) as usize + KSTACK_SIZE
-    }
-}
-
-impl Drop for KernelStack {
-    fn drop(&mut self) {
-        if let Some(pages) = self.pages.take() {
-            unsafe {
-                KERNEL_PAGE_MANAGER.lock().dealloc(pages);
-            }
-        }
-    }
-}
-
 #[repr(C)]
 pub struct Process {
     pub uid: u16,
@@ -213,7 +176,7 @@ pub struct Process {
     pub ctx: TaskContext,
 
     /// 每个进程独立的内核栈
-    pub kstack: Option<KernelStack>,
+    pub kstack: KernelStack,
 }
 
 unsafe impl Send for Process {}

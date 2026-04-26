@@ -16,7 +16,7 @@ use crate::{
     },
     mm::init_page_managers,
     println,
-    proc::{KernelStack, ProcessManager},
+    proc::ProcessManager,
     sync::SpinExt,
     user::Userspace,
     vesa::{vesa_clear, vesa_init, VbeModeInfo},
@@ -92,7 +92,6 @@ fn rust_kernel_next() {
     enable_interrupts();
 
     rust_kernel_initialize();
-    ProcessManager::get().setup_proc_zero();
 
     load_file_system();
     println!("Unix V6++ FileSystem Loaded......OK");
@@ -213,9 +212,8 @@ pub extern "C" fn kernelBridge() -> ! {
     enable_page_protection();
 
     init_page_managers();
-    let kstack = KernelStack::new();
-    let top = kstack.top();
-    core::mem::forget(kstack);
+    ProcessManager::get().setup_proc_zero();
+    let top = Userspace::get().proc().kstack.top();
 
     unsafe {
         core::arch::asm!(
@@ -226,7 +224,7 @@ pub extern "C" fn kernelBridge() -> ! {
             "mov {top}, %ebp",
             "mov {top}, %esp",
             "ljmp $0x08, ${entry}",
-            top = in(reg) top,
+            top = in(reg) top.addr().get(),
             entry = sym rust_kernel_next,
             options(att_syntax),
         );

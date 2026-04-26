@@ -1,10 +1,12 @@
 mod allocator;
+mod kstack;
 mod page;
 mod page_manager;
 mod swapper_manager;
 mod zone;
 
 pub use allocator::{phys_to_virt, virt_to_phys};
+pub use kstack::KernelStack;
 pub use page::{KernelPages, PageList, PhysPage, UserPages, PAGE_SIZE};
 pub use page_manager::{
     alloc_page, free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,

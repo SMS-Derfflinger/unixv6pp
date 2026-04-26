@@ -4,7 +4,7 @@ mod process;
 
 pub use context::TaskContext;
 pub use manager::ProcessManager;
-pub use process::{KernelStack, Process, ProcessState, Text};
+pub use process::{Process, ProcessState, Text};
 
 /// A channel that sleepers can subscribe to.
 ///
