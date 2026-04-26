@@ -27,8 +27,10 @@ eonix_mm = { git = "https://github.com/project-eonix/eonix-mm.git", version = "0
 intrusive-collections = { version = "0.9.7", default-features = false, features = [ "nightly" ] }
 bitflags = "2.11.0"
 sbi = "0.3.0"
+riscv = { version = "0.13.0", features = ["s-mode"] }
 
 [features]
 default = []
 debug_irq = []
 splash = []
+rvdebug = []

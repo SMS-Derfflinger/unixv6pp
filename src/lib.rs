@@ -9,13 +9,11 @@ pub mod compat;
 mod dev;
 #[cfg(target_arch = "x86")]
 mod fs;
-#[cfg(target_arch = "x86")]
 mod interrupt;
 #[cfg(target_arch = "x86")]
 mod kernel;
 #[cfg(target_arch = "x86")]
 mod loader;
-#[cfg(target_arch = "x86")]
 pub mod machine;
 #[cfg(target_arch = "x86")]
 pub mod mm;
@@ -29,18 +27,21 @@ mod user;
 mod vesa;
 
 mod constants;
-mod serial;
 mod print;
+mod serial;
 pub mod sync;
 
-use core::panic::PanicInfo;
 use core::arch::naked_asm;
+use core::panic::PanicInfo;
 
 pub trait Ext {
     fn as_buffer(&mut self) -> &mut [u8];
 }
 
-impl<T> Ext for T where T: Copy {
+impl<T> Ext for T
+where
+    T: Copy,
+{
     fn as_buffer(&mut self) -> &mut [u8] {
         unsafe {
             core::slice::from_raw_parts_mut(
@@ -51,7 +52,10 @@ impl<T> Ext for T where T: Copy {
     }
 }
 
-impl<T> Ext for [T] where T: Copy {
+impl<T> Ext for [T]
+where
+    T: Copy,
+{
     fn as_buffer(&mut self) -> &mut [u8] {
         unsafe {
             core::slice::from_raw_parts_mut(
@@ -85,15 +89,33 @@ unsafe extern "C" fn _start() -> ! {
 extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     clear_bss();
     serial::init_serial();
+    interrupt::init_trap();
     println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");
     println_info!("  hartid = {:#x}", hart_id);
     println_info!("  dtb    = {:#x}", dtb_addr);
+
+    #[cfg(feature = "rvdebug")]
+    interrupt_test();
 
     loop {
         unsafe {
             core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
         }
     }
+}
+
+#[cfg(feature = "rvdebug")]
+fn interrupt_test() {
+    println_info!("before ebreak");
+    unsafe {
+        core::arch::asm!("ebreak", options(nomem, nostack));
+    }
+    println_info!("after ebreak");
+    println_info!("before illegal instruction");
+    unsafe {
+        core::arch::asm!(".word 0xffffffff", options(nomem, nostack));
+    }
+    println_info!("after illegal instruction");
 }
 
 fn clear_bss() {
