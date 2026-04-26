@@ -89,3 +89,18 @@ impl TryFrom<u32> for Signal {
         }
     }
 }
+
+pub mod platform {
+    pub const RAM_BASE: usize = 0x8000_0000;
+    pub const KERNEL_LOAD_BASE: usize = 0x8020_0000;
+
+    pub const UART0_BASE: usize = 0x1000_0000;
+    pub const UART0_IRQ: usize = 10;
+
+    pub const PLIC_BASE: usize = 0x0c00_0000;
+    pub const VIRTIO_MMIO_BASE: usize = 0x1000_1000;
+    pub const VIRTIO_MMIO_STRIDE: usize = 0x1000;
+    pub const VIRTIO_MMIO_COUNT: usize = 8;
+
+    pub const CPU_FREQ_HZ: usize = 10_000_000;
+}

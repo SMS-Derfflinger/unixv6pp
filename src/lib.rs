@@ -6,8 +6,6 @@ extern crate alloc;
 #[cfg(target_arch = "x86")]
 pub mod compat;
 #[cfg(target_arch = "x86")]
-mod constants;
-#[cfg(target_arch = "x86")]
 mod dev;
 #[cfg(target_arch = "x86")]
 mod fs;
@@ -22,13 +20,7 @@ pub mod machine;
 #[cfg(target_arch = "x86")]
 pub mod mm;
 #[cfg(target_arch = "x86")]
-mod print;
-#[cfg(target_arch = "x86")]
 pub mod proc;
-#[cfg(target_arch = "x86")]
-mod serial;
-#[cfg(target_arch = "x86")]
-pub mod sync;
 #[cfg(target_arch = "x86")]
 pub mod tty;
 #[cfg(target_arch = "x86")]
@@ -36,8 +28,12 @@ mod user;
 #[cfg(target_arch = "x86")]
 mod vesa;
 
+mod constants;
+mod serial;
+mod print;
+pub mod sync;
+
 use core::panic::PanicInfo;
-#[cfg(target_arch = "riscv64")]
 use core::arch::naked_asm;
 
 pub trait Ext {
@@ -66,14 +62,12 @@ impl<T> Ext for [T] where T: Copy {
     }
 }
 
-#[cfg(target_arch = "riscv64")]
-#[unsafe(link_section = ".bss.stack")]
+#[unsafe(link_section = ".bootstrap.stack")]
 static BOOT_STACK: [u8; 4096 * 4] = [0; 4096 * 4];
 
-#[cfg(target_arch = "riscv64")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
-#[unsafe(link_section = ".text._start")]
+#[unsafe(link_section = ".bootstrap.entry")]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
         "la   sp, {boot_stack}",
@@ -87,16 +81,13 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-#[cfg(target_arch = "riscv64")]
 #[unsafe(no_mangle)]
 extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     clear_bss();
-    write_str("rust_kernel: entered riscv64 rust entry via OpenSBI\n");
-    write_str("  hartid = ");
-    write_hex(hart_id);
-    write_str("\n  dtb    = ");
-    write_hex(dtb_addr);
-    write_str("\n");
+    serial::init_serial();
+    println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");
+    println_info!("  hartid = {:#x}", hart_id);
+    println_info!("  dtb    = {:#x}", dtb_addr);
 
     loop {
         unsafe {
@@ -105,7 +96,6 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     }
 }
 
-#[cfg(target_arch = "riscv64")]
 fn clear_bss() {
     unsafe extern "C" {
         static mut __bss_start: u8;
@@ -118,24 +108,6 @@ fn clear_bss() {
 
     unsafe {
         core::ptr::write_bytes(start, 0, len);
-    }
-}
-
-#[cfg(target_arch = "riscv64")]
-fn write_str(s: &str) {
-    for byte in s.bytes() {
-        sbi::legacy::console_putchar(byte);
-    }
-}
-
-#[cfg(target_arch = "riscv64")]
-fn write_hex(value: usize) {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-
-    write_str("0x");
-    for shift in (0..16).rev() {
-        let nibble = ((value >> (shift * 4)) & 0xf) as usize;
-        sbi::legacy::console_putchar(HEX[nibble]);
     }
 }
 
@@ -157,10 +129,9 @@ fn panic(info: &PanicInfo<'_>) -> ! {
     loop {}
 }
 
-#[cfg(target_arch = "riscv64")]
 #[panic_handler]
 fn panic(_info: &PanicInfo<'_>) -> ! {
-    write_str("rust_kernel: panic\n");
+    println_fatal!("rust_kernel: panic");
     loop {
         unsafe {
             core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));

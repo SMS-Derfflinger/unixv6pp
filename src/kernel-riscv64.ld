@@ -9,11 +9,16 @@ MEMORY
 SECTIONS
 {
     . = ORIGIN(RAM);
+    .bootstrap ORIGIN(RAM) :
+    {
+        KEEP(*(.bootstrap.entry));
+
+        . = ALIGN(16);
+        KEEP(*(.bootstrap.stack));
+    } > RAM
 
     .text : ALIGN(16)
     {
-        KEEP(*(.text._start))
-        KEEP(*(.text._start.*))
         *(.text .text.*)
     } > RAM
 
@@ -30,7 +35,6 @@ SECTIONS
     .bss : ALIGN(16)
     {
         __bss_start = .;
-        *(.bss.stack)
         *(.bss .bss.*)
         *(COMMON)
         __bss_end = .;

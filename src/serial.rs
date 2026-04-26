@@ -1,213 +1,72 @@
-use core::arch::asm;
+use core::ptr::{read_volatile, write_volatile};
+use core::sync::atomic::{AtomicBool, Ordering};
 
-use bitflags::bitflags;
+use crate::constants::platform::UART0_BASE;
 
-use crate::{println, println_info};
-use crate::constants::PosixError;
+const RBR_THR_DLL: usize = 0;
+const IER_DLM: usize = 1;
+const FCR_IIR: usize = 2;
+const LCR: usize = 3;
+const MCR: usize = 4;
+const LSR: usize = 5;
 
-#[derive(Clone, Copy)]
-pub struct Port8 {
-    no: u16,
+const LCR_DLAB: u8 = 1 << 7;
+const LCR_8N1: u8 = 0x03;
+const FCR_ENABLE_FIFO: u8 = 0x01;
+const FCR_CLEAR_FIFO: u8 = 0x06;
+const MCR_DTR_RTS: u8 = 0x03;
+const LSR_RX_READY: u8 = 0x01;
+const LSR_TX_IDLE: u8 = 0x20;
+const BAUD_DIVISOR_115200: u16 = 1;
+
+static SERIAL_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+#[inline]
+fn reg_ptr(offset: usize) -> *mut u8 {
+    (UART0_BASE + offset) as *mut u8
 }
 
-impl Port8 {
-    pub const fn new(no: u16) -> Self {
-        Self { no }
-    }
-
-    pub fn read(&self) -> u8 {
-        let data;
-        unsafe {
-            asm!(
-                "inb %dx, %al",
-                in("dx") self.no,
-                out("al") data,
-                options(att_syntax, nomem, nostack)
-            )
-        };
-
-        data
-    }
-
-    pub fn write(&self, data: u8) {
-        unsafe {
-            asm!(
-                "outb %al, %dx",
-                in("al") data,
-                in("dx") self.no,
-                options(att_syntax, nomem, nostack)
-            )
-        };
-    }
+#[inline]
+fn read_reg(offset: usize) -> u8 {
+    unsafe { read_volatile(reg_ptr(offset)) }
 }
 
-pub struct SerialIO {
-    tx_rx: Port8,
-    int_ena: Port8,
-    int_ident: Port8,
-    line_control: Port8,
-    modem_control: Port8,
-    line_status: Port8,
-    modem_status: Port8,
-    scratch: Port8,
+#[inline]
+fn write_reg(offset: usize, value: u8) {
+    unsafe { write_volatile(reg_ptr(offset), value) }
 }
 
-impl SerialIO {
-    /// Creates a new `SerialIO` instance with the given physical address.
-    ///
-    /// # Safety
-    /// This function is unsafe because it assumes that the provided `base` is a valid IO port
-    /// base for the serial port. The caller must ensure that this port base is correct.
-    pub unsafe fn new(base: u16) -> Self {
-        Self {
-            tx_rx: Port8::new(base),
-            int_ena: Port8::new(base + 1),
-            int_ident: Port8::new(base + 2),
-            line_control: Port8::new(base + 3),
-            modem_control: Port8::new(base + 4),
-            line_status: Port8::new(base + 5),
-            modem_status: Port8::new(base + 6),
-            scratch: Port8::new(base + 7),
-        }
+fn uart_init_once() {
+    if SERIAL_INITIALIZED.swap(true, Ordering::AcqRel) {
+        return;
     }
 
-    pub fn tx_rx(&self) -> impl SerialRegister {
-        self.tx_rx
-    }
-
-    pub fn int_ena(&self) -> impl SerialRegister {
-        self.int_ena
-    }
-
-    pub fn int_ident(&self) -> impl SerialRegister {
-        self.int_ident
-    }
-
-    pub fn line_control(&self) -> impl SerialRegister {
-        self.line_control
-    }
-
-    pub fn modem_control(&self) -> impl SerialRegister {
-        self.modem_control
-    }
-
-    pub fn line_status(&self) -> impl SerialRegister {
-        self.line_status
-    }
-
-    #[allow(unused)]
-    pub fn modem_status(&self) -> impl SerialRegister {
-        self.modem_status
-    }
-
-    #[allow(unused)]
-    pub fn scratch(&self) -> impl SerialRegister {
-        self.scratch
-    }
+    write_reg(IER_DLM, 0x00);
+    write_reg(LCR, LCR_DLAB);
+    write_reg(RBR_THR_DLL, (BAUD_DIVISOR_115200 & 0xff) as u8);
+    write_reg(IER_DLM, (BAUD_DIVISOR_115200 >> 8) as u8);
+    write_reg(LCR, LCR_8N1);
+    write_reg(FCR_IIR, FCR_ENABLE_FIFO | FCR_CLEAR_FIFO);
+    write_reg(MCR, MCR_DTR_RTS);
 }
 
-bitflags! {
-    struct LineStatus: u8 {
-        const RX_READY = 0x01;
-        const TX_READY = 0x20;
-    }
+fn put_byte(byte: u8) {
+    while read_reg(LSR) & LSR_TX_IDLE == 0 {}
+    write_reg(RBR_THR_DLL, byte);
 }
 
-trait SerialRegister {
-    fn read(&self) -> u8;
-    fn write(&self, value: u8);
-}
-
-impl SerialRegister for Port8 {
-    fn read(&self) -> u8 {
-        self.read()
-    }
-
-    fn write(&self, data: u8) {
-        self.write(data);
-    }
-}
-
-#[allow(dead_code)]
-struct Serial {
-    id: u32,
-    ioregs: SerialIO,
-}
-
-impl Serial {
-    fn line_status(&self) -> LineStatus {
-        LineStatus::from_bits_truncate(self.ioregs.line_status().read())
-    }
-
-    pub fn new(id: u32, ioregs: SerialIO) -> KResult<Self> {
-        ioregs.int_ena().write(0x00); // Disable all interrupts
-        ioregs.line_control().write(0x80); // Enable DLAB (set baud rate divisor)
-        ioregs.tx_rx().write(0x00); // Set divisor to 0 (lo byte) 115200 baud rate
-        ioregs.int_ena().write(0x00); //              0 (hi byte)
-        ioregs.line_control().write(0x03); // 8 bits, no parity, one stop bit
-        ioregs.int_ident().write(0xc7); // Enable FIFO, clear them, with 14-byte threshold
-        ioregs.modem_control().write(0x0b); // IRQs enabled, RTS/DSR set
-        ioregs.modem_control().write(0x1e); // Set in loopback mode, test the serial chip
-        ioregs.tx_rx().write(0x19); // Test serial chip (send byte 0x19 and check if serial returns
-                                    // same byte)
-        if ioregs.tx_rx().read() != 0x19 {
-            return Err(PosixError::EIO);
-        }
-
-        ioregs.modem_control().write(0x0f); // Return to normal operation mode
-
-        Ok(Self { id, ioregs })
-    }
-
-    fn write(&self, ch: u8) {
-        while !self.line_status().contains(LineStatus::TX_READY) {}
-        self.ioregs.tx_rx().write(ch);
-    }
-
-    fn try_read(&self) -> Option<u8> {
-        self.line_status()
-            .contains(LineStatus::RX_READY)
-            .then(|| self.ioregs.tx_rx().read())
-    }
-}
-
-macro_rules! define_static {
-    {} => {};
-    {lazy static $name:ident: $type:ty;} => {
-        static mut $name: core::mem::MaybeUninit<$type> = core::mem::MaybeUninit::zeroed();
-    };
-}
-
-define_static! {
-    lazy static SERIAL: Serial;
-}
-
-pub type KResult<T> = Result<T, PosixError>;
-
-fn init() -> KResult<()> {
-    let (com0, _com1) = unsafe {
-        const COM0_BASE: u16 = 0x3f8;
-        const COM1_BASE: u16 = 0x2f8;
-        // SAFETY: The COM ports are well-known hardware addresses.
-        (SerialIO::new(COM0_BASE), SerialIO::new(COM1_BASE))
-    };
-
-    let serial = Serial::new(0, com0).unwrap();
-
-    #[allow(static_mut_refs)]
-    unsafe {
-        SERIAL.write(serial);
-    }
-
-    Ok(())
+pub fn init_serial() {
+    uart_init_once();
 }
 
 pub fn serial_write_bytes(byte_iter: impl Iterator<Item = u8>) {
-    #[allow(static_mut_refs)]
-    let serial = unsafe { SERIAL.assume_init_ref() };
+    uart_init_once();
 
     for ch in byte_iter {
-        serial.write(ch);
+        if ch == b'\n' {
+            put_byte(b'\r');
+        }
+        put_byte(ch);
     }
 }
 
@@ -216,14 +75,16 @@ pub fn serial_write(string: &str) {
 }
 
 pub fn serial_try_read_byte() -> Option<u8> {
-    #[allow(static_mut_refs)]
-    let serial = unsafe { SERIAL.assume_init_ref() };
-    serial.try_read()
+    uart_init_once();
+    (read_reg(LSR) & LSR_RX_READY != 0).then(|| read_reg(RBR_THR_DLL))
 }
 
-pub fn init_serial() {
-    init().unwrap();
+pub fn serial_write_hex(value: usize) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
 
-    println!();
-    println_info!("Serial initialized");
+    serial_write("0x");
+    for shift in (0..(core::mem::size_of::<usize>() * 2)).rev() {
+        let nibble = ((value >> (shift * 4)) & 0xf) as usize;
+        put_byte(HEX[nibble]);
+    }
 }

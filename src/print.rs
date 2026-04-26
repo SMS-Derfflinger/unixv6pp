@@ -1,11 +1,9 @@
 use core::fmt::{self, Write};
-
-use eonix_spin::Spin;
-
-use crate::{serial::serial_write, sync::{IrqContext, SpinExt as _}};
+use crate::{serial::serial_write, sync::SuperCell};
 
 struct Console;
-static CONSOLE: Spin<Console> = Spin::new(Console);
+// TODO: temporary
+static CONSOLE: SuperCell<Console> = SuperCell::new(Console);
 
 impl Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -16,7 +14,7 @@ impl Write for Console {
 
 #[doc(hidden)]
 pub fn do_print(args: fmt::Arguments) {
-    CONSOLE.lock_ctx::<IrqContext>().write_fmt(args).ok();
+    CONSOLE.with_mut(|console| console.write_fmt(args).ok());
 }
 
 #[macro_export]
