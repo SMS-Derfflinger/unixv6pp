@@ -4,7 +4,9 @@ use eonix_mm::paging::PFN;
 use crate::compat::compat_flush_page_directory;
 use crate::machine::chip::SystemTime;
 use crate::machine::{global_user_page_table, kernel_page_table_mut, EntryFlags};
+use crate::serial::KResult;
 use crate::sync::IrqGuard;
+use crate::user::Userspace;
 
 const SECONDS_IN_MINUTE: u32 = 60;
 const SECONDS_IN_HOUR: u32 = 3600;
@@ -218,5 +220,27 @@ pub fn phys_copy(from: PAddr, to: PAddr, len: usize) {
     let _ctx = IrqGuard::disable_save();
     for i in 0..len {
         copy_seg(from.addr() + i, to.addr() + i);
+    }
+}
+
+pub trait NativeWord {
+    fn into_word(self) -> usize;
+}
+
+impl NativeWord for u32 {
+    fn into_word(self) -> usize {
+        self as usize
+    }
+}
+
+impl NativeWord for usize {
+    fn into_word(self) -> usize {
+        self
+    }
+}
+
+impl NativeWord for () {
+    fn into_word(self) -> usize {
+        0
     }
 }

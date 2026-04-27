@@ -11,7 +11,7 @@ use eonix_mm::{
 };
 
 use crate::{
-    constants::Signal,
+    constants::{PosixError, Signal},
     dev::buffer::PhysicalBlock,
     fs::{InodeRef, OpenFiles},
     interrupt::context::TrapContext,
@@ -180,41 +180,6 @@ pub struct Process {
 
 unsafe impl Send for Process {}
 unsafe impl Sync for Process {}
-
-pub(crate) trait KResultExt {
-    fn pass_to_user(self);
-}
-
-pub(crate) trait NativeWord {
-    fn into_word(self) -> usize;
-}
-
-impl NativeWord for u32 {
-    fn into_word(self) -> usize {
-        self as usize
-    }
-}
-
-impl NativeWord for usize {
-    fn into_word(self) -> usize {
-        self
-    }
-}
-
-impl NativeWord for () {
-    fn into_word(self) -> usize {
-        0
-    }
-}
-
-impl<T: NativeWord> KResultExt for KResult<T> {
-    fn pass_to_user(self) {
-        match self {
-            Ok(retval) => Userspace::get().set_user_retval(retval.into_word() as usize),
-            Err(err) => Userspace::get().set_error(err),
-        }
-    }
-}
 
 impl Process {
     pub fn setuid(&mut self, uid: u16) {
@@ -404,16 +369,16 @@ impl Process {
     ///
     /// # Returns
     /// Whether we have pending signals.
-    pub fn sleep_user(&mut self, chan: usize, pri: u32) -> bool {
+    pub fn sleep_user(&mut self, chan: usize, pri: u32) -> KResult<()> {
         #[cfg(feature = "debug_irq")]
         crate::println_debug!("pid{} sleep user chan={chan:#x}", self.pid);
 
         if self.should_process() {
-            return true;
+            return Err(PosixError::EINTR);
         }
 
         {
-            let ctx = IrqGuard::disable_save();
+            let _ctx = IrqGuard::disable_save();
             self.wchan = chan;
             self.stat = ProcessState::SWAIT;
             self.pri = pri as i32;
@@ -426,7 +391,11 @@ impl Process {
 
         ProcessManager::get().switch();
 
-        self.should_process()
+        if self.should_process() {
+            return Err(PosixError::EINTR);
+        }
+
+        Ok(())
     }
 
     pub fn sleep_user_with_irq_guard(&mut self, chan: usize, pri: u32, ctx: IrqGuard) -> bool {

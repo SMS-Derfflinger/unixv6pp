@@ -6,7 +6,6 @@ use riscv::{
 };
 
 use crate::{
-    constants::PosixError,
     constants::platform::UART0_IRQ,
     interrupt::{
         context::{Registers, TrapContext},
@@ -251,11 +250,9 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                 );
                 system_call::handle_user_ecall(context);
             }
-            exception @ (
-                Exception::InstructionPageFault
-                | Exception::LoadPageFault
-                | Exception::StorePageFault
-            ) => {
+            exception @ (Exception::InstructionPageFault
+            | Exception::LoadPageFault
+            | Exception::StorePageFault) => {
                 let access = page_fault_access(exception);
                 println_fatal!(
                     "trap: {} page fault sepc={:#x} stval={:#x} sp={:#x} user={}",

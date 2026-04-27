@@ -1,13 +1,22 @@
 use core::{cmp::min, ffi::CStr, ptr};
 
 use crate::{
-    constants::{PosixError, Signal, fs_constants}, dev::{
+    constants::{fs_constants, PosixError, Signal},
+    dev::{
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
-        buffer_manager::{PPIPE, global_buffer_manager},
+        buffer_manager::{global_buffer_manager, PPIPE},
         device_manager::ROOTDEV,
-    }, fs::{
-        self, File, FileRef, Inode, InodeRef, InodeRefGuard, file::FileFlags, file_system::FileSystem, inode::{InodeFlag, InodeMode}
-    }, interrupt::time::get_time, proc::{Channel, ProcessManager}, sync::{IrqGuard, SpinExt}, user::Userspace
+    },
+    fs::{
+        self,
+        file::FileFlags,
+        inode::{InodeFlag, InodeMode},
+        File, FileRef, Inode, InodeRef, InodeRefGuard,
+    },
+    interrupt::time::get_time,
+    proc::{Channel, ProcessManager},
+    sync::{IrqGuard, SpinExt},
+    user::Userspace,
 };
 
 #[repr(u32)]
@@ -511,8 +520,9 @@ impl FileManager {
                 return;
             }
         };
-        
-        let off = (ino as usize % fs_constants::INODE_NUMBER_PER_SECTOR) * fs_constants::DISK_INODE_SIZE;
+
+        let off =
+            (ino as usize % fs_constants::INODE_NUMBER_PER_SECTOR) * fs_constants::DISK_INODE_SIZE;
         unsafe {
             ptr::copy_nonoverlapping(
                 buf.as_slice::<u8>().as_ptr().add(off),
@@ -706,6 +716,7 @@ impl FileManager {
         };
 
         Userspace::get().open_files.set_f(new_fd, file_ref.clone());
+        Userspace::get().set_user_retval(new_fd);
     }
 
     pub fn fstat() {
@@ -799,8 +810,7 @@ impl FileManager {
             file.f_offset += moved as i32;
         }
 
-        Userspace::get()
-            .set_user_retval(count.saturating_sub(Userspace::get().ioparam.m_count));
+        Userspace::get().set_user_retval(count.saturating_sub(Userspace::get().ioparam.m_count));
     }
 
     pub fn pipe() {

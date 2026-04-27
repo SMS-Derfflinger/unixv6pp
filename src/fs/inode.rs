@@ -1,16 +1,12 @@
 use crate::{
-    constants::{PosixError, fs_constants},
+    constants::{fs_constants, PosixError},
     dev::{
         block_device::block_device_for_dev,
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
-        buffer_manager::{PPIPE, PRIBIO, global_buffer_manager},
+        buffer_manager::{global_buffer_manager, PPIPE, PRIBIO},
         char_device::{char_device_for_dev, char_device_read, char_device_write},
     },
-    fs::{
-        file::FileFlags,
-        file_system::FileSystem,
-        global_file_system,
-    },
+    fs::{file::FileFlags, global_file_system},
     proc::{Channel, ProcessManager},
     sync::{IrqGuard, KernelSpinGuard, SpinExt},
     user::Userspace,
