@@ -1,7 +1,6 @@
 use eonix_mm::paging::PFN;
 
 use crate::{
-    machine::HasUserStructAddress,
     mm::KernelStack,
 };
 
@@ -46,12 +45,6 @@ pub struct Process {
 
 unsafe impl Send for Process {}
 unsafe impl Sync for Process {}
-
-impl HasUserStructAddress for Process {
-    fn user_struct_address(&self) -> usize {
-        self.addr
-    }
-}
 
 impl Process {
     pub fn setuid(&mut self, uid: u16) {

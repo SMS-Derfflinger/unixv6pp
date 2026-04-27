@@ -9,6 +9,7 @@ use riscv::{
 
 use crate::{
     constants::platform::RAM_BASE,
+    proc::Process,
 };
 
 const PAGE_SIZE: usize = 0x1000;
@@ -29,6 +30,7 @@ const ROOT_INDEX_KERNEL_HIGH: usize = KERNEL_SPACE_START_ADDRESS / SIZE_PER_DIRE
 
 const UART0_L1_INDEX: usize = 0x1000_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
 const PLIC_L1_INDEX: usize = 0x0c00_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
+const PLIC_CONTEXT_L1_INDEX: usize = 0x0c20_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
 
 pub const USER_PAGE_TABLE_COUNT: usize = 4;
 pub const USER_SPACE_SIZE: usize = USER_PAGE_TABLE_COUNT * SIZE_PER_USER_PAGE_TABLE_MAP;
@@ -49,18 +51,17 @@ pub fn global_user_page_table() -> &'static mut [PageTable; USER_PAGE_TABLE_COUN
     user_page_table_array_mut()
 }
 
-pub trait HasUserStructAddress {
-    fn user_struct_address(&self) -> usize;
-}
-
 bitflags! {
     #[derive(Clone, Copy, Debug)]
     pub struct EntryFlags: u64 {
-        const PRESENT = 1 << 0;
-        const WRITE = 1 << 1;
-        const USER = 1 << 2;
-        const LARGE = 1 << 7;
-        const EXECUTE = 1 << 8;
+        const VALID = PTE_V;
+        const READ = PTE_R;
+        const WRITE = PTE_W;
+        const EXECUTE = PTE_X;
+        const USER = PTE_U;
+        const GLOBAL = PTE_G;
+        const ACCESSED = PTE_A;
+        const DIRTY = PTE_D;
     }
 }
 
@@ -117,7 +118,7 @@ impl PageTableEntry {
 
     pub fn get(&self) -> (PFN, EntryFlags) {
         let flags = decode_entry_flags(self.0);
-        let pfn = if flags.contains(EntryFlags::PRESENT) {
+        let pfn = if flags.contains(EntryFlags::VALID) {
             let machine_pfn = ((self.0 >> PPN_SHIFT) as usize).saturating_sub(MACHINE_PFN_BASE);
             PFN::from_val(machine_pfn)
         } else {
@@ -199,7 +200,7 @@ pub extern "C" fn init_user_page_table() {
 
     for (idx, table) in user_page_table_array_mut().iter_mut().enumerate() {
         for entry in table.iter_mut() {
-            entry.set(None, EntryFlags::USER);
+            entry.set(None, EntryFlags::empty());
         }
 
         low.entries[idx].set_table_ptr(table as *const _);
@@ -236,10 +237,10 @@ pub extern "C" fn _user_page_table_array() -> *mut PageTable {
     user_page_table_array_mut().as_mut_ptr().cast()
 }
 
-pub fn switch_user_struct<T: HasUserStructAddress>(proc: &T) {
-    let pfn = PFN::from_val(proc.user_struct_address() >> 12);
+pub fn switch_user_struct(proc: &Process) {
+    let pfn = PFN::from_val(proc.addr >> 12);
     kernel_page_table_mut()[KERNEL_UAREA_PTE_INDEX]
-        .set(Some(pfn), EntryFlags::PRESENT | EntryFlags::WRITE);
+        .set(Some(pfn), EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE);
     flush_tlb();
 }
 
@@ -287,7 +288,10 @@ fn init_kernel_linear_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTabl
                 let paddr = KERNEL_PAGED_WINDOW_BASE + pte_idx * PAGE_SIZE;
                 pte.set(
                     Some(PFN::from_val(paddr >> 12)),
-                    EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::EXECUTE,
+                    EntryFlags::VALID
+                        | EntryFlags::READ
+                        | EntryFlags::WRITE
+                        | EntryFlags::EXECUTE,
                 );
             }
 
@@ -296,7 +300,13 @@ fn init_kernel_linear_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTabl
             let paddr = RAM_BASE + index * SIZE_PER_KERNEL_ENTRY_MAP;
             kernel.entries[index].set_large_identity_raw(
                 paddr,
-                EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::LARGE | EntryFlags::EXECUTE,
+                EntryFlags::VALID
+                    | EntryFlags::READ
+                    | EntryFlags::WRITE
+                    | EntryFlags::EXECUTE
+                    | EntryFlags::GLOBAL
+                    | EntryFlags::ACCESSED
+                    | EntryFlags::DIRTY,
             );
         }
     }
@@ -305,11 +315,15 @@ fn init_kernel_linear_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTabl
 fn init_low_mmio_map(low: &mut PageDirectory) {
     low.entries[PLIC_L1_INDEX].set_large_identity_raw(
         0x0c00_0000,
-        EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::LARGE,
+        EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE | EntryFlags::ACCESSED | EntryFlags::DIRTY,
+    );
+    low.entries[PLIC_CONTEXT_L1_INDEX].set_large_identity_raw(
+        0x0c20_0000,
+        EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE | EntryFlags::ACCESSED | EntryFlags::DIRTY,
     );
     low.entries[UART0_L1_INDEX].set_large_identity_raw(
         0x1000_0000,
-        EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::LARGE,
+        EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE | EntryFlags::ACCESSED | EntryFlags::DIRTY,
     );
 }
 
@@ -329,47 +343,9 @@ fn encode_leaf_entry_pseudo(paddr: usize, flags: EntryFlags) -> u64 {
 }
 
 fn encode_leaf_flags(flags: EntryFlags) -> u64 {
-    if !flags.contains(EntryFlags::PRESENT) {
-        return 0;
-    }
-
-    let mut bits = PTE_V | PTE_R | PTE_A;
-
-    if flags.contains(EntryFlags::WRITE) {
-        bits |= PTE_W | PTE_D;
-    }
-
-    if flags.contains(EntryFlags::USER) {
-        bits |= PTE_U;
-        if !flags.contains(EntryFlags::WRITE) || flags.contains(EntryFlags::EXECUTE) {
-            bits |= PTE_X;
-        }
-    } else if flags.contains(EntryFlags::EXECUTE) {
-        bits |= PTE_X;
-    }
-
-    if flags.contains(EntryFlags::LARGE) {
-        bits |= PTE_G;
-    }
-
-    bits
+    flags.bits()
 }
 
 fn decode_entry_flags(entry: u64) -> EntryFlags {
-    let mut flags = EntryFlags::empty();
-
-    if entry & PTE_V != 0 {
-        flags |= EntryFlags::PRESENT;
-    }
-    if entry & PTE_W != 0 {
-        flags |= EntryFlags::WRITE;
-    }
-    if entry & PTE_U != 0 {
-        flags |= EntryFlags::USER;
-    }
-    if entry & PTE_X != 0 {
-        flags |= EntryFlags::EXECUTE;
-    }
-
-    flags
+    EntryFlags::from_bits_retain(entry & 0xff)
 }

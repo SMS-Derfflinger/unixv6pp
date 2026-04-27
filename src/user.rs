@@ -280,7 +280,7 @@ impl MemoryDescriptor {
 
     fn clear_user(&mut self) {
         for pte in self.user_ptes() {
-            pte.set(None, EntryFlags::USER);
+            pte.set(None, EntryFlags::empty());
         }
     }
 
@@ -293,9 +293,12 @@ impl MemoryDescriptor {
         let pt_idx = addr >> 12;
         let cnt = (len + PAGE_SIZE - 1) / PAGE_SIZE;
 
-        let mut flags = EntryFlags::PRESENT | EntryFlags::USER;
+        let mut flags =
+            EntryFlags::VALID | EntryFlags::READ | EntryFlags::USER | EntryFlags::ACCESSED;
         if rw {
-            flags |= EntryFlags::WRITE;
+            flags |= EntryFlags::WRITE | EntryFlags::DIRTY;
+        } else {
+            flags |= EntryFlags::EXECUTE;
         }
 
         for pte in self.user_ptes().skip(pt_idx).take(cnt) {
@@ -321,7 +324,7 @@ impl MemoryDescriptor {
         for (pte, fake_pte) in real_ptes.zip(fake_ptes) {
             let (mut pfn, flags) = fake_pte.get();
 
-            if !flags.contains(EntryFlags::PRESENT) {
+            if !flags.contains(EntryFlags::VALID) {
                 pte.set(None, EntryFlags::empty());
                 continue;
             }
@@ -338,7 +341,12 @@ impl MemoryDescriptor {
         // Keep the null page mapped temporarily for phys-copy helpers.
         real_pt[0][0].set(
             Some(PFN::from_val(0)),
-            EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::USER,
+            EntryFlags::VALID
+                | EntryFlags::READ
+                | EntryFlags::WRITE
+                | EntryFlags::USER
+                | EntryFlags::ACCESSED
+                | EntryFlags::DIRTY,
         );
 
         compat_flush_page_directory();

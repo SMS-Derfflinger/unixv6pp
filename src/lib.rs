@@ -83,12 +83,16 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(no_mangle)]
 extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     clear_bss();
+    machine::init_page_directory();
+    machine::init_user_page_table();
+    machine::enable_page_protection();
     serial::init_serial();
     interrupt::init_trap();
     interrupt::init_interrupt_controller();
     println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");
     println_info!("  hartid = {:#x}", hart_id);
     println_info!("  dtb    = {:#x}", dtb_addr);
+    println_info!("paging enabled with global Sv39 page tables");
     println_info!("timer armed at {} Hz", interrupt::time::INTERRUPTS_PER_SECOND);
 
     #[cfg(feature = "rvdebug")]
