@@ -97,7 +97,7 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     ProcessManager::get().setup_proc_zero();
     interrupt::init_trap();
 
-    #[cfg(switchtest)]
+    #[cfg(feature = "switchtest")]
     ProcessManager::get().run_kernel_switch_self_test();
     
     interrupt::init_interrupt_controller();

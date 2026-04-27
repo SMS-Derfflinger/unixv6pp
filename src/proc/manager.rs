@@ -26,7 +26,7 @@ use crate::{
 };
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(0);
-#[cfg(switchtest)]
+#[cfg(feature = "switchtest")]
 static KERNEL_SWITCH_SELFTEST_STAGE: AtomicUsize = AtomicUsize::new(0);
 
 pub static GLOBAL_PROC_MANAGER: LazyLock<SuperCell<ProcessManager>> =
@@ -119,7 +119,7 @@ impl ProcessManager {
         }
     }
 
-    #[cfg(switchtest)]
+    #[cfg(feature = "switchtest")]
     fn init_kernel_userspace(proc: &mut Process) {
         let current = Userspace::get().proc() as *mut Process;
 
@@ -587,7 +587,7 @@ impl ProcessManager {
         }
     }
 
-    #[cfg(switchtest)]
+    #[cfg(feature = "switchtest")]
     pub fn run_kernel_switch_self_test(&mut self) {
         let proc0 = Userspace::get().proc() as *mut Process;
         let pid = Self::assign_pid();
@@ -825,7 +825,7 @@ fn halt() {
     }
 }
 
-#[cfg(switchtest)]
+#[cfg(feature = "switchtest")]
 extern "C" fn kernel_switch_self_test_entry() -> ! {
     let proc = Userspace::get().proc();
     crate::println_debug!("switch selftest: entered proc{}", proc.pid);
