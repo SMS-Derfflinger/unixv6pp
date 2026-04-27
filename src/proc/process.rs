@@ -1,62 +1,5 @@
-use eonix_mm::paging::PFN;
-
-use crate::{
-    mm::KernelStack,
-};
-
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessState {
-    SNULL = 0,
-    SSLEEP = 1,
-    SWAIT = 2,
-    SRUN = 3,
-    SIDL = 4,
-    SZOMB = 5,
-    SSTOP = 6,
-}
-
-pub struct Text;
-
-impl Text {
-    pub fn pfn(&self) -> Option<PFN> {
-        Some(PFN::from_val(0))
-    }
-}
-
-#[repr(C)]
-pub struct Process {
-    pub uid: u16,
-    pub pid: u32,
-    pub ppid: u32,
-    pub addr: usize,
-    pub size: u32,
-    pub text: Option<Text>,
-    pub stat: ProcessState,
-    pub flag: u32,
-    pub pri: i32,
-    pub cpu: u32,
-    pub nice: i32,
-    pub time: u32,
-    pub wchan: usize,
-    pub sigmap: usize,
-    pub kstack: KernelStack,
-}
-
-unsafe impl Send for Process {}
-unsafe impl Sync for Process {}
-
-impl Process {
-    pub fn setuid(&mut self, uid: u16) {
-        self.uid = uid;
-    }
-}
-
-
-/*use core::{
-    num::NonZero,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
+use core::{
+    num::NonZero, ops::{Deref, DerefMut}, ptr::NonNull
 };
 
 use alloc::boxed::Box;
@@ -66,18 +9,10 @@ use eonix_mm::{
 };
 
 use crate::{
-    compat::{compat_swap_alloc, compat_swap_free},
     constants::Signal,
-    dev::buffer::PhysicalBlock,
-    fs::{InodeRef, OpenFiles},
-    kernel::utility::phys_copy,
-    machine::TrapFrame,
-    mm::{KernelStack, PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
-    proc::{
-        context::TaskContext,
-        manager::{ProcessManager, SLOAD, SSWAP},
-        Channel,
-    },
+    interrupt::context::TrapContext,
+    mm::{phys_copy, KernelStack, PAGE_SIZE, PhysPage, USER_PAGE_MANAGER},
+    proc::{Channel, ProcessManager, context::TaskContext, manager::{SLOAD, SSWAP}},
     serial::KResult,
     sync::{IrqGuard, SpinExt},
     user::Userspace,
@@ -95,12 +30,13 @@ pub enum ProcessState {
     SSTOP = 6,
 }
 
+// TODO
 #[repr(C)]
 pub struct Text {
-    pub disk_addr: PhysicalBlock,
+    //pub disk_addr: PhysicalBlock,
     pub len_bytes: usize,
     pages: Option<&'static mut PhysPage>,
-    inode: InodeRef,
+    //inode: InodeRef,
     refcount: usize,
     in_mem_count: usize,
 }
@@ -136,16 +72,17 @@ impl TextRef {
     }
 }
 
+// TODO
 impl Text {
-    pub fn new(inode: InodeRef, len: usize) -> TextRef {
+    pub fn new(/*inode: InodeRef, */ len: usize) -> TextRef {
         let aligned_size = len.next_power_of_two();
         let order = aligned_size.trailing_zeros() - 12;
 
         let text = Box::new(Text {
-            disk_addr: compat_swap_alloc(len),
+            //disk_addr: compat_swap_alloc(len),
             pages: USER_PAGE_MANAGER.lock().alloc_order(order),
             len_bytes: len,
-            inode,
+            //inode,
             refcount: 1,
             in_mem_count: 1,
         });
@@ -195,7 +132,8 @@ impl Text {
             return;
         }
 
-        compat_swap_free(self.disk_addr, self.len_bytes);
+        // TODO
+        //compat_swap_free(self.disk_addr, self.len_bytes);
 
         unsafe {
             let _ = Box::from_raw(&raw mut *self);
@@ -229,6 +167,7 @@ pub struct Process {
     pub sigmap: usize,
     pub pages: Option<&'static mut PhysPage>,
     pub ctx: TaskContext,
+    pub trap_context: TrapContext,
 
     /// 每个进程独立的内核栈
     pub kstack: KernelStack,
@@ -277,6 +216,21 @@ impl Process {
         self.uid = uid;
     }
 
+    pub fn init_kernel_context(&mut self, entry: Option<usize>) {
+        self.ctx.set_stack_pointer(self.kstack.top().addr().get());
+        if let Some(entry) = entry {
+            self.ctx.set_program_counter(entry);
+        }
+    }
+
+    pub fn trap_context_ptr(&mut self) -> *mut TrapContext {
+        &raw mut self.trap_context
+    }
+
+    pub fn task_context_ptr(&mut self) -> *mut TaskContext {
+        &raw mut self.ctx
+    }
+
     pub fn send_signal(&mut self, signal: u32, func: usize) -> KResult<usize> {
         let signal = Signal::try_from(signal)?;
         let old_handler = Userspace::get().get_signal_handler(signal);
@@ -291,20 +245,21 @@ impl Process {
         Ok(old_handler)
     }
 
-    pub fn process_signal(&mut self, context: &mut TrapFrame) {
+    pub fn process_signal(&mut self, context: &mut TrapContext) {
         let Some(pending) = self.pending_signal.take() else {
             crate::println_warn!("Signal UNKNOWN");
             self.exit();
         };
 
         Userspace::get().clear_error();
-        let old_eip = context.eip;
-        context.eip = Userspace::get().get_signal_handler(pending);
-        context.esp = context.esp.wrapping_sub(1);
-
-        unsafe {
-            context.esp.write(old_eip);
+        let handler = Userspace::get().get_signal_handler(pending);
+        if handler == 0 {
+            self.exit();
         }
+
+        let old_pc = context.sepc;
+        context.sepc = handler;
+        context.regs.ra = old_pc;
     }
 
     pub fn should_process(&self) -> bool {
@@ -590,14 +545,15 @@ impl Process {
         // TODO: reset trace flag
 
         // Ignore all signals
-        Userspace::get().clear_signal_handlers();
+        // TODO
+        /*Userspace::get().clear_signal_handlers();
         for fd in 0..OpenFiles::NOFILES {
             Userspace::get().open_files.clear_f(fd);
         }
 
         if let Some(_cwd) = Userspace::get().cwd.take() {
             // TODO: put cwd
-        }
+        }*/
 
         let _ = self.text.take();
 
@@ -610,12 +566,12 @@ impl Process {
 
         self.stat = ProcessState::SZOMB;
 
-        ProcessManager::get().wake_ppid(self.ppid);
-        ProcessManager::get().reparent(self.pid);
+        // TODO
+        //ProcessManager::get().wake_ppid(self.ppid);
+        //ProcessManager::get().reparent(self.pid);
 
         ProcessManager::get().switch();
 
         panic!("This function should never return");
     }
 }
-*/

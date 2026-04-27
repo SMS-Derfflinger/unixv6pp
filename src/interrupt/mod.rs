@@ -1,8 +1,9 @@
 use riscv::register::sie;
 
 use crate::{
-    interrupt::{context::TrapContext, handler::_trap_entry},
+    interrupt::handler::_trap_entry,
     machine::asm,
+    proc::ProcessManager,
     serial,
 };
 
@@ -11,12 +12,9 @@ pub mod handler;
 pub mod plic;
 pub mod time;
 
-static mut BOOT_TRAP_CONTEXT: TrapContext = TrapContext::new();
-
 pub fn init_trap() {
-    let trap_context = &raw mut BOOT_TRAP_CONTEXT as *mut TrapContext as usize;
-    asm::write_sscratch(trap_context);
     asm::write_stvec(_trap_entry as *const () as usize);
+    ProcessManager::get().bind_current_trap_context();
 }
 
 pub fn init_interrupt_controller() {

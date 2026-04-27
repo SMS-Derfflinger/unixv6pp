@@ -33,6 +33,7 @@ pub struct MemoryDescriptor {
     pub stack_len: usize,
 }
 
+// TODO
 #[repr(C)]
 #[derive(Clone)]
 pub struct Userspace {
@@ -89,7 +90,6 @@ pub struct Userspace {
     pub gid: u16,
     pub euid: u16,
     pub egid: u16,
-
     //pub open_files: OpenFiles,
     //pub ioparam: IOParameter,
 }

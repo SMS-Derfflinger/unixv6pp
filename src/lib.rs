@@ -29,6 +29,8 @@ pub mod sync;
 use core::arch::naked_asm;
 use core::panic::PanicInfo;
 
+use crate::proc::ProcessManager;
+
 pub trait Ext {
     fn as_buffer(&mut self) -> &mut [u8];
 }
@@ -87,6 +89,8 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     machine::init_user_page_table();
     machine::enable_page_protection();
     serial::init_serial();
+    mm::init_page_managers();
+    ProcessManager::get().setup_proc_zero();
     interrupt::init_trap();
     interrupt::init_interrupt_controller();
     println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");

@@ -1,12 +1,4 @@
-pub struct ProcessManager;
-
-impl ProcessManager {
-    pub fn get() -> &'static mut Self {
-        panic!("ProcessManager is not wired up on riscv64 yet")
-    }
-}
-
-/*use core::{
+use core::{
     arch::naked_asm,
     ffi::CStr,
     num::NonZero,
@@ -19,15 +11,10 @@ use eonix_mm::address::{Addr, PAddr};
 use eonix_sync_base::LazyLock;
 
 use crate::{
-    compat::compat_swap_alloc,
     constants::{PosixError, Signal},
-    dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
-    fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
-    interrupt::Registers,
-    kernel::utility::phys_copy,
-    loader::PEParser,
-    machine::{set_tss_esp0, switch_user_struct, TrapFrame},
-    mm::{KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
+    interrupt::context::TrapContext,
+    machine::{asm, switch_user_struct},
+    mm::{phys_copy, KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
         process::{ProcessState, Terminal, Text},
@@ -64,7 +51,6 @@ pub const SSWAP: u32 = 1 << 3;
 impl Process {
     pub fn new_from(pid: u32, parent: &mut Self) -> Box<Self> {
         let kstack = KernelStack::new();
-        let stack_top = kstack.top();
 
         let mut child = Box::new(Self {
             uid: parent.uid,
@@ -86,10 +72,10 @@ impl Process {
             pages: None,
             ctx: TaskContext::new(),
             kstack,
+            trap_context: TrapContext::new(),
         });
 
-        // 设置子进程的内核栈指针，使其在被调度时能正确使用自己的栈
-        child.ctx.esp = stack_top.addr().get();
+        child.init_kernel_context(None);
 
         child
     }
@@ -114,7 +100,12 @@ impl ProcessManager {
         }
     }
 
-    fn set_init_context(child: &mut Process) {
+    pub fn bind_current_trap_context(&mut self) {
+        let proc = Userspace::get().proc();
+        asm::write_sscratch(proc.trap_context_ptr() as usize);
+    }
+
+    /*fn set_init_context(child: &mut Process) {
         let stack_top = child.kstack.top().addr().get();
 
         child.ctx.eip = go_init as usize;
@@ -123,7 +114,7 @@ impl ProcessManager {
         child.ctx.ebx = 0;
         child.ctx.esi = 0;
         child.ctx.edi = 0;
-    }
+    }*/
 
     fn new_proc(&mut self, parent: &mut Process) -> Box<Process> {
         let mut child = Process::new_from(Self::assign_pid(), parent);
@@ -194,16 +185,18 @@ impl ProcessManager {
     ) {
         let swap_len = swap_len.map(|l| l.get()).unwrap_or(proc.size as usize);
 
-        let blkno = compat_swap_alloc(proc.size as usize);
+        // TODO
+        //let blkno = compat_swap_alloc(proc.size as usize);
 
         if let Some(text) = &mut proc.text {
             text.put_mem();
         }
 
         proc.flag |= SLOCK;
-        global_buffer_manager()
-            .swap(blkno, proc.addr, swap_len, BufFlag::B_WRITE)
-            .expect("Swap I/O Error");
+        // TODO
+        /*global_buffer_manager()
+        .swap(blkno, proc.addr, swap_len, BufFlag::B_WRITE)
+        .expect("Swap I/O Error");*/
 
         if do_free {
             let pages = proc.pages.take().unwrap();
@@ -213,7 +206,8 @@ impl ProcessManager {
         }
 
         // (flag & SLOAD) => addr == blkno
-        proc.addr = blkno.0 as usize;
+        // TODO
+        //proc.addr = blkno.0 as usize;
         proc.flag &= !(SLOAD | SLOCK);
 
         // Clear time since last swapin / swapout
@@ -289,7 +283,7 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn exec(&mut self, proc: &mut Process, path: &[u8], argv: &[NonNull<i8>]) -> KResult<()> {
+    /*pub fn exec(&mut self, proc: &mut Process, path: &[u8], argv: &[NonNull<i8>]) -> KResult<()> {
         crate::println_info!("Process {} execing", proc.pid);
         let inode = FileManager
             .find(path, DirSearchMode::Open)?
@@ -403,7 +397,7 @@ impl ProcessManager {
         proc.ctx.eip = go_userspace as *const () as usize;
 
         Ok(())
-    }
+    }*/
 
     pub fn wait(&mut self, proc: &mut Process) {
         crate::println_info!("Process {} finding dead son. They are:", proc.pid);
@@ -543,10 +537,12 @@ impl ProcessManager {
         let me = Userspace::get().proc();
         let scheduler = &mut *self.procs[0];
 
+        Userspace::get().proc = &raw mut *scheduler;
         switch_user_struct(&scheduler);
+        asm::write_sscratch(scheduler.trap_context_ptr() as usize);
 
         unsafe {
-            let ctx = IrqGuard::disable_save();
+            let _ctx = IrqGuard::disable_save();
             TaskContext::switch(&mut me.ctx, &mut scheduler.ctx);
         }
     }
@@ -562,11 +558,14 @@ impl ProcessManager {
                 selected.flag &= !SSWAP;
             }
 
+            Userspace::get().proc = &raw mut *selected;
             switch_user_struct(&selected);
+            asm::write_sscratch(selected.trap_context_ptr() as usize);
             Userspace::get().mem.map_to_actual_pt(&selected);
 
-            // 更新 TSS esp0，使得从用户态陷入内核态时使用目标进程的内核栈
-            set_tss_esp0(selected.kstack.top().addr().get() as u32);
+            // RISC-V 不使用 x86 的 TSS esp0。
+            // 这里通过切换当前进程、u-area 窗口和 sscratch，
+            // 让后续 trap 进入目标进程自己的内核态上下文。
 
             unsafe {
                 let ctx = IrqGuard::disable_save();
@@ -575,7 +574,7 @@ impl ProcessManager {
         }
     }
 
-    fn set_fork_return_context(child: &mut Process) {
+    /*fn set_fork_return_context(child: &mut Process) {
         let regs = Userspace::get().ssav[0].0 as *const Registers;
         let ctx = Userspace::get().ssav[1].0 as *const TrapFrame;
 
@@ -599,9 +598,9 @@ impl ProcessManager {
         child.ctx.ebx = regs.ebx;
         child.ctx.esi = regs.esi;
         child.ctx.edi = regs.edi;
-    }
+    }*/
 
-    #[unsafe(no_mangle)]
+    /*#[unsafe(no_mangle)]
     #[unsafe(naked)]
     extern "C" fn fork_ret() -> ! {
         naked_asm!(
@@ -611,9 +610,9 @@ impl ProcessManager {
             "iret",
             options(att_syntax),
         )
-    }
+    }*/
 
-    pub fn fork(&mut self) -> u32 {
+    /*pub fn fork(&mut self) -> u32 {
         // Create a reborrow
         let mut child = self.new_proc(Userspace::get().proc());
 
@@ -632,22 +631,22 @@ impl ProcessManager {
         let pid = child.pid;
         self.procs.push(child);
         pid
-    }
+    }*/
 
-    pub fn new_init_proc(&mut self) -> u32 {
+    /*pub fn new_init_proc(&mut self) -> u32 {
         let mut child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
 
         let pid = child.pid;
         Self::set_init_context(&mut child);
         self.procs.push(child);
         pid
-    }
+    }*/
 
     pub fn setup_proc_zero(&mut self) {
         const PPDA_ADDR: usize = 0x400000 - 0x1000;
 
-        // 0 号进程的内核栈在 main.cpp 的 main0() 中通过 KernelStack_new() 分配，
-        // 0 号进程是调度器（SSYS），永远运行在内核态，不需要通过 TSS esp0 切换栈。
+        // 0 号进程是调度器（SSYS），永远运行在内核态。
+        // RISC-V 下不再依赖 TSS esp0，而是通过 sscratch 绑定当前 trap 上下文。
         let mut proc = Box::new(Process {
             uid: 0,
             pid: ProcessManager::assign_pid(),
@@ -668,7 +667,9 @@ impl ProcessManager {
             pages: None,
             ctx: TaskContext::new(),
             kstack: KernelStack::new(),
+            trap_context: TrapContext::new(),
         });
+        proc.init_kernel_context(None);
 
         unsafe {
             Userspace::init();
@@ -678,7 +679,7 @@ impl ProcessManager {
         self.procs.push(proc);
     }
 
-    pub fn recalc_pri(&mut self) {
+    /*pub fn recalc_pri(&mut self) {
         const SCHED_MAGIC: u32 = 20;
         const MAX_TIME: u32 = 127;
         const PUSER: i32 = 100;
@@ -690,13 +691,13 @@ impl ProcessManager {
                 proc.set_pri();
             }
         }
-    }
+    }*/
 }
 
 static TEMPORARY_STACK: [usize; 6] = [0; 6];
 static SHELL_PATH: [u8; 11] = *b"/Shell.exe\0";
 
-#[unsafe(naked)]
+/*#[unsafe(naked)]
 extern "C" fn exec_shell() {
     naked_asm!(
         "mov ${shell}, %ebx", // path
@@ -707,9 +708,9 @@ extern "C" fn exec_shell() {
         shell = sym SHELL_PATH,
         options(att_syntax),
     );
-}
+}*/
 
-#[unsafe(naked)]
+/*#[unsafe(naked)]
 extern "C" fn go_init() {
     naked_asm!(
         "mov ${exec_shell}, %esi",
@@ -725,9 +726,9 @@ extern "C" fn go_init() {
         exec_shell = sym exec_shell,
         options(att_syntax),
     )
-}
+}*/
 
-#[unsafe(naked)]
+/*#[unsafe(naked)]
 extern "C" fn go_userspace() {
     naked_asm!(
         "mov %ebx, %eax", // eax = entry
@@ -745,11 +746,11 @@ extern "C" fn go_userspace() {
         "iret",
         options(att_syntax),
     )
-}
+}*/
 
 fn halt() {
     unsafe {
-        core::arch::asm!("hlt");
+        core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
     }
 }
 
@@ -795,4 +796,3 @@ impl Stack {
         ret
     }
 }
-*/
