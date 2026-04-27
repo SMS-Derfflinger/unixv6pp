@@ -390,7 +390,7 @@ impl Inode {
         }
     }
 
-    pub fn i_update(&self, time: i32) {
+    pub fn i_update(&self, time: u32) {
         if !self.i_flag.intersects(InodeFlag::IUPD | InodeFlag::IACC) {
             return;
         }
@@ -578,6 +578,6 @@ pub struct DiskInode {
     pub d_gid: u16,
     pub d_size: u32,
     pub d_addr: [PhysicalBlock; 10],
-    pub d_atime: i32,
-    pub d_mtime: i32,
+    pub d_atime: u32,
+    pub d_mtime: u32,
 }

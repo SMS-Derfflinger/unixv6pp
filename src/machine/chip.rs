@@ -3,15 +3,15 @@ use crate::{
     sync::IrqGuard,
 };
 
-#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct SystemTime {
-    pub second: i32,
-    pub minute: i32,
-    pub hour: i32,
-    pub day_of_month: i32,
-    pub month: i32,
-    pub year: i32,
-    pub day_of_week: i32,
+    pub second: u32,
+    pub minute: u32,
+    pub hour: u32,
+    pub day_of_month: u32,
+    pub month: u32,
+    pub year: u32,
+    pub day_of_week: u32,
 }
 
 const PIT_INPUT_FREQ: i32 = 1_193_180;
@@ -40,7 +40,7 @@ const RTC_DAY_OF_MONTH: u8 = 0x07;
 const RTC_MONTH: u8 = 0x08;
 const RTC_YEAR: u8 = 0x09;
 const RTC_STATUS_REGISTER_A: u8 = 0x0a;
-const RTC_UPDATE_IN_PROGRESS: i32 = 0x80;
+const RTC_UPDATE_IN_PROGRESS: u32 = 0x80;
 
 const EXTENDED_MEMORY_ABOVE_1MB_LOW: u8 = 0x30; /* 1MB以上扩展内存(低字节) */
 const EXTENDED_MEMORY_ABOVE_1MB_HIGH: u8 = 0x31;
@@ -113,41 +113,39 @@ fn chip8259a_irq_disable(irq: u32) {
     }
 }
 
-pub fn cmos_read_time(time: *mut SystemTime) {
-    if time.is_null() {
-        return;
-    }
+pub fn cmos_read_time() -> SystemTime {
+    let mut time = SystemTime::default();
 
     while cmos_read_byte(RTC_STATUS_REGISTER_A) & RTC_UPDATE_IN_PROGRESS != 0 {}
 
-    unsafe {
-        (*time).second = bcd_to_binary(cmos_read_byte(RTC_SECONDS));
-        (*time).minute = bcd_to_binary(cmos_read_byte(RTC_MINUTES));
-        (*time).hour = bcd_to_binary(cmos_read_byte(RTC_HOURS));
-        (*time).day_of_month = bcd_to_binary(cmos_read_byte(RTC_DAY_OF_MONTH));
-        (*time).month = bcd_to_binary(cmos_read_byte(RTC_MONTH));
-        (*time).year = bcd_to_binary(cmos_read_byte(RTC_YEAR));
-        (*time).day_of_week = bcd_to_binary(cmos_read_byte(RTC_DAY_OF_WEEK));
-    }
+    time.second = bcd_to_binary(cmos_read_byte(RTC_SECONDS));
+    time.minute = bcd_to_binary(cmos_read_byte(RTC_MINUTES));
+    time.hour = bcd_to_binary(cmos_read_byte(RTC_HOURS));
+    time.day_of_month = bcd_to_binary(cmos_read_byte(RTC_DAY_OF_MONTH));
+    time.month = bcd_to_binary(cmos_read_byte(RTC_MONTH));
+    time.year = bcd_to_binary(cmos_read_byte(RTC_YEAR));
+    time.day_of_week = bcd_to_binary(cmos_read_byte(RTC_DAY_OF_WEEK));
+
+    time
 }
 
-fn cmos_read_byte(cmos_offset: u8) -> i32 {
+fn cmos_read_byte(cmos_offset: u8) -> u32 {
     unsafe {
-        let ctx = IrqGuard::disable_save();
+        let _ctx = IrqGuard::disable_save();
         IOPort::out_byte(CMOS_ADDR_PORT, cmos_offset);
-        IOPort::in_byte(CMOS_DATA_PORT) as i32
+        IOPort::in_byte(CMOS_DATA_PORT) as u32
     }
 }
 
-pub fn cmos_read_byte_low() -> i32 {
+pub fn cmos_read_byte_low() -> u32 {
     cmos_read_byte(EXTENDED_MEMORY_ABOVE_1MB_LOW)
 }
 
-pub fn cmos_read_byte_high() -> i32 {
+pub fn cmos_read_byte_high() -> u32 {
     cmos_read_byte(EXTENDED_MEMORY_ABOVE_1MB_HIGH)
 }
 
-fn bcd_to_binary(value: i32) -> i32 {
+fn bcd_to_binary(value: u32) -> u32 {
     (value & 0x0f) + ((value >> 4) * 10)
 }
 

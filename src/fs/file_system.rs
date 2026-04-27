@@ -3,7 +3,6 @@ use core::{array, ptr};
 use eonix_spin::Spin;
 
 use crate::{
-    compat::compat_get_time,
     constants::PosixError,
     dev::{
         buffer::{Buf, Buffer, DevId, PhysicalBlock},
@@ -15,6 +14,7 @@ use crate::{
         inode::{DiskInode, Inode},
         InodeRef, SuperBlockRef,
     },
+    interrupt::get_time,
     proc::{ProcessManager, PINOD},
     sync::{IrqGuard, SpinExt},
     user::Userspace,
@@ -46,7 +46,7 @@ struct DiskSuperBlock {
     pub s_ilock: i32,
     pub s_fmod: i32,
     pub s_ronly: i32,
-    pub s_time: i32,
+    pub s_time: u32,
 
     padding: [i32; 47],
 }
@@ -87,7 +87,7 @@ pub struct SuperBlock {
 }
 
 impl SuperBlock {
-    fn from_disk(mut disk: DiskSuperBlock, time: i32) -> Self {
+    fn from_disk(mut disk: DiskSuperBlock, time: u32) -> Self {
         let readonly = disk.s_ronly != 0;
         let modified = disk.s_fmod != 0;
 
@@ -133,7 +133,7 @@ impl SuperBlock {
         self.modified = modified;
     }
 
-    fn set_time(&mut self, time: i32) {
+    fn set_time(&mut self, time: u32) {
         self.disk.s_time = time;
     }
 
@@ -196,7 +196,7 @@ impl FileSystem {
     pub const INODE_NUMBER_PER_SECTOR: usize = 8;
     pub const INODE_ZONE_START_SECTOR: usize = 514;
 
-    fn install_loaded_super_block(&mut self, loaded_super_block: DiskSuperBlock, time: i32) {
+    fn install_loaded_super_block(&mut self, loaded_super_block: DiskSuperBlock, time: u32) {
         let super_block = SuperBlock::from_disk(loaded_super_block, time);
         self.m_mount[0].m_dev = DevId(ROOTDEV);
         self.m_mount[0].m_spb = Some(Arc::new(Spin::new(super_block)));
@@ -314,7 +314,7 @@ impl FileSystem {
     }
 
     pub fn load_super_block(&mut self) -> Result<(), FileSystemError> {
-        let time = compat_get_time() as i32;
+        let time = get_time() as u32;
         self.install_loaded_super_block(Self::read_super_block()?, time);
 
         Ok(())
@@ -348,7 +348,7 @@ impl FileSystem {
         }
 
         self.updlock = true;
-        let time = compat_get_time() as i32;
+        let time = get_time() as u32;
 
         for mount in &self.m_mount {
             let Some(spb) = mount.m_spb.as_ref() else {

@@ -2,7 +2,6 @@ use eonix_spin::Spin;
 use eonix_sync_base::LazyLock;
 
 use crate::{
-    compat::compat_get_time,
     constants::PosixError,
     dev::{
         buffer::{Buffer, DevId, PhysicalBlock},
@@ -15,6 +14,7 @@ use crate::{
         inode::{DiskInode, Inode, InodeFlag, InodeMode},
         FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot,
     },
+    interrupt::get_time,
     proc::{Channel, ProcessManager, PINOD},
     sync::{IrqGuard, SpinExt},
     user::Userspace,
@@ -201,7 +201,7 @@ impl InodeTable {
             let _ = fs::global_file_system().i_free(inode.i_dev, inode.i_number);
         }
 
-        inode.i_update(compat_get_time() as i32);
+        inode.i_update(get_time() as u32);
         inode.prele();
         inode.i_flag = InodeFlag::empty();
         inode.i_number = -1;
@@ -215,7 +215,7 @@ impl InodeTable {
             }
 
             inode.i_flag |= InodeFlag::ILOCK;
-            inode.i_update(compat_get_time() as i32);
+            inode.i_update(get_time() as u32);
             inode.prele();
         }
     }

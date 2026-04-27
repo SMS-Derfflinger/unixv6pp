@@ -1,7 +1,6 @@
 use core::{cmp::min, ffi::CStr, ptr};
 
 use crate::{
-    compat::compat_get_time,
     constants::{PosixError, Signal},
     dev::{
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
@@ -15,6 +14,7 @@ use crate::{
         inode::{InodeFlag, InodeMode},
         File, FileRef, Inode, InodeRef, InodeRefGuard,
     },
+    interrupt::get_time,
     proc::{Channel, ProcessManager},
     sync::{IrqGuard, SpinExt},
     user::Userspace,
@@ -508,7 +508,7 @@ impl FileManager {
         let inode = pinode.lock();
         let ino = inode.i_number;
         let dev = inode.i_dev;
-        inode.i_update(compat_get_time() as i32);
+        inode.i_update(get_time() as u32);
         drop(inode);
 
         let sector = FileSystem::INODE_ZONE_START_SECTOR as u32

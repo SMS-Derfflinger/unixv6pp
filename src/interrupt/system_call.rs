@@ -3,7 +3,8 @@ use core::ptr::NonNull;
 use crate::{
     constants::{PosixError, Signal, PSLEP},
     interrupt::{
-        time::{get_time, time_set_tout, time_tout, time_tout_address},
+        set_time,
+        time::{get_time, sleep_user_until},
         Registers,
     },
     interrupt_entry,
@@ -14,7 +15,6 @@ use crate::{
     machine::{asm::disable_interrupts, TrapFrame},
     proc::{ProcessManager, TaskContext},
     serial::KResult,
-    sync::IrqGuard,
     user::{Pointer, Userspace},
 };
 
@@ -208,13 +208,12 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
         }
         sys::GETUID => Ok(Userspace::get().getuid() as usize),
         sys::STIME => {
-            if Userspace::get().is_root() {
-                super::time::time_set(args()[0] as u32);
+            let user = Userspace::get();
+            if !user.is_root() {
+                return Err(PosixError::EPERM);
             }
-            match Userspace::get().error {
-                Some(err) => Err(err),
-                None => Ok(0),
-            }
+            set_time(user.args[0]);
+            Ok(0)
         }
         number if sys::is_unimplemented(number) => Err(PosixError::ENOSYS),
         sys::FSTAT => trap_void(crate::fs::syscall_fstat),
@@ -245,26 +244,10 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
             Ok(0)
         }
         sys::SLEEP => {
-            let _ctx = IrqGuard::disable_save();
-            let wake_time = get_time() + Userspace::get().args[0] as u32;
+            let sleep_time = Userspace::get().args[0];
+            let wake_time = get_time() + sleep_time;
 
-            loop {
-                let now = get_time();
-                let tout = time_tout();
-
-                if wake_time <= now {
-                    break;
-                }
-
-                if tout <= now || tout > wake_time {
-                    time_set_tout(wake_time);
-                }
-
-                Userspace::get()
-                    .proc()
-                    .sleep_user(time_tout_address(), PSLEP)?;
-            }
-
+            sleep_user_until(wake_time, PSLEP)?;
             Ok(0)
         }
         sys::SYNC => trap_void(crate::fs::syscall_sync),

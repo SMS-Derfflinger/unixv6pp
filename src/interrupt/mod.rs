@@ -4,7 +4,7 @@ mod system_call;
 mod time;
 
 pub use interrupt::send_master_eoi;
-pub use time::set_time;
+pub use time::{get_time, set_time};
 
 pub const KERNEL_MODE: u32 = 0x0;
 pub const USER_MODE: u32 = 0x3;

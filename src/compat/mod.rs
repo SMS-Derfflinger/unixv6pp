@@ -16,14 +16,6 @@ pub fn compat_user_pt() -> &'static mut [usize; 2048] {
     unsafe { &mut *(0xc0202000 as *mut [usize; 2048]) }
 }
 
-pub fn compat_get_time() -> u32 {
-    extern "C" {
-        fn get_time() -> u32;
-    }
-
-    unsafe { get_time() }
-}
-
 const SECTOR_SIZE: usize = 512;
 
 pub fn compat_swap_alloc(bytes: usize) -> PhysicalBlock {

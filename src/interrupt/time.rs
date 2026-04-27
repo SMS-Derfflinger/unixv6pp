@@ -1,16 +1,20 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::{
     interrupt::{interrupt::schedule_on_user_return, send_master_eoi, Registers},
     interrupt_entry,
     machine::{asm::enable_interrupts, TrapFrame},
-    proc::{ProcessManager, ProcessState},
+    proc::{Channel, ProcessManager, ProcessState},
+    serial::KResult,
+    sync::IrqGuard,
     user::Userspace,
 };
 
-const HZ: i32 = 60 * 2;
+const HZ: usize = 60;
 
-static mut LBOLT: i32 = 0;
-static mut TIME: u32 = 0;
-static mut TOUT: u32 = 0;
+static JIFFIES: AtomicUsize = AtomicUsize::new(0);
+static TIME: AtomicUsize = AtomicUsize::new(0);
+static TIMEOUT: AtomicUsize = AtomicUsize::new(0);
 
 #[no_mangle]
 pub extern "C" fn time_interrupt_body(_regs: *mut Registers, context: &mut TrapFrame) {
@@ -32,12 +36,24 @@ fn clock(context: &mut TrapFrame) {
         current.stat
     };
 
-    unsafe {
-        LBOLT += 1;
-        if LBOLT < HZ {
-            send_master_eoi();
-            return;
-        }
+    // fetch_add returns the old value, add 1 to get current jiffies.
+    let jiffies = JIFFIES.fetch_add(1, Ordering::Release) + 1;
+
+    if jiffies < HZ {
+        send_master_eoi();
+        return;
+    }
+
+    JIFFIES.store(0, Ordering::Release);
+    let time = TIME.fetch_add(1, Ordering::AcqRel) + 1;
+
+    #[cfg(feature = "debug_timer")]
+    crate::println_debug!("Time={}", time);
+
+    if time == TIMEOUT.load(Ordering::Acquire) {
+        #[cfg(feature = "debug_timer")]
+        crate::println_debug!("Waking up all sleepers");
+        ProcessManager::get().wakeup_all((&TIMEOUT).channel_addr());
     }
 
     if current_status == ProcessState::SRUN && !context.is_user() {
@@ -45,17 +61,8 @@ fn clock(context: &mut TrapFrame) {
         return;
     }
 
-    unsafe {
-        LBOLT -= HZ;
-        TIME += 1;
-    }
-
     enable_interrupts();
     send_master_eoi();
-
-    if get_time() == time_tout() {
-        ProcessManager::get().wakeup_all(time_tout_address());
-    }
 
     ProcessManager::get().recalc_pri();
 
@@ -64,46 +71,63 @@ fn clock(context: &mut TrapFrame) {
         ProcessManager::get().wakeup_runin();
     }
 
-    if context.is_user() {
-        let current = Userspace::get().proc();
-        if current.should_process() {
-            current.process_signal(context);
-        }
-        current.set_pri();
+    // Don't preempt in kernel space.
+    if !context.is_user() {
+        return;
     }
-}
 
-pub fn set_time(value: u32) {
-    unsafe {
-        TIME = value;
+    let current = Userspace::get().proc();
+    if current.should_process() {
+        current.process_signal(context);
     }
+    current.set_pri();
 }
 
-#[no_mangle]
-pub extern "C" fn get_time() -> u32 {
-    unsafe { TIME }
+pub fn set_time(value: usize) {
+    TIME.store(value, Ordering::Release);
 }
 
-#[no_mangle]
-pub extern "C" fn time_set(value: u32) {
-    set_time(value);
+pub fn get_time() -> usize {
+    TIME.load(Ordering::Acquire)
 }
 
-#[no_mangle]
-pub extern "C" fn time_tout() -> u32 {
-    unsafe { TOUT }
-}
+/// Set a timer that should wake us up at or earlier than `wake`.
+///
+/// # Note
+/// Call this function with IRQ disabled, otherwise we may have lost wakeups.
+///
+/// # Returns
+/// - `true` if the timer is set.
+/// - `false` if the timer has already expired.
+fn set_timer(wake: usize) -> bool {
+    let now = get_time();
+    let cur_timeout = TIMEOUT.load(Ordering::Acquire);
 
-#[no_mangle]
-pub extern "C" fn time_set_tout(value: u32) {
-    unsafe {
-        TOUT = value;
+    if now >= wake {
+        return false;
     }
+
+    // Keep the timeout if it's earlier than requested
+    if cur_timeout <= now || cur_timeout > wake {
+        TIMEOUT.store(wake, Ordering::Release);
+    }
+
+    true
 }
 
-#[no_mangle]
-pub extern "C" fn time_tout_address() -> usize {
-    core::ptr::addr_of!(TOUT) as usize
+pub fn sleep_user_until(wake: usize, pri: u32) -> KResult<()> {
+    let _irq = IrqGuard::disable_save();
+
+    while set_timer(wake) {
+        #[cfg(feature = "debug_timer")]
+        crate::println_debug!("Sleeping until {}", wake);
+
+        Userspace::get()
+            .proc()
+            .sleep_user((&TIMEOUT).channel_addr(), pri)?;
+    }
+
+    Ok(())
 }
 
 interrupt_entry!(TimeInterruptEntrance, time_interrupt_body);
