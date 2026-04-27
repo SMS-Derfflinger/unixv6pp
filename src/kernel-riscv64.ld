@@ -9,6 +9,7 @@ MEMORY
 SECTIONS
 {
     . = ORIGIN(RAM);
+    __kernel_start = .;
     .bootstrap ORIGIN(RAM) :
     {
         KEEP(*(.bootstrap.entry));
@@ -39,6 +40,8 @@ SECTIONS
         *(COMMON)
         __bss_end = .;
     } > RAM
+
+    __kernel_end = .;
 
     /DISCARD/ :
     {

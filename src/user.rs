@@ -7,7 +7,10 @@ use crate::{
     compat::compat_flush_page_directory,
     constants::{PosixError, Signal, SIGMAX},
     fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
-    machine::{global_user_page_table, EntryFlags, PageTable, PageTableEntry},
+    machine::{
+        global_user_page_table, EntryFlags, PageTable, PageTableEntry, USER_PAGE_TABLE_COUNT,
+        USER_SPACE_SIZE as MACHINE_USER_SPACE_SIZE,
+    },
     mm::PAGE_SIZE,
     proc::Process,
     serial::KResult,
@@ -21,7 +24,7 @@ pub struct Terminal;
 #[repr(C)]
 #[derive(Clone)]
 pub struct MemoryDescriptor {
-    pub user_pts: Box<[PageTable; 2]>,
+    pub user_pts: Box<[PageTable; USER_PAGE_TABLE_COUNT]>,
     pub text: usize,
     pub text_len: usize,
     pub data: usize,
@@ -241,7 +244,7 @@ impl Drop for MemoryDescriptor {
 }
 
 impl MemoryDescriptor {
-    pub const USER_SPACE_SIZE: usize = 0x800000;
+    pub const USER_SPACE_SIZE: usize = MACHINE_USER_SPACE_SIZE;
     pub const USER_SPACE_START: usize = 0;
     pub const USER_SPACE_END: usize = Self::USER_SPACE_START + Self::USER_SPACE_SIZE;
 
@@ -311,10 +314,10 @@ impl MemoryDescriptor {
 
     fn do_map_to_actual_pt(&mut self, text_pfn: usize, data_pfn: usize) {
         let real_pt = global_user_page_table();
+        let fake_ptes = self.user_ptes();
+        let real_ptes = real_pt.iter_mut().map(|pt| pt.iter_mut()).flatten();
 
-        let ptes = real_pt.iter_mut().map(|pt| pt.iter_mut()).flatten();
-
-        for (pte, fake_pte) in ptes.zip(self.user_ptes()) {
+        for (pte, fake_pte) in real_ptes.zip(fake_ptes) {
             let (mut pfn, flags) = fake_pte.get();
 
             if !flags.contains(EntryFlags::PRESENT) {
@@ -331,6 +334,7 @@ impl MemoryDescriptor {
             pte.set(Some(pfn), flags);
         }
 
+        // Keep the null page mapped temporarily for phys-copy helpers.
         real_pt[0][0].set(
             Some(PFN::from_val(0)),
             EntryFlags::PRESENT | EntryFlags::WRITE | EntryFlags::USER,

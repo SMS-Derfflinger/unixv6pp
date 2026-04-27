@@ -5,15 +5,18 @@ use crate::{dev::buffer::PhysicalBlock, mm::SWAPPER_AREAS, sync::SpinExt};
 pub fn compat_flush_page_directory() {
     unsafe {
         core::arch::asm!(
-            "mov {}, %cr3",
-            in (reg) 0x200000,
-            options(att_syntax),
+            "sfence.vma x0, x0",
+            options(nostack, preserves_flags),
         );
     }
 }
 
 pub fn compat_user_pt() -> &'static mut [usize; 2048] {
-    unsafe { &mut *(0xc0202000 as *mut [usize; 2048]) }
+    unsafe extern "C" {
+        fn _user_page_table_array() -> *mut usize;
+    }
+
+    unsafe { &mut *_user_page_table_array().cast::<[usize; 2048]>() }
 }
 
 pub fn compat_get_time() -> u32 {
