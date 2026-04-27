@@ -717,6 +717,7 @@ impl FileManager {
         };
 
         Userspace::get().open_files.set_f(new_fd, file_ref.clone());
+        Userspace::get().set_user_retval(new_fd as u32);
     }
 
     pub fn fstat() {

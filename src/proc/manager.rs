@@ -396,7 +396,7 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn wait(&mut self, proc: &mut Process) {
+    pub fn wait(&mut self, proc: &mut Process) -> KResult<u32> {
         crate::println_info!("Process {} finding dead son. They are:", proc.pid);
         loop {
             let mut has_child = false;
@@ -410,7 +410,7 @@ impl ProcessManager {
 
                 if p.stat == ProcessState::SZOMB {
                     // wait() 系统调用返回子进程的 pid
-                    Userspace::get().set_user_retval(p.pid);
+                    let pid = p.pid;
 
                     // 清理僵尸进程
                     p.stat = ProcessState::SNULL;
@@ -423,7 +423,7 @@ impl ProcessManager {
                     // maybe add them back later...
 
                     crate::println_info!("end wait");
-                    return;
+                    return Ok(pid);
                 }
             }
 
@@ -432,13 +432,12 @@ impl ProcessManager {
                 crate::println_info!("wait until child process Exit!");
                 let chan = (proc as *const Process) as usize;
                 const PWAIT: u32 = 40;
-                proc.sleep_user(chan, PWAIT);
+                proc.sleep_user(chan, PWAIT)?;
                 crate::println_info!("end sleep");
                 continue;
             } else {
                 // 不存在需要等待结束的子进程
-                Userspace::get().set_error(PosixError::ECHILD);
-                break;
+                return Err(PosixError::ECHILD);
             }
         }
     }
