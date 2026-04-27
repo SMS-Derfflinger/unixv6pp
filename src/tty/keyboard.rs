@@ -204,7 +204,7 @@ impl KeyboardState {
                 if self.ctrl_down() {
                     if ch == b'c' {
                         tty_flush();
-                        ProcessManager::get().compat_raise_non_scheduler(Signal::SIGINT);
+                        ProcessManager::get().raise(core::ptr::null_mut(), Signal::SIGINT);
                         ch = 0;
                     } else {
                         ch = ch - b'a' + 1;

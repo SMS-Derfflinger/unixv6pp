@@ -229,11 +229,13 @@ impl Process {
             self.exit();
         };
 
-        Userspace::get().clear_error();
         let handler = Userspace::get().get_signal_handler(pending);
+
         if handler == 0 {
             self.exit();
         }
+
+        Userspace::get().clear_error();
 
         let old_pc = context.sepc;
         context.sepc = handler;
@@ -287,7 +289,7 @@ impl Process {
     }
 
     pub fn raise(&mut self, signal: Signal) {
-        crate::println_info!("{signal:?} triggered");
+        crate::println_info!("pid {}: {signal:?} triggered", self.pid);
 
         // ???
         if signal == Signal::SIGKILL {
