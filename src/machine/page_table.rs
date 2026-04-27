@@ -8,7 +8,7 @@ use riscv::{
 };
 
 use crate::{
-    constants::platform::RAM_BASE,
+    constants::platform::{PLIC_PHYS_BASE, RAM_BASE, UART0_PHYS_BASE, VIRTIO_MMIO_PHYS_BASE},
     proc::Process,
 };
 
@@ -28,9 +28,10 @@ const ROOT_INDEX_LOW: usize = 0;
 const ROOT_INDEX_KERNEL_IDENTITY: usize = KERNEL_IDENTITY_BASE / SIZE_PER_DIRECTORY_MAP;
 const ROOT_INDEX_KERNEL_HIGH: usize = KERNEL_SPACE_START_ADDRESS / SIZE_PER_DIRECTORY_MAP;
 
-const UART0_L1_INDEX: usize = 0x1000_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
-const PLIC_L1_INDEX: usize = 0x0c00_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
+const UART0_L1_INDEX: usize = UART0_PHYS_BASE / SIZE_PER_KERNEL_ENTRY_MAP;
+const PLIC_L1_INDEX: usize = PLIC_PHYS_BASE / SIZE_PER_KERNEL_ENTRY_MAP;
 const PLIC_CONTEXT_L1_INDEX: usize = 0x0c20_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
+const VIRTIO_MMIO_L1_INDEX: usize = VIRTIO_MMIO_PHYS_BASE / SIZE_PER_KERNEL_ENTRY_MAP;
 
 pub const USER_PAGE_TABLE_COUNT: usize = 4;
 pub const USER_SPACE_SIZE: usize = USER_PAGE_TABLE_COUNT * SIZE_PER_USER_PAGE_TABLE_MAP;
@@ -191,7 +192,6 @@ pub fn init_page_directory() {
     root.entries[ROOT_INDEX_KERNEL_HIGH].set_table_ptr(kernel as *const _);
 
     init_kernel_linear_map(kernel, kernel_leaf);
-    init_low_mmio_map(low);
 }
 
 #[no_mangle]
@@ -310,20 +310,25 @@ fn init_kernel_linear_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTabl
             );
         }
     }
+
+    map_kernel_mmio_large(kernel, PLIC_L1_INDEX, PLIC_PHYS_BASE);
+    map_kernel_mmio_large(kernel, PLIC_CONTEXT_L1_INDEX, 0x0c20_0000);
+    map_kernel_mmio_large(kernel, UART0_L1_INDEX, UART0_PHYS_BASE);
+    map_kernel_mmio_large(
+        kernel,
+        VIRTIO_MMIO_L1_INDEX,
+        VIRTIO_MMIO_PHYS_BASE & !(SIZE_PER_KERNEL_ENTRY_MAP - 1),
+    );
 }
 
-fn init_low_mmio_map(low: &mut PageDirectory) {
-    low.entries[PLIC_L1_INDEX].set_large_identity_raw(
-        0x0c00_0000,
-        EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE | EntryFlags::ACCESSED | EntryFlags::DIRTY,
-    );
-    low.entries[PLIC_CONTEXT_L1_INDEX].set_large_identity_raw(
-        0x0c20_0000,
-        EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE | EntryFlags::ACCESSED | EntryFlags::DIRTY,
-    );
-    low.entries[UART0_L1_INDEX].set_large_identity_raw(
-        0x1000_0000,
-        EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE | EntryFlags::ACCESSED | EntryFlags::DIRTY,
+fn map_kernel_mmio_large(kernel: &mut PageDirectory, index: usize, paddr: usize) {
+    kernel.entries[index].set_large_identity_raw(
+        paddr,
+        EntryFlags::VALID
+            | EntryFlags::READ
+            | EntryFlags::WRITE
+            | EntryFlags::ACCESSED
+            | EntryFlags::DIRTY,
     );
 }
 
