@@ -26,6 +26,8 @@ use crate::{
 };
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(0);
+#[cfg(switchtest)]
+static KERNEL_SWITCH_SELFTEST_STAGE: AtomicUsize = AtomicUsize::new(0);
 
 pub static GLOBAL_PROC_MANAGER: LazyLock<SuperCell<ProcessManager>> =
     LazyLock::new(|| SuperCell::new(ProcessManager::new()));
@@ -103,6 +105,34 @@ impl ProcessManager {
     pub fn bind_current_trap_context(&mut self) {
         let proc = Userspace::get().proc();
         asm::write_sscratch(proc.trap_context_ptr() as usize);
+    }
+
+    fn switch_to(current: &mut Process, next: &mut Process) {
+        switch_user_struct(next);
+        Userspace::get().mem.map_to_actual_pt(next);
+        Userspace::get().proc = &raw mut *next;
+        asm::write_sscratch(next.trap_context_ptr() as usize);
+
+        unsafe {
+            let _ctx = IrqGuard::disable_save();
+            TaskContext::switch(&mut current.ctx, &mut next.ctx);
+        }
+    }
+
+    #[cfg(switchtest)]
+    fn init_kernel_userspace(proc: &mut Process) {
+        let current = Userspace::get().proc() as *mut Process;
+
+        switch_user_struct(proc);
+        unsafe {
+            Userspace::init();
+        }
+        Userspace::get().proc = &raw mut *proc;
+
+        unsafe {
+            switch_user_struct(&*current);
+            Userspace::get().proc = current;
+        }
     }
 
     /*fn set_init_context(child: &mut Process) {
@@ -536,15 +566,7 @@ impl ProcessManager {
     pub fn switch(&mut self) {
         let me = Userspace::get().proc();
         let scheduler = &mut *self.procs[0];
-
-        Userspace::get().proc = &raw mut *scheduler;
-        switch_user_struct(&scheduler);
-        asm::write_sscratch(scheduler.trap_context_ptr() as usize);
-
-        unsafe {
-            let _ctx = IrqGuard::disable_save();
-            TaskContext::switch(&mut me.ctx, &mut scheduler.ctx);
-        }
+        Self::switch_to(me, scheduler);
     }
 
     pub fn schedule() {
@@ -558,20 +580,69 @@ impl ProcessManager {
                 selected.flag &= !SSWAP;
             }
 
-            Userspace::get().proc = &raw mut *selected;
-            switch_user_struct(&selected);
-            asm::write_sscratch(selected.trap_context_ptr() as usize);
-            Userspace::get().mem.map_to_actual_pt(&selected);
-
             // RISC-V 不使用 x86 的 TSS esp0。
             // 这里通过切换当前进程、u-area 窗口和 sscratch，
             // 让后续 trap 进入目标进程自己的内核态上下文。
-
-            unsafe {
-                let ctx = IrqGuard::disable_save();
-                TaskContext::switch(&mut me.ctx, &mut selected.ctx);
-            }
+            Self::switch_to(me, &mut *selected);
         }
+    }
+
+    #[cfg(switchtest)]
+    pub fn run_kernel_switch_self_test(&mut self) {
+        let proc0 = Userspace::get().proc() as *mut Process;
+        let pid = Self::assign_pid();
+        let pages = USER_PAGE_MANAGER
+            .lock()
+            .alloc_order(0)
+            .expect("kernel switch selftest: failed to allocate u-area");
+
+        let mut proc1 = Box::new(Process {
+            uid: 0,
+            pid,
+            ppid: unsafe { (*proc0).pid },
+            addr: pages.phys().addr(),
+            size: PAGE_SIZE as u32,
+            text: None,
+            stat: ProcessState::SRUN,
+            flag: SLOAD,
+            pri: 0,
+            cpu: 0,
+            nice: 0,
+            time: 0,
+            wchan: 0,
+            pending_signal: None,
+            tty: core::ptr::null(),
+            sigmap: 0,
+            pages: Some(pages),
+            ctx: TaskContext::new(),
+            kstack: KernelStack::new(),
+            trap_context: TrapContext::new(),
+        });
+        proc1.init_kernel_context(Some(kernel_switch_self_test_entry as *const () as usize));
+        Self::init_kernel_userspace(&mut proc1);
+
+        self.procs.push(proc1);
+        let proc1 = self.procs.last_mut().unwrap().as_mut() as *mut Process;
+
+        crate::println_debug!("switch selftest: proc0 -> proc{}", pid);
+        KERNEL_SWITCH_SELFTEST_STAGE.store(1, Ordering::Release);
+
+        unsafe {
+            Self::switch_to(&mut *proc0, &mut *proc1);
+        }
+
+        crate::println_debug!(
+            "switch selftest: proc0 resumed stage={} current_pid={}",
+            KERNEL_SWITCH_SELFTEST_STAGE.load(Ordering::Acquire),
+            Userspace::get().proc().pid
+        );
+        assert_eq!(
+            KERNEL_SWITCH_SELFTEST_STAGE.load(Ordering::Acquire),
+            2,
+            "kernel switch selftest did not return from proc1"
+        );
+        assert_eq!(Userspace::get().proc().pid, 0);
+        crate::println_debug!("switch selftest: back on proc0");
     }
 
     /*fn set_fork_return_context(child: &mut Process) {
@@ -752,6 +823,18 @@ fn halt() {
     unsafe {
         core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
     }
+}
+
+#[cfg(switchtest)]
+extern "C" fn kernel_switch_self_test_entry() -> ! {
+    let proc = Userspace::get().proc();
+    crate::println_debug!("switch selftest: entered proc{}", proc.pid);
+    KERNEL_SWITCH_SELFTEST_STAGE.store(2, Ordering::Release);
+    proc.stat = ProcessState::SSTOP;
+    crate::println_debug!("switch selftest: proc{} switching back to proc0", proc.pid);
+    ProcessManager::get().switch();
+    crate::println_debug!("switch selftest: proc{} unexpectedly resumed", proc.pid);
+    panic!("kernel switch selftest child returned unexpectedly");
 }
 
 struct Stack {

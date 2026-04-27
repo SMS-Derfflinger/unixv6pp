@@ -89,15 +89,22 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     machine::init_user_page_table();
     machine::enable_page_protection();
     serial::init_serial();
+    println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");
+    println_info!("paging enabled with global Sv39 page tables");
+    println_info!("  hartid = {:#x}", hart_id);
+    println_info!("  dtb    = {:#x}", dtb_addr);
     mm::init_page_managers();
     ProcessManager::get().setup_proc_zero();
     interrupt::init_trap();
+
+    #[cfg(switchtest)]
+    ProcessManager::get().run_kernel_switch_self_test();
+    
     interrupt::init_interrupt_controller();
-    println_info!("rust_kernel: entered riscv64 rust entry via OpenSBI");
-    println_info!("  hartid = {:#x}", hart_id);
-    println_info!("  dtb    = {:#x}", dtb_addr);
-    println_info!("paging enabled with global Sv39 page tables");
-    println_info!("timer armed at {} Hz", interrupt::time::INTERRUPTS_PER_SECOND);
+    println_info!(
+        "timer armed at {} Hz",
+        interrupt::time::INTERRUPTS_PER_SECOND
+    );
 
     #[cfg(feature = "rvdebug")]
     interrupt_test();
