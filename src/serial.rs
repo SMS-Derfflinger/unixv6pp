@@ -1,7 +1,10 @@
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use crate::constants::PosixError;
 use crate::constants::platform::UART0_BASE;
+
+pub type KResult<T> = Result<T, PosixError>;
 
 const RBR_THR_DLL: usize = 0;
 const IER_DLM: usize = 1;

@@ -2,23 +2,15 @@ use eonix_spin::{NoContext, Spin, SpinContext, SpinGuard};
 use eonix_sync_base::SpinRelax;
 
 use crate::machine::asm::disable_interrupts;
+use riscv::register::sstatus::{self, Sstatus};
 
-pub struct IrqContext(u32);
+pub struct IrqContext(Sstatus);
 
 pub type KernelSpinGuard<'a, T> = SpinGuard<'a, T, NoContext>;
 
 impl SpinContext for IrqContext {
     fn save() -> Self {
-        let flags;
-        unsafe {
-            core::arch::asm!(
-                "pushf",
-                "pop {}",
-                out(reg) flags,
-                options(att_syntax),
-            );
-        }
-
+        let flags = sstatus::read();
         disable_interrupts();
         Self(flags)
     }
@@ -31,12 +23,7 @@ impl SpinContext for IrqContext {
 impl IrqContext {
     fn _restore(&mut self) {
         unsafe {
-            core::arch::asm!(
-                "push {}",
-                "popf",
-                in(reg) self.0,
-                options(att_syntax),
-            );
+            sstatus::write(self.0);
         }
     }
 }

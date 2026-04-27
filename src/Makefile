@@ -10,7 +10,7 @@ CARGOFLAGS = \
 	--manifest-path Cargo.toml \
 	--lib \
 	--target $(rust-target-triplet) \
-	-Z build-std=core,compiler_builtins \
+	-Z build-std=core,alloc,compiler_builtins \
 	-Z build-std-features=compiler-builtins-mem \
 	$(if $(F),--features $(F))
 
@@ -35,7 +35,7 @@ check:
 		--manifest-path Cargo.toml \
 		--lib \
 		--target $(rust-target-triplet) \
-		-Z build-std=core,compiler_builtins \
+		-Z build-std=core,alloc,compiler_builtins \
 		-Z build-std-features=compiler-builtins-mem
 
 clean:

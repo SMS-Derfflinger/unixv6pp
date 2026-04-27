@@ -1,4 +1,12 @@
-use core::{
+pub struct ProcessManager;
+
+impl ProcessManager {
+    pub fn get() -> &'static mut Self {
+        panic!("ProcessManager is not wired up on riscv64 yet")
+    }
+}
+
+/*use core::{
     arch::naked_asm,
     ffi::CStr,
     num::NonZero,
@@ -787,3 +795,4 @@ impl Stack {
         ret
     }
 }
+*/

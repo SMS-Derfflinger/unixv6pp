@@ -1,4 +1,66 @@
-use core::{
+use eonix_mm::paging::PFN;
+
+use crate::{
+    machine::HasUserStructAddress,
+    mm::KernelStack,
+};
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessState {
+    SNULL = 0,
+    SSLEEP = 1,
+    SWAIT = 2,
+    SRUN = 3,
+    SIDL = 4,
+    SZOMB = 5,
+    SSTOP = 6,
+}
+
+pub struct Text;
+
+impl Text {
+    pub fn pfn(&self) -> Option<PFN> {
+        Some(PFN::from_val(0))
+    }
+}
+
+#[repr(C)]
+pub struct Process {
+    pub uid: u16,
+    pub pid: u32,
+    pub ppid: u32,
+    pub addr: usize,
+    pub size: u32,
+    pub text: Option<Text>,
+    pub stat: ProcessState,
+    pub flag: u32,
+    pub pri: i32,
+    pub cpu: u32,
+    pub nice: i32,
+    pub time: u32,
+    pub wchan: usize,
+    pub sigmap: usize,
+    pub kstack: KernelStack,
+}
+
+unsafe impl Send for Process {}
+unsafe impl Sync for Process {}
+
+impl HasUserStructAddress for Process {
+    fn user_struct_address(&self) -> usize {
+        self.addr
+    }
+}
+
+impl Process {
+    pub fn setuid(&mut self, uid: u16) {
+        self.uid = uid;
+    }
+}
+
+
+/*use core::{
     num::NonZero,
     ops::{Deref, DerefMut},
     ptr::NonNull,
@@ -563,3 +625,4 @@ impl Process {
         panic!("This function should never return");
     }
 }
+*/

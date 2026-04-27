@@ -1,9 +1,7 @@
 #![no_std]
 
-#[cfg(target_arch = "x86")]
 extern crate alloc;
 
-#[cfg(target_arch = "x86")]
 pub mod compat;
 #[cfg(target_arch = "x86")]
 mod dev;
@@ -15,13 +13,10 @@ mod kernel;
 #[cfg(target_arch = "x86")]
 mod loader;
 pub mod machine;
-#[cfg(target_arch = "x86")]
 pub mod mm;
-#[cfg(target_arch = "x86")]
 pub mod proc;
 #[cfg(target_arch = "x86")]
 pub mod tty;
-#[cfg(target_arch = "x86")]
 mod user;
 #[cfg(target_arch = "x86")]
 mod vesa;
