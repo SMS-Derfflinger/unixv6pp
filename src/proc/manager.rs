@@ -159,19 +159,13 @@ impl ProcessManager {
 
     pub fn raise(&mut self, tty: *const Terminal, signal: Signal) {
         for proc in &mut self.procs {
-            if proc.tty != tty {
+            if proc.pid <= 1 {
                 continue;
             }
 
-            proc.raise(signal);
-        }
-    }
-
-    pub fn compat_raise_non_scheduler(&mut self, signal: Signal) {
-        for proc in &mut self.procs {
-            if proc.pid > 1 {
-                continue;
-            }
+            // if proc.tty != tty {
+            //     continue;
+            // }
 
             proc.raise(signal);
         }
@@ -376,6 +370,12 @@ impl ProcessManager {
             stack.push_word(argp);
         }
 
+        let argv = stack.top();
+
+        // Pad with two zeros to have the stack aligned to 16 bytes
+        stack.push_word(0);
+        stack.push_word(0);
+        stack.push_word(argv);
         let sp = stack.push_word(argc);
 
         drop(inode);
@@ -766,7 +766,7 @@ impl Stack {
     /// and return the pointer to the string.
     fn push_string(&mut self, string: &[u8]) -> usize {
         self.sp = self.sp.wrapping_byte_sub(string.len());
-        let addr = self.align16();
+        self.align16();
 
         unsafe {
             self.sp
@@ -774,14 +774,13 @@ impl Stack {
                 .copy_from_nonoverlapping(string.as_ptr(), string.len());
         }
 
-        addr
+        self.top()
     }
 
     /// Align the stack to 16 bytes, and return the previous stack pointer.
     fn align16(&mut self) -> usize {
         let ret = self.top();
         self.sp = (self.top() & !0xf) as *mut _;
-
         ret
     }
 }

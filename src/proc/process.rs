@@ -207,9 +207,15 @@ impl Process {
             self.exit();
         };
 
+        let handler = Userspace::get().get_signal_handler(pending);
+
+        if handler == 0 {
+            Userspace::get().proc().exit();
+        }
+
         Userspace::get().clear_error();
         let old_eip = context.eip;
-        context.eip = Userspace::get().get_signal_handler(pending);
+        context.eip = handler;
         context.esp = context.esp.wrapping_sub(1);
 
         unsafe {
@@ -264,7 +270,7 @@ impl Process {
     }
 
     pub fn raise(&mut self, signal: Signal) {
-        crate::println_info!("{signal:?} triggered");
+        crate::println_info!("pid {}: {signal:?} triggered", self.pid);
 
         // ???
         if signal == Signal::SIGKILL {
