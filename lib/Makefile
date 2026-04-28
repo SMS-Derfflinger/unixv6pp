@@ -1,7 +1,7 @@
 include-path := $(abs_srctree)/lib/include $(abs_srctree)/lib/src
 
 out-libs := v6pptongji
-libv6pptongji.a-objs = src/double.o src/file.o src/float.o src/malloc.o \
+libv6pptongji.a-objs = src/crt0.o src/double.o src/file.o src/float.o src/malloc.o \
 		       src/print_parse.o src/sprintf.o src/stdio.o \
 		       src/stdlib.o src/string.o src/sys.o src/time.o
 

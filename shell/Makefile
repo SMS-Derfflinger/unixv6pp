@@ -4,7 +4,7 @@ out-bins := Shell.exe
 
 Shell.exe-libs := $(abs_srctree)/lib/libv6pptongji.a
 Shell.exe-objs := CommandTree.o ExecuteCommand.o PreExecute.o main.o
-Shell.exe-LDFLAGS := --whole-archive -Ttext-segment=0x400000 -e main1 \
+Shell.exe-LDFLAGS := --whole-archive -Ttext-segment=0x400000 -e _start \
 		     -static
 
 include $(abs_srctree)/scripts/Makefile

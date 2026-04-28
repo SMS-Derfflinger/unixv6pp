@@ -1,16 +1,11 @@
 #ifndef VALIST_H
 #define VALIST_H
 
-typedef unsigned int va;
-#define getvahead( last_vaName ) ((&(last_vaName)) + 1)
-#define getva( type, va, va_offset ) (*((type*)(va + va_offset)))
-#define CHAR_SIZE 4
-#define SHORT_SIZE 4
-#define INT_SIZE 4
-#define LONG_SIZE 4
-#define POINTER_SIZE 4
-#define FLOAT_SIZE 4
-#define DOUBLE_SIZE 8
+typedef __builtin_va_list va;
 
+#define va_start(ap, last) __builtin_va_start(ap, last)
+#define va_end(ap) __builtin_va_end(ap)
+#define va_arg(ap, type) __builtin_va_arg(ap, type)
+#define va_copy(dst, src) __builtin_va_copy(dst, src)
 
 #endif

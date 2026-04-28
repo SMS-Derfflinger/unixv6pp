@@ -10,7 +10,7 @@ use crate::{
     constants::platform::UART0_IRQ,
     interrupt::{
         context::{Registers, TrapContext},
-        plic, time,
+        plic, system_call, time,
     },
     println_fatal, println_info, serial, tty,
 };
@@ -249,8 +249,7 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                     syscall_args[5],
                     context.sepc
                 );
-                context.advance_sepc(4);
-                context.set_return_value((-(PosixError::ENOSYS as isize)) as usize);
+                system_call::handle_user_ecall(context);
             }
             exception @ (
                 Exception::InstructionPageFault

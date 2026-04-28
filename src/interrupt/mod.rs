@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub mod context;
+pub mod system_call;
 pub mod handler;
 pub mod plic;
 pub mod time;

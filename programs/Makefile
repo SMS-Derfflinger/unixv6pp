@@ -6,7 +6,7 @@ out-bins := $(addsuffix .exe, $(names))
 
 $(foreach bin, $(out-bins), $(eval \
 	$(bin)-LDFLAGS += --whole-archive -Ttext-segment=0x400000 \
-	-e main1 -static))
+	-e _start -static))
 
 $(foreach name, $(names), $(eval $(name).exe-objs := $(name).o))
 $(foreach name, $(names), $(eval $(name).exe-hdrs :=))

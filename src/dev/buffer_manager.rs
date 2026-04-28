@@ -1,7 +1,9 @@
 use crate::dev::buffer::Buffer;
+use crate::mm::phys_to_virt;
 use crate::proc::ProcessManager;
 use crate::sync::{IrqGuard, SuperCell};
 use crate::{constants::PosixError, user::Userspace};
+use eonix_mm::address::PAddr;
 
 use super::{
     block_device::block_device_for_dev,
@@ -338,6 +340,8 @@ impl BufferManager {
         count: usize,
         flag: BufFlag,
     ) -> BufferResult<()> {
+        let transfer_ptr = phys_to_virt(PAddr::from_val(addr));
+
         unsafe {
             let mut ctx = IrqGuard::disable_save();
             while self.swap_buf.b_flags.contains(BufFlag::B_BUSY) {
@@ -350,7 +354,7 @@ impl BufferManager {
             self.swap_buf.b_dev = ROOTDEV;
             self.swap_buf.b_wcount = count as i32;
             self.swap_buf.b_blkno = blkno;
-            self.swap_buf.set_transfer(addr as *mut u8, count);
+            self.swap_buf.set_transfer(transfer_ptr, count);
         }
 
         let bp = self.swap_buf_ref();

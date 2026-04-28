@@ -582,7 +582,7 @@ impl ProcessManager {
         Self::switch_to(me, scheduler);
     }
 
-    pub fn schedule() {
+    pub fn schedule() -> ! {
         loop {
             let pm = ProcessManager::get();
             let me = Userspace::get().proc();
@@ -660,6 +660,16 @@ impl ProcessManager {
     fn set_fork_return_context(child: &mut Process) {
         let parent_context = unsafe { &*Userspace::get().proc().trap_context_ptr() };
         let child_context = unsafe { &mut *child.trap_context_ptr() };
+        let parent_fork_ret_slot = unsafe { *((parent_context.regs.sp + 0x28) as *const usize) };
+
+        crate::println_info!(
+            "fork ctx: parent pid={} sepc={:#x} ra={:#x} sp={:#x} stack_ra={:#x}",
+            Userspace::get().proc().pid,
+            parent_context.sepc,
+            parent_context.regs.ra,
+            parent_context.regs.sp,
+            parent_fork_ret_slot
+        );
 
         *child_context = *parent_context;
         child_context.set_return_value(0);
@@ -668,6 +678,22 @@ impl ProcessManager {
         let child_context = unsafe { &mut *child.trap_context_ptr() };
         *child_context = *parent_context;
         child_context.set_return_value(0);
+
+        let current = Userspace::get().proc() as *mut Process;
+        switch_user_struct(child);
+        Userspace::get().mem.map_to_actual_pt(child);
+        let child_fork_ret_slot = unsafe { *((child_context.regs.sp + 0x28) as *const usize) };
+        switch_user_struct(unsafe { &*current });
+        Userspace::get().mem.map_to_actual_pt(unsafe { &*current });
+
+        crate::println_info!(
+            "fork ctx: child pid={} sepc={:#x} ra={:#x} sp={:#x} stack_ra={:#x}",
+            child.pid,
+            child_context.sepc,
+            child_context.regs.ra,
+            child_context.regs.sp,
+            child_fork_ret_slot
+        );
     }
 
     pub fn fork(&mut self) -> u32 {
@@ -841,6 +867,13 @@ extern "C" fn go_init() -> ! {
 extern "C" fn fork_ret() -> ! {
     let proc = Userspace::get().proc();
     let context = unsafe { &mut *proc.trap_context_ptr() };
+    crate::println_info!(
+        "fork_ret: pid={} sepc={:#x} ra={:#x} sp={:#x}",
+        proc.pid,
+        context.sepc,
+        context.regs.ra,
+        context.regs.sp
+    );
     context.set_return_value(0);
     go_userspace();
 }

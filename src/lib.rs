@@ -25,7 +25,17 @@ pub mod sync;
 use core::arch::naked_asm;
 use core::panic::PanicInfo;
 
-use crate::{dev::buffer_manager::buffer_manager_initialize, proc::ProcessManager};
+use crate::{
+    dev::{buffer::DevId, buffer_manager::buffer_manager_initialize, device_manager::ROOTDEV},
+    fs::{global_file_system, InodeFlag, GLOBAL_INODE_TABLE},
+    proc::ProcessManager,
+    sync::SpinExt,
+    user::Userspace,
+};
+
+const TTY_PATH: *const u8 = b"/dev/tty1\0".as_ptr();
+const FREAD: u32 = 0x1;
+const FWRITE: u32 = 0x2;
 
 pub trait Ext {
     fn as_buffer(&mut self) -> &mut [u8];
@@ -103,14 +113,81 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
         interrupt::time::INTERRUPTS_PER_SECOND
     );
 
+    load_file_system();
+    println_info!("Unix V6++ FileSystem Loaded......OK");
+
     #[cfg(feature = "rvdebug")]
     interrupt_test();
 
-    loop {
-        unsafe {
-            core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
-        }
+    init_root_directory();
+    open_console_tty();
+
+    let pid = ProcessManager::get().new_init_proc();
+    if pid == 0 {
+        panic!("Failed to create init proc");
     }
+
+    ProcessManager::schedule();
+}
+
+fn load_file_system() {
+    let ok = global_file_system().load_super_block().is_ok();
+    if !ok {
+        panic!("Load SuperBlock Error....!");
+    }
+}
+
+fn init_root_directory() {
+    let iref = GLOBAL_INODE_TABLE
+        .lock()
+        .i_get(DevId(ROOTDEV), 1)
+        .expect("failed to get root inode");
+    let mut inode = iref.lock();
+    inode.i_flag.remove(InodeFlag::ILOCK);
+    drop(inode);
+    Userspace::get().cwd = Some(iref.into_inner());
+}
+
+fn open_console_tty() {
+    let fd_tty = kernel_open(TTY_PATH, FREAD);
+    if fd_tty != 0 {
+        panic!("STDIN Error!");
+    }
+
+    let fd_tty = kernel_open(TTY_PATH, FWRITE);
+    if fd_tty != 1 {
+        panic!("STDOUT Error!");
+    }
+}
+
+fn kernel_open(pathname: *const u8, mode: u32) -> i32 {
+    let user = Userspace::get();
+    let saved_args = user.args;
+    let saved_dirp = user.dirp;
+    let saved_ar0 = user.ar0;
+    let saved_error = user.error;
+    let mut retval = usize::MAX;
+
+    user.args[0] = pathname as usize;
+    user.args[1] = mode as usize;
+    user.dirp = pathname.cast_mut();
+    user.ar0 = &raw mut retval;
+    user.error = None;
+
+    fs::syscall_open();
+
+    let result = if user.error.is_some() {
+        -1
+    } else {
+        retval as i32
+    };
+
+    user.args = saved_args;
+    user.dirp = saved_dirp;
+    user.ar0 = saved_ar0;
+    user.error = saved_error;
+
+    result
 }
 
 #[cfg(feature = "rvdebug")]

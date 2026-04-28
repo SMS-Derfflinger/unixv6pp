@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "stdio.h"
 #include "file.h"
 #include "valist.h"
 
@@ -8,17 +8,19 @@ char g_STDIO_bss[10] = {0};
 
 extern int _sprintf(char* buffer, char* fmt, va pva);
 
-void printf(char* fmt, ... )
+void printf(char* fmt, ...)
 {
 	char buffer[1024];
-	va pva = (va) getvahead(fmt);
-	int count = _sprintf(buffer, fmt, pva);	
+	va pva;
+	va_start(pva, fmt);
+	int count = _sprintf(buffer, fmt, pva);
+	va_end(pva);
 	write(STDOUT, buffer, count);
 }
 
-void gets(char * s)
+void gets(char *s)
 {
 	int n = read(STDIN, s, 1024);
-	/* 以/n定界，因此最后要删去/n */
-	if ( s[n - 1] == '\n' ) s[n - 1] = 0;
+	if (n > 0 && s[n - 1] == '\n')
+		s[n - 1] = 0;
 }

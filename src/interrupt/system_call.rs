@@ -2,19 +2,11 @@ use core::ptr::NonNull;
 
 use crate::{
     constants::{PosixError, Signal, PSLEP},
-    interrupt::{
-        time::{get_time, time_set_tout, time_tout, time_tout_address},
-        Registers,
-    },
-    interrupt_entry,
-    kernel::diagnose::{diagnose_disable_rows, diagnose_enable_rows, diagnose_rows},
-    machine::{asm::disable_interrupts, TrapFrame},
-    proc::{ProcessManager, TaskContext},
+    interrupt::{context::TrapContext, time::get_time},
+    proc::ProcessManager,
     sync::IrqGuard,
-    user::{Pointer, Userspace},
+    user::Userspace,
 };
-
-const SYSTEM_CALL_NUM: usize = 64;
 
 mod syscall_number {
     pub const INDIRECT: usize = 0;
@@ -45,8 +37,8 @@ mod syscall_number {
     pub const STIME: usize = 25;
     pub const PTRACE: usize = 26;
     pub const FSTAT: usize = 28;
-    pub const SMDATE: usize = 30;
     pub const TRACE: usize = 29;
+    pub const SMDATE: usize = 30;
     pub const STTY: usize = 31;
     pub const GTTY: usize = 32;
     pub const NICE: usize = 34;
@@ -68,63 +60,42 @@ mod syscall_number {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn system_call_body(regs: *mut Registers, context: &mut TrapFrame) {
-    trap(regs, context);
-    crate::interrupt::interrupt::schedule_on_user_return(context);
-}
-
-fn trap(regs: *mut Registers, context: &mut TrapFrame) {
-    let Some(regs) = (unsafe { regs.as_mut() }) else {
-        return;
-    };
-
+pub fn handle_user_ecall(context: &mut TrapContext) {
     if Userspace::get().proc().should_process() {
-        Userspace::get()
-            .proc()
-            .process_signal(unsafe { &mut *(context as *mut _) });
-        Userspace::get().error = Some(PosixError::EINTR);
-        regs.eax = -(PosixError::EINTR as i32) as usize;
+        Userspace::get().proc().process_signal(context);
+        Userspace::get().set_error(PosixError::EINTR);
+        context.set_return_value((-(PosixError::EINTR as isize)) as usize);
         return;
     }
 
-    Userspace::get().ssav[0] = Pointer((&raw mut *regs) as usize);
-    Userspace::get().ssav[1] = Pointer(context as *mut _ as usize);
-    Userspace::get().ar0 = &raw mut regs.eax as *mut _;
+    context.advance_sepc(4);
+    Userspace::get().ssav[1] = crate::user::Pointer(context as *mut _ as usize);
+    Userspace::get().ar0 = &raw mut context.regs.a0;
     Userspace::get().error = None;
+    copy_args(context);
 
-    let syscall_no = regs.eax;
-    copy_args(regs);
-
+    let syscall_no = context.syscall_no();
     handle_in_rust(syscall_no);
 
     if Userspace::get().signal_pending {
-        Userspace::get().error = Some(PosixError::EINTR);
-        regs.eax = -(PosixError::EINTR as i32) as usize;
+        Userspace::get().set_error(PosixError::EINTR);
+        context.set_return_value((-(PosixError::EINTR as isize)) as usize);
     }
 
     if let Some(err) = Userspace::get().error {
-        regs.eax = -(err as i32) as usize;
-        crate::println_info!("regs->eax={:#x} error={err:?}", regs.eax);
+        context.set_return_value((-(err as isize)) as usize);
     }
 
     if Userspace::get().proc().should_process() {
-        Userspace::get()
-            .proc()
-            .process_signal(unsafe { &mut *(context as *mut _) });
+        Userspace::get().proc().process_signal(context);
     }
 
     Userspace::get().proc().set_pri();
 }
 
-fn copy_args(regs: &Registers) {
-    let args = &mut Userspace::get().args;
-    let syscall_args = [regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi];
-
-    for (argref, arg) in args.iter_mut().zip(syscall_args) {
-        *argref = arg as usize;
-    }
-
+fn copy_args(context: &TrapContext) {
+    let args = context.syscall_args();
+    Userspace::get().args = args;
     Userspace::get().dirp = args[0] as *mut u8;
 }
 
@@ -141,7 +112,7 @@ fn handle_in_rust(number: usize) -> bool {
         sys::INDIRECT | sys::MOUNT | sys::UMOUNT | sys::PTRACE | sys::SMDATE | sys::PROFIL => true,
         sys::EXIT => Userspace::get().proc().exit(),
         sys::FORK => {
-            set_eax(ProcessManager::get().fork());
+            Userspace::get().set_user_retval(ProcessManager::get().fork() as usize);
             true
         }
         sys::READ => {
@@ -182,27 +153,12 @@ fn handle_in_rust(number: usize) -> bool {
             let path_ptr = Userspace::get().args[0] as *const u8;
             let argc = Userspace::get().args[1];
             let argv_ptr = Userspace::get().args[2] as *const NonNull<i8>;
-
-            // 从用户空间读取路径
-            let path = unsafe {
-                let cstr = core::ffi::CStr::from_ptr(path_ptr as *const i8);
-                cstr.to_bytes()
-            };
-
+            let path = unsafe { core::ffi::CStr::from_ptr(path_ptr).to_bytes() };
             let argv = unsafe { core::slice::from_raw_parts(argv_ptr, argc) };
 
-            crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
             if let Err(err) = pm.exec(proc, path, argv) {
                 Userspace::get().set_error(err);
-                return true;
             }
-
-            let mut ctx = TaskContext::new();
-            unsafe {
-                disable_interrupts();
-                TaskContext::switch(&mut ctx, &mut proc.ctx);
-            }
-
             true
         }
         sys::CHDIR => {
@@ -210,7 +166,7 @@ fn handle_in_rust(number: usize) -> bool {
             true
         }
         sys::TIME => {
-            set_eax(super::time::get_time());
+            Userspace::get().set_user_retval(get_time() as usize);
             true
         }
         sys::MKNOD => {
@@ -228,7 +184,7 @@ fn handle_in_rust(number: usize) -> bool {
         sys::SBREAK => {
             let brk = Userspace::get().args[0];
             match Userspace::get().proc().sbrk(brk) {
-                Ok(retval) => Userspace::get().set_user_retval(retval as u32),
+                Ok(retval) => Userspace::get().set_user_retval(retval),
                 Err(err) => Userspace::get().set_error(err),
             }
             true
@@ -242,7 +198,7 @@ fn handle_in_rust(number: usize) -> bool {
             true
         }
         sys::GETPID => {
-            set_eax(Userspace::get().proc().pid);
+            Userspace::get().set_user_retval(Userspace::get().proc().pid as usize);
             true
         }
         sys::SETUID => {
@@ -251,17 +207,17 @@ fn handle_in_rust(number: usize) -> bool {
             true
         }
         sys::GETUID => {
-            Userspace::get().set_user_retval(Userspace::get().getuid());
+            Userspace::get().set_user_retval(Userspace::get().getuid() as usize);
             true
         }
         sys::STIME => {
             if Userspace::get().is_root() {
-                super::time::time_set(args()[0] as u32);
+                crate::println_warn!("stime is not implemented on riscv64");
             }
             true
         }
         number if sys::is_unimplemented(number) => {
-            Userspace::get().error = Some(PosixError::ENOSYS);
+            Userspace::get().set_error(PosixError::ENOSYS);
             true
         }
         sys::FSTAT => {
@@ -269,12 +225,7 @@ fn handle_in_rust(number: usize) -> bool {
             true
         }
         sys::TRACE => {
-            if diagnose_rows() == 0 {
-                diagnose_enable_rows(args()[0] as u32);
-            } else {
-                diagnose_disable_rows();
-            }
-            set_eax(diagnose_rows());
+            Userspace::get().set_error(PosixError::ENOSYS);
             true
         }
         sys::KILL => {
@@ -285,18 +236,16 @@ fn handle_in_rust(number: usize) -> bool {
                 Ok(()) => Userspace::get().set_user_retval(0),
                 Err(err) => Userspace::get().set_error(err),
             }
-
             true
         }
         sys::GETSWITCH => {
-            set_eax(ProcessManager::get().switch_cnt);
+            Userspace::get().set_user_retval(ProcessManager::get().switch_cnt as usize);
             true
         }
         sys::PWD => {
             copy_pwd();
             true
         }
-        // TODO: stty and gtty are blank implementations for now.
         sys::STTY | sys::GTTY => true,
         sys::NICE => {
             let nice = Userspace::get().args[0] as i32;
@@ -307,21 +256,8 @@ fn handle_in_rust(number: usize) -> bool {
             let _ctx = IrqGuard::disable_save();
             let wake_time = get_time() + Userspace::get().args[0] as u32;
 
-            loop {
-                let now = get_time();
-                let tout = time_tout();
-
-                if wake_time <= now {
-                    break;
-                }
-
-                if tout <= now || tout > wake_time {
-                    time_set_tout(wake_time);
-                }
-
-                Userspace::get()
-                    .proc()
-                    .sleep_user(time_tout_address(), PSLEP);
+            while get_time() < wake_time {
+                core::hint::spin_loop();
             }
 
             true
@@ -348,14 +284,14 @@ fn handle_in_rust(number: usize) -> bool {
             true
         }
         sys::GETGID => {
-            Userspace::get().set_user_retval(Userspace::get().getgid());
+            Userspace::get().set_user_retval(Userspace::get().getgid() as usize);
             true
         }
         sys::SSIG => {
             let signal = Userspace::get().args[0] as u32;
             let func = Userspace::get().args[1];
             match Userspace::get().proc().send_signal(signal, func) {
-                Ok(retval) => Userspace::get().set_user_retval(retval as u32),
+                Ok(retval) => Userspace::get().set_user_retval(retval),
                 Err(err) => Userspace::get().set_error(err),
             }
             true
@@ -399,12 +335,6 @@ fn write_times() {
     times.cstime = Userspace::get().children_utime;
 }
 
-fn args() -> &'static mut [usize; 5] {
+fn args() -> &'static mut [usize; 6] {
     &mut Userspace::get().args
 }
-
-fn set_eax(val: u32) {
-    unsafe { Userspace::get().ar0.write(val) }
-}
-
-interrupt_entry!(SystemCallEntrance, system_call_body);
