@@ -12,7 +12,7 @@ use crate::{
         context::{Registers, TrapContext},
         plic, time,
     },
-    println_fatal, println_info, serial,
+    println_fatal, println_info, serial, tty,
 };
 
 #[unsafe(naked)]
@@ -187,18 +187,10 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
             }
             Interrupt::SupervisorExternal => match plic::claim_interrupt() {
                 Some(UART0_IRQ) => {
-                    let mut count = 0usize;
-                    let mut last = None;
                     while let Some(byte) = serial::serial_try_read_byte() {
-                        count += 1;
-                        last = Some(byte);
+                        tty::tty_input_byte(byte);
                     }
                     plic::complete_interrupt(UART0_IRQ);
-                    println_info!(
-                        "trap: external interrupt=UART0 count={} last={:#x}",
-                        count,
-                        last.unwrap_or_default()
-                    );
                 }
                 Some(irq) => {
                     plic::complete_interrupt(irq);

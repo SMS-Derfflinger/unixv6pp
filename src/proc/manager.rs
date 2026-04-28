@@ -441,7 +441,7 @@ impl ProcessManager {
 
                 if p.stat == ProcessState::SZOMB {
                     // wait() 系统调用返回子进程的 pid
-                    Userspace::get().set_user_retval(p.pid);
+                    Userspace::get().set_user_retval(p.pid as usize);
 
                     // 清理僵尸进程
                     p.stat = ProcessState::SNULL;

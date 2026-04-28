@@ -1,7 +1,7 @@
 use core::{cmp::min, ffi::CStr, ptr};
 
 use crate::{
-    compat::compat_get_time,
+    interrupt::time::get_time,
     constants::{PosixError, Signal},
     dev::{
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
@@ -58,7 +58,7 @@ impl DirectoryEntry {
     }
 }
 
-fn args() -> &'static mut [usize; 5] {
+fn args() -> &'static mut [usize; 6] {
     &mut Userspace::get().args
 }
 
@@ -480,7 +480,7 @@ impl FileManager {
                     return;
                 }
             };
-        Userspace::get().set_user_retval(fd as u32);
+        Userspace::get().set_user_retval(fd);
 
         {
             let mut file = fileref.lock();
@@ -508,7 +508,7 @@ impl FileManager {
         let inode = pinode.lock();
         let ino = inode.i_number;
         let dev = inode.i_dev;
-        inode.i_update(compat_get_time() as i32);
+        inode.i_update(get_time() as i32);
         drop(inode);
 
         let sector = FileSystem::INODE_ZONE_START_SECTOR as u32
@@ -811,7 +811,7 @@ impl FileManager {
         }
 
         Userspace::get()
-            .set_user_retval((count.saturating_sub(Userspace::get().ioparam.m_count)) as u32);
+            .set_user_retval(count.saturating_sub(Userspace::get().ioparam.m_count));
     }
 
     pub fn pipe() {
@@ -874,7 +874,7 @@ impl FileManager {
     }
 
     pub fn setcurdir(pathname: usize) {
-        let path = unsafe { CStr::from_ptr(pathname as *const i8) }.to_bytes();
+        let path = unsafe { CStr::from_ptr(pathname as *const u8) }.to_bytes();
         let curdir = &mut Userspace::get().cwd_full;
 
         if path.first().copied() != Some(b'/') {

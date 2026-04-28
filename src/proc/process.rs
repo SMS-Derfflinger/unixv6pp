@@ -204,7 +204,7 @@ impl NativeWord for () {
 impl<T: NativeWord> KResultExt for KResult<T> {
     fn pass_to_user(self) {
         match self {
-            Ok(retval) => Userspace::get().set_user_retval(retval.into_word() as u32),
+            Ok(retval) => Userspace::get().set_user_retval(retval.into_word() as usize),
             Err(err) => Userspace::get().set_error(err),
         }
     }

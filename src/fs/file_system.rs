@@ -3,7 +3,7 @@ use core::{array, ptr};
 use eonix_spin::Spin;
 
 use crate::{
-    compat::compat_get_time,
+    interrupt::time::get_time,
     constants::PosixError,
     dev::{
         buffer::{Buf, Buffer, DevId, PhysicalBlock},
@@ -314,7 +314,7 @@ impl FileSystem {
     }
 
     pub fn load_super_block(&mut self) -> Result<(), FileSystemError> {
-        let time = compat_get_time() as i32;
+        let time = get_time() as i32;
         self.install_loaded_super_block(Self::read_super_block()?, time);
 
         Ok(())
@@ -348,7 +348,7 @@ impl FileSystem {
         }
 
         self.updlock = true;
-        let time = compat_get_time() as i32;
+        let time = get_time() as i32;
 
         for mount in &self.m_mount {
             let Some(spb) = mount.m_spb.as_ref() else {

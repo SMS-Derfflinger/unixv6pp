@@ -1,5 +1,3 @@
-use core::num::NonZero;
-
 #[cfg(target_arch = "x86")]
 use crate::{dev::buffer::PhysicalBlock, mm::SWAPPER_AREAS, sync::SpinExt};
 
@@ -22,14 +20,6 @@ pub fn compat_user_pt() -> &'static mut [usize; 2048] {
     }
 
     unsafe { &mut *_user_page_table_array().cast::<[usize; 2048]>() }
-}
-
-pub fn compat_get_time() -> u32 {
-    extern "C" {
-        fn get_time() -> u32;
-    }
-
-    unsafe { get_time() }
 }
 
 const SECTOR_SIZE: usize = 512;

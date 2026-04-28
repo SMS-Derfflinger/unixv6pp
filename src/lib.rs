@@ -4,7 +4,6 @@ extern crate alloc;
 
 pub mod compat;
 mod dev;
-#[cfg(target_arch = "x86")]
 mod fs;
 mod interrupt;
 #[cfg(target_arch = "x86")]
@@ -14,7 +13,6 @@ mod loader;
 pub mod machine;
 pub mod mm;
 pub mod proc;
-#[cfg(target_arch = "x86")]
 pub mod tty;
 mod user;
 #[cfg(target_arch = "x86")]

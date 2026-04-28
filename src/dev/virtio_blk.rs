@@ -12,8 +12,7 @@ use crate::{
     },
     dev::buffer::{BufFlag, BufRef},
     mm::{phys_to_virt, KernelPages},
-    println_info,
-    println_warn,
+    println_info, println_warn,
 };
 
 const VIRTIO_MAGIC: u32 = 0x7472_6976;
@@ -155,10 +154,7 @@ impl VirtIOBlockDriver {
 
         self.write_reg(REG_STATUS, 0);
         self.write_reg(REG_STATUS, VIRTIO_STATUS_ACKNOWLEDGE);
-        self.write_reg(
-            REG_STATUS,
-            VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER,
-        );
+        self.write_reg(REG_STATUS, VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER);
 
         self.write_reg(REG_DEVICE_FEATURES_SEL, 0);
         let _device_features_lo = self.read_reg(REG_DEVICE_FEATURES);
@@ -176,9 +172,7 @@ impl VirtIOBlockDriver {
 
         self.write_reg(
             REG_STATUS,
-            VIRTIO_STATUS_ACKNOWLEDGE
-                | VIRTIO_STATUS_DRIVER
-                | VIRTIO_STATUS_FEATURES_OK,
+            VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER | VIRTIO_STATUS_FEATURES_OK,
         );
 
         if (self.read_reg(REG_STATUS) & VIRTIO_STATUS_FEATURES_OK) == 0 {
@@ -226,13 +220,11 @@ impl VirtIOBlockDriver {
         };
         *status = 0xff;
 
-        let header_paddr = pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(
-            self.request_header.cast(),
-        ));
+        let header_paddr =
+            pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(self.request_header.cast()));
         let data_paddr = pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(data_ptr));
-        let status_paddr = pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(
-            self.request_status.cast(),
-        ));
+        let status_paddr =
+            pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(self.request_status.cast()));
 
         unsafe {
             self.desc.add(0).write(VirtqDesc {
@@ -304,8 +296,10 @@ impl VirtIOBlockDriver {
         let avail_offset = size_of::<VirtqDesc>() * VIRTQ_QUEUE_SIZE as usize;
         let avail = unsafe { queue_base.add(avail_offset) }
             .cast::<VirtqAvail<{ VIRTQ_QUEUE_SIZE as usize }>>();
-        let used_offset =
-            align_up(avail_offset + size_of::<VirtqAvail<{ VIRTQ_QUEUE_SIZE as usize }>>(), align_of::<VirtqUsed<{ VIRTQ_QUEUE_SIZE as usize }>>());
+        let used_offset = align_up(
+            avail_offset + size_of::<VirtqAvail<{ VIRTQ_QUEUE_SIZE as usize }>>(),
+            align_of::<VirtqUsed<{ VIRTQ_QUEUE_SIZE as usize }>>(),
+        );
         let used = unsafe { queue_base.add(used_offset) }
             .cast::<VirtqUsed<{ VIRTQ_QUEUE_SIZE as usize }>>();
 
@@ -315,8 +309,7 @@ impl VirtIOBlockDriver {
         );
         let status_offset = request_offset + size_of::<VirtIOBlkReqHeader>();
 
-        let request_header =
-            unsafe { queue_base.add(request_offset) }.cast::<VirtIOBlkReqHeader>();
+        let request_header = unsafe { queue_base.add(request_offset) }.cast::<VirtIOBlkReqHeader>();
         let request_status = unsafe { queue_base.add(status_offset) };
 
         let desc_paddr = pseudo_phys_to_bus(pages.phys().addr()) as usize;
@@ -349,10 +342,7 @@ impl VirtIOBlockDriver {
     }
 
     fn fail(&self) {
-        self.write_reg(
-            REG_STATUS,
-            self.read_reg(REG_STATUS) | VIRTIO_STATUS_FAILED,
-        );
+        self.write_reg(REG_STATUS, self.read_reg(REG_STATUS) | VIRTIO_STATUS_FAILED);
     }
 
     fn find_block_device(&self) -> Option<(usize, u32)> {

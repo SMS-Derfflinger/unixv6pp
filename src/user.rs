@@ -3,11 +3,10 @@ use core::ffi::CStr;
 use alloc::boxed::Box;
 use eonix_mm::paging::PFN;
 
-//use crate::fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles};
-
 use crate::{
     compat::compat_flush_page_directory,
     constants::{PosixError, Signal, SIGMAX},
+    fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
     machine::{
         global_user_page_table, EntryFlags, PageTable, PageTableEntry, USER_PAGE_TABLE_COUNT,
         USER_SPACE_SIZE as MACHINE_USER_SPACE_SIZE,
@@ -45,10 +44,10 @@ pub struct Userspace {
     pub proc: *mut Process,
     pub mem: MemoryDescriptor,
 
-    pub ar0: *mut u32,
+    pub ar0: *mut usize,
 
     /// Used by syscall handlers
-    pub args: [usize; 5],
+    pub args: [usize; 6],
 
     pub dirp: *mut u8,
 
@@ -72,11 +71,11 @@ pub struct Userspace {
     pub signal_pending: bool,
 
     /// Inode of our working directory
-    //pub cwd: Option<InodeRef>,
+    pub cwd: Option<InodeRef>,
     /// Inode of our pwd's parent
-    //pub cwd_parent: Option<InodeRef>,
+    pub cwd_parent: Option<InodeRef>,
     /// Dentry of our pwd
-    //pub dentry: DirectoryEntry,
+    pub dentry: DirectoryEntry,
 
     /// Last component of pwd
     cwd_name: [u8; 28],
@@ -90,8 +89,8 @@ pub struct Userspace {
     pub gid: u16,
     pub euid: u16,
     pub egid: u16,
-    //pub open_files: OpenFiles,
-    //pub ioparam: IOParameter,
+    pub open_files: OpenFiles,
+    pub ioparam: IOParameter,
 }
 
 impl Userspace {
@@ -116,7 +115,7 @@ impl Userspace {
             euid: 0,
             gid: 0,
             egid: 0,
-            args: [0; 5],
+            args: [0; 6],
             dirp: core::ptr::null_mut(),
             cwd_full: {
                 let mut arr = [0; 128];
@@ -131,11 +130,11 @@ impl Userspace {
             rsav: [Pointer(0); 2],
             ssav: [Pointer(0); 2],
             qsav: [Pointer(0); 2],
-            //open_files: OpenFiles::new(),
-            //ioparam: IOParameter::new(),
-            //cwd: None,
-            //cwd_parent: None,
-            //dentry: DirectoryEntry::new(),
+            open_files: OpenFiles::new(),
+            ioparam: IOParameter::new(),
+            cwd: None,
+            cwd_parent: None,
+            dentry: DirectoryEntry::new(),
         }
     }
 
@@ -147,7 +146,7 @@ impl Userspace {
         self.error = Some(errno);
     }
 
-    pub fn set_user_retval(&mut self, retval: u32) {
+    pub fn set_user_retval(&mut self, retval: usize) {
         unsafe {
             self.ar0.write(retval);
         }
@@ -157,9 +156,9 @@ impl Userspace {
         self.error = None;
     }
 
-    /*pub fn io_param_mut(&mut self) -> &mut IOParameter {
+    pub fn io_param_mut(&mut self) -> &mut IOParameter {
         &mut self.ioparam
-    }*/
+    }
 
     pub fn is_root(&mut self) -> bool {
         if self.uid == 0 {
@@ -201,23 +200,23 @@ impl Userspace {
         self.cwd_full.clone()
     }
 
-    /*pub fn argdir(&self) -> &[u8] {
-        unsafe { CStr::from_ptr(self.dirp as *const i8).to_bytes() }
-    }*/
+    pub fn argdir(&self) -> &[u8] {
+        unsafe { CStr::from_ptr(self.dirp as *const u8).to_bytes() }
+    }
 
     pub fn argdir_mut(&mut self) -> &mut [u8; 28] {
         &mut self.cwd_name
     }
 
-    /*pub fn getcwd(&self) -> InodeRef {
+    pub fn getcwd(&self) -> InodeRef {
         self.cwd
             .clone()
             .expect("current working directory is not set")
-    }*/
+    }
 
-    /*pub fn set_cwd_parent(&mut self, parent: InodeRef) {
+    pub fn set_cwd_parent(&mut self, parent: InodeRef) {
         self.cwd_parent = Some(parent);
-    }*/
+    }
 
     pub fn proc(&self) -> &'static mut Process {
         unsafe { &mut *self.proc }

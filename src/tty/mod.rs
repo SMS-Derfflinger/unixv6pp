@@ -1,10 +1,6 @@
 use eonix_sync_base::LazyLock;
 
-use core::{arch::asm, ptr::write_volatile};
-
-use crate::{proc::ProcessManager, sync::SuperCell, vesa};
-
-pub mod keyboard;
+use crate::{proc::ProcessManager, serial, sync::SuperCell};
 
 const TTY_BUF_SIZE: usize = 512;
 const CANBSIZ: usize = 256;
@@ -65,159 +61,6 @@ impl TtyQueue {
     }
 }
 
-const VIDEO_MEMORY: usize = 0xc00b_8000;
-const VIDEO_ADDR_PORT: u16 = 0x3d4;
-const VIDEO_DATA_PORT: u16 = 0x3d5;
-const CRT_COLUMNS: usize = 80;
-const CRT_ROWS: usize = 15;
-const CRT_COLOR: u16 = 0x0f00;
-
-struct TextModeConsole {
-    cursor_x: usize,
-    cursor_y: usize,
-    input_begin: usize,
-}
-
-impl TextModeConsole {
-    const fn new() -> Self {
-        Self {
-            cursor_x: 0,
-            cursor_y: 0,
-            input_begin: 0,
-        }
-    }
-
-    fn put_char(&mut self, ch: u8) {
-        match ch {
-            b'\n' => self.next_line(),
-            CKILL => {}
-            CERASE => self.backspace(),
-            b'\t' => self.tab(),
-            _ => self.write_visible(ch),
-        }
-    }
-
-    fn mark_input_begin(&mut self) {
-        self.input_begin = self.cursor_pos();
-    }
-
-    fn next_line(&mut self) {
-        self.cursor_x = 0;
-        self.cursor_y += 1;
-
-        if self.cursor_y >= CRT_ROWS {
-            self.cursor_y = 0;
-            self.clear_screen();
-        }
-
-        self.move_cursor();
-        self.mark_input_begin();
-    }
-
-    fn backspace(&mut self) {
-        if self.cursor_pos() == self.input_begin {
-            return;
-        }
-
-        if self.cursor_x == 0 {
-            if self.cursor_y == 0 {
-                return;
-            }
-
-            self.cursor_y -= 1;
-            self.cursor_x = CRT_COLUMNS - 1;
-        } else {
-            self.cursor_x -= 1;
-        }
-
-        self.write_at(self.cursor_x, self.cursor_y, b' ');
-        self.move_cursor();
-    }
-
-    fn tab(&mut self) {
-        let next_tab = (self.cursor_x & !0x7) + 8;
-        if next_tab >= CRT_COLUMNS {
-            self.next_line();
-        } else {
-            while self.cursor_x < next_tab {
-                self.write_visible(b' ');
-            }
-        }
-    }
-
-    fn write_visible(&mut self, ch: u8) {
-        self.write_at(self.cursor_x, self.cursor_y, ch);
-        self.cursor_x += 1;
-
-        if self.cursor_x >= CRT_COLUMNS {
-            self.next_line();
-        } else {
-            self.move_cursor();
-        }
-    }
-
-    fn clear_screen(&mut self) {
-        for row in 0..CRT_ROWS {
-            for col in 0..CRT_COLUMNS {
-                self.write_at(col, row, b' ');
-            }
-        }
-    }
-
-    fn write_at(&self, col: usize, row: usize, ch: u8) {
-        let cell = (VIDEO_MEMORY as *mut u16).wrapping_add(row * CRT_COLUMNS + col);
-        unsafe {
-            write_volatile(cell, CRT_COLOR | ch as u16);
-        }
-    }
-
-    fn move_cursor(&self) {
-        let pos = self.cursor_pos() as u16;
-        unsafe {
-            out_byte(VIDEO_ADDR_PORT, 14);
-            out_byte(VIDEO_DATA_PORT, (pos >> 8) as u8);
-            out_byte(VIDEO_ADDR_PORT, 15);
-            out_byte(VIDEO_DATA_PORT, (pos & 0xff) as u8);
-        }
-    }
-
-    fn cursor_pos(&self) -> usize {
-        self.cursor_y * CRT_COLUMNS + self.cursor_x
-    }
-}
-
-struct TextModeOutput;
-
-impl TextModeOutput {
-    fn put_char(ch: u8) {
-        if vesa::write_output_byte(ch) {
-            return;
-        }
-
-        TEXT_CONSOLE.with_mut(|console| console.put_char(ch));
-    }
-
-    fn mark_input_begin() {
-        if vesa::mark_input_begin() {
-            return;
-        }
-
-        TEXT_CONSOLE.with_mut(TextModeConsole::mark_input_begin);
-    }
-}
-
-unsafe fn out_byte(port: u16, data: u8) {
-    asm!(
-        "outb %al, %dx",
-        in("dx") port,
-        in("al") data,
-        options(nomem, nostack, att_syntax)
-    );
-}
-
-static TEXT_CONSOLE: LazyLock<SuperCell<TextModeConsole>> =
-    LazyLock::new(|| SuperCell::new(TextModeConsole::new()));
-
 pub struct Tty {
     rawq: TtyQueue,
     canq: TtyQueue,
@@ -248,7 +91,7 @@ impl Tty {
     pub fn open(&mut self) {
         if self.state & ISOPEN == 0 {
             self.state = ISOPEN | CARR_ON;
-            self.flags = ECHO;
+            self.flags = ECHO | CRMOD;
             self.erase = CERASE;
             self.kill = CKILL;
         }
@@ -296,7 +139,6 @@ impl Tty {
         }
 
         self.start();
-        TextModeOutput::mark_input_begin();
         nwritten
     }
 
@@ -346,7 +188,7 @@ impl Tty {
 
     fn start(&mut self) {
         while let Some(ch) = self.outq.get_char() {
-            TextModeOutput::put_char(ch);
+            serial::serial_write_bytes(core::iter::once(ch));
         }
     }
 

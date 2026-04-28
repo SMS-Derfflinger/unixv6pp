@@ -9,6 +9,10 @@ const TICKS_PER_INTERRUPT: u64 = (CPU_FREQ_HZ / INTERRUPTS_PER_SECOND) as u64;
 
 static TICKS: AtomicU64 = AtomicU64::new(0);
 
+pub fn get_time() -> u32 {
+    (ticks() / INTERRUPTS_PER_SECOND as u64) as u32
+}
+
 fn read_time() -> u64 {
     time::read64()
 }
