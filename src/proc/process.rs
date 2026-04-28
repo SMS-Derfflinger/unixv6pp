@@ -167,7 +167,6 @@ pub struct Process {
     pub sigmap: usize,
     pub pages: Option<&'static mut PhysPage>,
     pub ctx: TaskContext,
-    pub trap_context: TrapContext,
 
     /// 每个进程独立的内核栈
     pub kstack: KernelStack,
@@ -217,14 +216,21 @@ impl Process {
     }
 
     pub fn init_kernel_context(&mut self, entry: Option<usize>) {
-        self.ctx.set_stack_pointer(self.kstack.top().addr().get());
+        unsafe {
+            self.kstack
+                .trap_context()
+                .as_ptr()
+                .write(TrapContext::new());
+        }
+
+        self.ctx.set_stack_pointer(self.kstack.task_top().addr().get());
         if let Some(entry) = entry {
             self.ctx.set_program_counter(entry);
         }
     }
 
     pub fn trap_context_ptr(&mut self) -> *mut TrapContext {
-        &raw mut self.trap_context
+        self.kstack.trap_context().as_ptr()
     }
 
     pub fn task_context_ptr(&mut self) -> *mut TaskContext {

@@ -12,7 +12,6 @@ use eonix_sync_base::LazyLock;
 
 use crate::{
     constants::{PosixError, Signal},
-    interrupt::context::TrapContext,
     machine::{asm, switch_user_struct},
     mm::{phys_copy, KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
@@ -74,7 +73,6 @@ impl Process {
             pages: None,
             ctx: TaskContext::new(),
             kstack,
-            trap_context: TrapContext::new(),
         });
 
         child.init_kernel_context(None);
@@ -616,7 +614,6 @@ impl ProcessManager {
             pages: Some(pages),
             ctx: TaskContext::new(),
             kstack: KernelStack::new(),
-            trap_context: TrapContext::new(),
         });
         proc1.init_kernel_context(Some(kernel_switch_self_test_entry as *const () as usize));
         Self::init_kernel_userspace(&mut proc1);
@@ -738,7 +735,6 @@ impl ProcessManager {
             pages: None,
             ctx: TaskContext::new(),
             kstack: KernelStack::new(),
-            trap_context: TrapContext::new(),
         });
         proc.init_kernel_context(None);
 
