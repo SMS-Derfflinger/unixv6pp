@@ -31,8 +31,11 @@ riscv = { version = "0.13.0", features = ["s-mode"] }
 
 [features]
 default = []
+debug = [ "debug_irq", "debug_timer", "debug_scheduler", "debug_proc" ]
 debug_irq = []
 debug_timer = []
+debug_scheduler = []
+debug_proc = []
 splash = []
 rvdebug = []
 switchtest = []

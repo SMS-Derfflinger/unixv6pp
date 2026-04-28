@@ -267,6 +267,9 @@ impl ProcessManager {
             if !proc.is_sleeping_on(chan.channel_addr()) {
                 continue;
             }
+
+            #[cfg(feature = "debug_irq")]
+            crate::println_debug!("waking up chan={:#x} pid {:2}", chan.channel_addr(), proc.pid);
             proc.set_run();
         }
     }
@@ -440,7 +443,11 @@ impl ProcessManager {
     }
 
     pub fn wait(&mut self, proc: &mut Process) -> KResult<u32> {
-        crate::println_info!("Process {} finding dead son. They are:", proc.pid);
+        crate::println_info!(
+            "[{pid:2}] Process {pid} finding dead son. They are:",
+            pid = proc.pid
+        );
+
         loop {
             let mut has_child = false;
             for p in &mut self.procs {
@@ -448,7 +455,13 @@ impl ProcessManager {
                     continue;
                 }
 
-                crate::println_info!("Process {} (Status: {:?})", p.pid, p.stat);
+                crate::println_info!(
+                    "[{pid:2}] Process {} (Status: {:?})",
+                    p.pid,
+                    p.stat,
+                    pid = proc.pid,
+                );
+
                 has_child = true;
 
                 if p.stat == ProcessState::SZOMB {
@@ -465,18 +478,18 @@ impl ProcessManager {
                     // greatbridf: don't consider child time accounting for now.
                     // maybe add them back later...
 
-                    crate::println_info!("end wait");
+                    crate::println_info!("[{pid:2}] end wait", pid = proc.pid);
                     return Ok(pid);
                 }
             }
 
             if has_child {
                 // 睡眠等待直至子进程结束
-                crate::println_info!("wait until child process Exit!");
+                crate::println_info!("[{pid:2}] wait until child process Exit!", pid = proc.pid);
                 let chan = (proc as *const Process) as usize;
                 const PWAIT: u32 = 40;
                 proc.sleep_user(chan, PWAIT)?;
-                crate::println_info!("end sleep");
+                crate::println_info!("[{pid:2}] end sleep", pid = proc.pid);
                 continue;
             } else {
                 // 不存在需要等待结束的子进程
@@ -520,7 +533,11 @@ impl ProcessManager {
                 continue;
             }
 
-            crate::println_info!("My:{} 's child {} passed to 1#process", pid, proc.ppid);
+            crate::println_info!(
+                "[{pid:2}] exit: child {} passed to 1#process",
+                proc.pid,
+                pid = pid,
+            );
 
             proc.ppid = 1;
             if proc.stat == ProcessState::SSTOP {
@@ -583,6 +600,9 @@ impl ProcessManager {
             let pm = ProcessManager::get();
             let me = Userspace::get().proc();
             let selected = pm.select();
+
+            #[cfg(feature = "debug_scheduler")]
+            crate::println_debug!("[{pid:2}] selected", pid = selected.pid);
 
             if (selected.flag & SSWAP) != 0 {
                 todo!("swap");

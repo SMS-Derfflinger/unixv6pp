@@ -15,6 +15,7 @@ use crate::{
     },
     interrupt::time::get_time,
     proc::{Channel, ProcessManager},
+    serial::KResult,
     sync::{IrqGuard, SpinExt},
     user::Userspace,
 };
@@ -329,7 +330,7 @@ impl FileManager {
         Ok(Some(iref))
     }
 
-    fn readp_inner(&self, file_ref: &FileRef) {
+    fn readp_inner(&self, file_ref: &FileRef) -> KResult<()> {
         loop {
             let (inode_ref, foff) = {
                 let file = file_ref.lock();
@@ -359,7 +360,7 @@ impl FileManager {
                 drop(inode);
 
                 if inode_ref.lock().i_count < 2 {
-                    return;
+                    return Ok(());
                 }
 
                 let mut inode = inode_ref.lock();
@@ -369,7 +370,7 @@ impl FileManager {
                 drop(inode);
                 Userspace::get()
                     .proc()
-                    .sleep_user_with_irq_guard(chan, PPIPE, ctx);
+                    .sleep_user_with_irq_guard(chan, PPIPE, ctx)?;
                 continue;
             }
 
@@ -381,11 +382,11 @@ impl FileManager {
                 file.f_offset = new_off;
             }
             inode.prele();
-            return;
+            return Ok(());
         }
     }
 
-    fn writep_inner(&self, file_ref: &FileRef) {
+    fn writep_inner(&self, file_ref: &FileRef) -> KResult<()> {
         let mut count = Userspace::get().ioparam.m_count as i32;
 
         loop {
@@ -398,14 +399,13 @@ impl FileManager {
             if count == 0 {
                 inode.prele();
                 Userspace::get().ioparam.m_count = 0;
-                return;
+                return Ok(());
             }
 
             if inode.i_count < 2 {
                 inode.prele();
-                set_error(PosixError::EPIPE);
                 Userspace::get().proc().raise(Signal::SIGPIPE);
-                return;
+                return Err(PosixError::EPIPE);
             }
 
             if inode.i_size as usize == Inode::PIPSIZ {
@@ -415,7 +415,7 @@ impl FileManager {
                 inode.prele();
                 Userspace::get()
                     .proc()
-                    .sleep_user_with_irq_guard(chan, PPIPE, ctx);
+                    .sleep_user_with_irq_guard(chan, PPIPE, ctx)?;
                 continue;
             }
 
@@ -748,32 +748,25 @@ impl FileManager {
         i_put(inode);
     }
 
-    pub fn read() {
-        FileManager::rdwr(FileFlags::FREAD.bits());
+    pub fn read() -> KResult<usize> {
+        Self::rdwr(FileFlags::FREAD.bits())
     }
 
-    pub fn write() {
-        FileManager::rdwr(FileFlags::FWRITE.bits());
+    pub fn write() -> KResult<usize> {
+        Self::rdwr(FileFlags::FWRITE.bits())
     }
 
-    pub fn rdwr(mode: u32) {
+    fn rdwr(mode: u32) -> KResult<usize> {
         let fd = args()[0];
         let count = args()[2];
 
-        let file_ref = match Userspace::get().open_files.get_f(fd) {
-            Ok(file) => file,
-            Err(err) => {
-                set_error(err);
-                return;
-            }
-        };
+        let file_ref = Userspace::get().open_files.get_f(fd)?;
 
         {
             let file = file_ref.lock();
             let mode = FileFlags::from_bits_truncate(mode);
             if !file.f_flag.contains(mode) {
-                set_error(PosixError::EACCES);
-                return;
+                return Err(PosixError::EACCES);
             }
         }
 
@@ -783,9 +776,9 @@ impl FileManager {
         let is_pipe = file_ref.lock().f_flag.contains(FileFlags::FPIPE);
         if is_pipe {
             if mode == FileFlags::FREAD.bits() {
-                FileManager.readp_inner(&file_ref);
+                FileManager.readp_inner(&file_ref)?;
             } else {
-                FileManager.writep_inner(&file_ref);
+                FileManager.writep_inner(&file_ref)?;
             }
         } else {
             let (inode_ref, foff) = {
@@ -810,7 +803,7 @@ impl FileManager {
             file.f_offset += moved as i32;
         }
 
-        Userspace::get().set_user_retval(count.saturating_sub(Userspace::get().ioparam.m_count));
+        Ok(count.saturating_sub(Userspace::get().ioparam.m_count))
     }
 
     pub fn pipe() {
