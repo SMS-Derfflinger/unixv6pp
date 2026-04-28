@@ -2,6 +2,7 @@ use core::ptr::NonNull;
 
 use crate::{
     constants::{PosixError, Signal, PSLEP},
+    fs::FileManager,
     interrupt::{
         set_time,
         time::{get_time, sleep_user_until},
@@ -110,7 +111,11 @@ fn trap(regs: *mut Registers, context: &mut TrapFrame) {
 
     if let Some(err) = Userspace::get().error {
         regs.eax = -(err as i32) as usize;
-        crate::println_info!("regs->eax={:#x} error={err:?}", regs.eax);
+        crate::println_info!(
+            "[{pid:2}] regs->eax={:#x} error={err:?}",
+            regs.eax,
+            pid = Userspace::get().proc().pid
+        );
     }
 
     if Userspace::get().proc().should_process() {
@@ -156,8 +161,8 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
         sys::INDIRECT | sys::MOUNT | sys::UMOUNT | sys::PTRACE | sys::SMDATE | sys::PROFIL => Ok(0),
         sys::EXIT => Userspace::get().proc().exit(),
         sys::FORK => Ok(ProcessManager::get().fork() as usize),
-        sys::READ => trap_ret(crate::fs::syscall_read),
-        sys::WRITE => trap_ret(crate::fs::syscall_write),
+        sys::READ => FileManager::read(),
+        sys::WRITE => FileManager::write(),
         sys::OPEN => trap_ret(crate::fs::syscall_open),
         sys::CLOSE => trap_void(crate::fs::syscall_close),
         sys::WAIT => ProcessManager::get()
@@ -268,7 +273,7 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
             let func = Userspace::get().args[1];
             Userspace::get()
                 .proc()
-                .send_signal(signal, func)
+                .set_signal_handler(signal, func)
                 .map(|retval| retval as usize)
         }
         _ => Err(PosixError::ENOSYS),

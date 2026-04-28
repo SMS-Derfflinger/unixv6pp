@@ -187,7 +187,7 @@ impl Process {
         self.uid = uid;
     }
 
-    pub fn send_signal(&mut self, signal: u32, func: usize) -> KResult<usize> {
+    pub fn set_signal_handler(&mut self, signal: u32, func: usize) -> KResult<usize> {
         let signal = Signal::try_from(signal)?;
         let old_handler = Userspace::get().get_signal_handler(signal);
         Userspace::get().set_signal_handler(signal, func);
@@ -210,6 +210,7 @@ impl Process {
         let handler = Userspace::get().get_signal_handler(pending);
 
         if handler == 0 {
+            crate::println_warn!("[{:2}] Killed", self.pid);
             Userspace::get().proc().exit();
         }
 
@@ -270,7 +271,7 @@ impl Process {
     }
 
     pub fn raise(&mut self, signal: Signal) {
-        crate::println_info!("pid {}: {signal:?} triggered", self.pid);
+        crate::println_info!("[{:2}] {signal:?} raised", self.pid);
 
         // ???
         if signal == Signal::SIGKILL {
@@ -315,6 +316,19 @@ impl Process {
         self.wchan == chan
     }
 
+    pub fn set_kernel_sleep(&mut self, chan: impl Channel, pri: i32) {
+        let _irq = IrqGuard::disable_save();
+        self.wchan = chan.channel_addr();
+        self.stat = ProcessState::SSLEEP;
+        self.pri = pri;
+    }
+
+    pub fn finish_kernel_sleep(&mut self) {
+        let _irq = IrqGuard::disable_save();
+        self.wchan = 0;
+        self.stat = ProcessState::SRUN;
+    }
+
     pub fn sleep_kernel(&mut self, chan: impl Channel, pri: i32) {
         #[cfg(feature = "debug_irq")]
         crate::println_debug!(
@@ -323,12 +337,7 @@ impl Process {
             chan.channel_addr()
         );
 
-        {
-            let ctx = IrqGuard::disable_save();
-            self.wchan = chan.channel_addr();
-            self.stat = ProcessState::SSLEEP;
-            self.pri = pri;
-        }
+        self.set_kernel_sleep(chan, pri);
 
         ProcessManager::get().switch();
     }
@@ -346,13 +355,40 @@ impl Process {
         drop(ctx);
 
         ProcessManager::get().switch();
+
+        #[cfg(feature = "debug_irq")]
+        crate::println_debug!(
+            "pid{} DONE sleep kernel with guard chan={:#x}",
+            self.pid,
+            chan.channel_addr()
+        );
     }
 
     /// Interruptible sleep.
     ///
     /// # Returns
     /// Whether we have pending signals.
+    #[must_use]
     pub fn sleep_user(&mut self, chan: usize, pri: u32) -> KResult<()> {
+        self._sleep_user_with_guard(chan, pri, None)
+    }
+
+    #[must_use]
+    pub fn sleep_user_with_irq_guard(
+        &mut self,
+        chan: usize,
+        pri: u32,
+        irq: IrqGuard,
+    ) -> KResult<()> {
+        self._sleep_user_with_guard(chan, pri, Some(irq))
+    }
+
+    fn _sleep_user_with_guard(
+        &mut self,
+        chan: usize,
+        pri: u32,
+        irq: Option<IrqGuard>,
+    ) -> KResult<()> {
         #[cfg(feature = "debug_irq")]
         crate::println_debug!("pid{} sleep user chan={chan:#x}", self.pid);
 
@@ -372,6 +408,7 @@ impl Process {
             ProcessManager::get().wakeup_runin();
         }
 
+        drop(irq);
         ProcessManager::get().switch();
 
         if self.should_process() {
@@ -379,30 +416,6 @@ impl Process {
         }
 
         Ok(())
-    }
-
-    pub fn sleep_user_with_irq_guard(&mut self, chan: usize, pri: u32, ctx: IrqGuard) -> bool {
-        #[cfg(feature = "debug_irq")]
-        crate::println_debug!("pid{} sleep user with guard chan={chan:#x}", self.pid);
-
-        if self.should_process() {
-            drop(ctx);
-            return true;
-        }
-
-        self.wchan = chan;
-        self.stat = ProcessState::SWAIT;
-        self.pri = pri as i32;
-        drop(ctx);
-
-        if ProcessManager::get().run_in != 0 {
-            ProcessManager::get().run_in = 0;
-            ProcessManager::get().wakeup_runin();
-        }
-
-        ProcessManager::get().switch();
-
-        self.should_process()
     }
 
     pub fn expand(&mut self, newlen: usize) {
@@ -513,6 +526,7 @@ impl Process {
         // Ignore all signals
         Userspace::get().clear_signal_handlers();
         for fd in 0..OpenFiles::NOFILES {
+            crate::println_debug!("clear fd{fd}");
             Userspace::get().open_files.clear_f(fd);
         }
 
@@ -533,6 +547,9 @@ impl Process {
 
         ProcessManager::get().wake_ppid(self.ppid);
         ProcessManager::get().reparent(self.pid);
+
+        #[cfg(feature = "debug_proc")]
+        crate::println_info!("[{pid:2}] Process {pid} exited", pid = self.pid);
 
         ProcessManager::get().switch();
 

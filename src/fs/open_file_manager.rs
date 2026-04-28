@@ -16,13 +16,10 @@ use crate::{
     },
     interrupt::get_time,
     proc::{Channel, ProcessManager, PINOD},
-    sync::{IrqGuard, SpinExt},
+    sync::{IrqGuard, Mutex, SpinExt},
     user::Userspace,
     Ext,
 };
-
-pub static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
-    LazyLock::new(|| Spin::new(OpenFileTable::new()));
 
 pub(crate) struct OpenFileTable {
     m_file: [FileSlot; Self::NFILE],
@@ -252,5 +249,5 @@ impl InodeTable {
     }
 }
 
-pub static GLOBAL_INODE_TABLE: LazyLock<Spin<InodeTable>> =
-    LazyLock::new(|| Spin::new(InodeTable::new()));
+pub static GLOBAL_INODE_TABLE: LazyLock<Mutex<InodeTable>> =
+    LazyLock::new(|| Mutex::new(InodeTable::new(), PINOD as i16));

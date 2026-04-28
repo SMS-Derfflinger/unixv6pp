@@ -117,16 +117,19 @@ pub use file_system::SuperBlock;
 pub use inode::{Inode, InodeFlag, InodeMode};
 pub use open_file_manager::GLOBAL_INODE_TABLE;
 
-use crate::sync::{KernelSpinGuard, SpinExt};
+use crate::{
+    proc::PINOD,
+    sync::{Mutex, MutexGuard, SpinExt},
+};
 
-static GLOBAL_OPENFILE_TABLE: LazyLock<Spin<OpenFileTable>> =
-    LazyLock::new(|| Spin::new(OpenFileTable::new()));
+static GLOBAL_OPENFILE_TABLE: LazyLock<Mutex<OpenFileTable>> =
+    LazyLock::new(|| Mutex::new(OpenFileTable::new(), PINOD as i16));
 
-fn global_open_file_table() -> SpinGuard<'static, OpenFileTable, NoContext> {
-    GLOBAL_OPENFILE_TABLE.lock_ctx::<NoContext>()
+fn global_open_file_table() -> MutexGuard<'static, OpenFileTable> {
+    GLOBAL_OPENFILE_TABLE.lock()
 }
 
-fn global_inode_table() -> KernelSpinGuard<'static, InodeTable> {
+fn global_inode_table() -> MutexGuard<'static, InodeTable> {
     GLOBAL_INODE_TABLE.lock()
 }
 
@@ -135,14 +138,6 @@ static GLOBAL_FILE_SYSTEM: LazyLock<Spin<FileSystem>> =
 
 pub(crate) fn global_file_system() -> SpinGuard<'static, FileSystem, NoContext> {
     GLOBAL_FILE_SYSTEM.lock_ctx::<NoContext>()
-}
-
-pub(crate) fn syscall_read() {
-    file_manager::FileManager::read()
-}
-
-pub(crate) fn syscall_write() {
-    file_manager::FileManager::write()
 }
 
 pub(crate) fn syscall_open() {

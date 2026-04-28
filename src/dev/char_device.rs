@@ -79,7 +79,7 @@ impl CharDevice for ConsoleDevice {
             let chan = console_tty().with(|tty| tty.read_wait_channel());
             Userspace::get()
                 .proc()
-                .sleep_user_with_irq_guard(chan, TTIPRI, ctx);
+                .sleep_user_with_irq_guard(chan, TTIPRI, ctx)?;
         }
     }
 
