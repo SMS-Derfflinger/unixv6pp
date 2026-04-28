@@ -55,22 +55,39 @@ void* memset(void* dst, int c, unsigned int len)
 
 void memmove(unsigned int des, unsigned int src, unsigned int count)
 {
-	__asm__("cld\n\t"
-		"rep\n\t"
-		"movsb\n\t"
-		::"c" (count),
-		"D" (des),"S" (src)
-		);
+	unsigned char* dst_ptr = (unsigned char*)des;
+	unsigned char* src_ptr = (unsigned char*)src;
+
+	if (dst_ptr == src_ptr || count == 0)
+		return;
+
+	if (dst_ptr < src_ptr)
+	{
+		while (count-- != 0)
+		{
+			*dst_ptr++ = *src_ptr++;
+		}
+	}
+	else
+	{
+		dst_ptr += count;
+		src_ptr += count;
+		while (count-- != 0)
+		{
+			*--dst_ptr = *--src_ptr;
+		}
+	}
 }
 
 void memcpy(unsigned int des, unsigned int src, unsigned int count)
 {
-	__asm__("cld\n\t"
-		"rep\n\t"
-		"movsb\n\t"
-		::"c" (count),
-		"D" (des),"S" (src)
-		);
+	unsigned char* dst_ptr = (unsigned char*)des;
+	unsigned char* src_ptr = (unsigned char*)src;
+
+	while (count-- != 0)
+	{
+		*dst_ptr++ = *src_ptr++;
+	}
 }
 
 

@@ -6,13 +6,20 @@ out-bins := $(addsuffix .exe, $(names))
 
 $(foreach bin, $(out-bins), $(eval \
 	$(bin)-LDFLAGS += --whole-archive -Ttext-segment=0x400000 \
-	-e main1 -static -m i386pe))
+	-e main1 -static))
 
 $(foreach name, $(names), $(eval $(name).exe-objs := $(name).o))
 $(foreach name, $(names), $(eval $(name).exe-hdrs :=))
 $(foreach name, $(names), $(eval $(name).exe-libs := $(abs_srctree)/lib/libv6pptongji.a))
 
 include $(abs_srctree)/scripts/Makefile
+
+CROSS_COMPILE ?= riscv64-unknown-elf-
+CFLAGS := -Wall -g -march=rv64gc -mabi=lp64d -ffreestanding -fno-builtin \
+	  -fno-pic -fno-pie -nostdinc -nostdlib -fno-stack-protector \
+	  -fno-unwind-tables -fno-asynchronous-unwind-tables -O0 \
+	  -Wno-unused-variable $(CPPFLAGS)
+LDFLAGS := -m elf64lriscv
 
 cmd_install = cp $(2).exe $(INSTALL_PATH)/$(2)
 quiet_cmd_install = "INSTALL	$(2)"

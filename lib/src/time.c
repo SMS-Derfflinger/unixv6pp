@@ -1,23 +1,19 @@
 #include "time.h"
 #include "stdio.h"
 #include "string.h"
+#include "syscall.h"
 
 unsigned int gtime()
 {
-	int res;
-	__asm__ volatile ("int $0x80":"=a"(res):"a"(13) );
+	long res = __syscall0(13);
 	if ( res >= 0 )
-		return res;
+		return (unsigned int) res;
 	return -1;
 }
 
 int stime(unsigned int seconds)
 {
-	int res;
-	__asm__ volatile ("int $0x80":"=a"(res):"a"(25),"b"(seconds) );
-	if ( res >= 0 )
-		return res;
-	return -1;
+	return __syscall_ret(__syscall1(25, seconds));
 }
 
 unsigned int daysInYear( int year )
@@ -29,7 +25,7 @@ unsigned int mktime(struct tm* ptime)
 {
 	unsigned int timeInSeconds = 0;
 	unsigned int days;
-	int currentYear = 2000 + ptime->Year;	/* YearÖÐÖ»ÓÐÄê·Ýºó2Î» */
+	int currentYear = 2000 + ptime->Year;	/* Yearä¸­åªæœ‰å¹´ä»½åŽ2ä½ */
 	
 	/* compute hours, minutes, seconds */
 	timeInSeconds += ptime->Second;
@@ -63,7 +59,7 @@ struct tm* localtime(unsigned int timeInSeconds)
 	
 	/* compute days before today */
 	unsigned int days = timeInSeconds / SECONDS_IN_DAY;
-	ptime->DayOfWeek = weekdayNumber[(days % 7) + 1 /* ³ý·ÇtimeInSecondsÇ¡ºÃÕû³ýSECONDS_IN_DAYÃë */];
+	ptime->DayOfWeek = weekdayNumber[(days % 7) + 1 /* é™¤éžtimeInSecondsæ°å¥½æ•´é™¤SECONDS_IN_DAYç§’ */];
 	int year = 1970;
 	while(days >= 365)
 	{
