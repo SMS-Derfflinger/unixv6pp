@@ -3,7 +3,6 @@
 extern crate alloc;
 
 pub mod compat;
-#[cfg(target_arch = "x86")]
 mod dev;
 #[cfg(target_arch = "x86")]
 mod fs;
@@ -29,7 +28,7 @@ pub mod sync;
 use core::arch::naked_asm;
 use core::panic::PanicInfo;
 
-use crate::proc::ProcessManager;
+use crate::{dev::buffer_manager::buffer_manager_initialize, proc::ProcessManager};
 
 pub trait Ext {
     fn as_buffer(&mut self) -> &mut [u8];
@@ -99,7 +98,8 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
 
     #[cfg(feature = "switchtest")]
     ProcessManager::get().run_kernel_switch_self_test();
-    
+
+    buffer_manager_initialize();
     interrupt::init_interrupt_controller();
     println_info!(
         "timer armed at {} Hz",

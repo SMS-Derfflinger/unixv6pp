@@ -5,9 +5,9 @@ use crate::{
 use eonix_sync_base::LazyLock;
 
 use super::{
-    ata_driver::ATADriver,
-    buffer::{BufDeviceAdapter, BufDeviceList, BufFlag, BufIoAdapter, BufIoQueue, BufRef},
+    buffer::{Buf, BufDeviceAdapter, BufDeviceList, BufFlag, BufIoAdapter, BufIoQueue, BufRef},
     device_manager::major,
+    virtio_blk::VirtIOBlockDriver,
 };
 
 #[repr(C)]
@@ -34,13 +34,6 @@ impl Devtab {
         self.io_queue.pop_front().map(BufRef::from_unsafe_ref)
     }
 
-    pub fn peek_io_request(&self) -> Option<BufRef> {
-        self.io_queue
-            .front()
-            .clone_pointer()
-            .map(BufRef::from_unsafe_ref)
-    }
-
     pub fn push_io_request(&mut self, bp: BufRef) {
         if bp.as_ref().is_on_io_queue() {
             #[cfg(feature = "debug_irq")]
@@ -60,21 +53,24 @@ pub trait BlockDevice: Sync {
     fn devtab(&self) -> &SuperCell<Devtab>;
 }
 
-pub struct ATABlockDevice {
+pub struct VirtIOBlockDevice {
     tab: SuperCell<Devtab>,
+    inner: SuperCell<VirtIOBlockDriver>,
 }
 
-impl ATABlockDevice {
-    pub const NSECTOR: u32 = 0x7fff_ffff;
+unsafe impl Send for VirtIOBlockDevice {}
+unsafe impl Sync for VirtIOBlockDevice {}
 
+impl VirtIOBlockDevice {
     pub fn new() -> Self {
         Self {
             tab: SuperCell::new(Devtab::new()),
+            inner: SuperCell::new(VirtIOBlockDriver::new()),
         }
     }
 }
 
-impl BlockDevice for ATABlockDevice {
+impl BlockDevice for VirtIOBlockDevice {
     fn open(&self, _dev: i16, _mode: i32) -> i32 {
         0
     }
@@ -84,22 +80,26 @@ impl BlockDevice for ATABlockDevice {
     }
 
     fn strategy(&self, bp: BufRef) -> i32 {
-        if bp.as_ref().b_blkno.0 >= Self::NSECTOR {
+        let sectors = (bp.as_ref().b_wcount as usize).div_ceil(Buf::BLOCK_SIZE) as u64;
+        let blkno = bp.as_ref().b_blkno.0 as u64;
+        let out_of_range = self.inner.with_mut(|driver| {
+            driver.ensure_init().is_err() || blkno + sectors > driver.capacity()
+        });
+
+        if out_of_range {
             bp.as_mut().b_flags.insert(BufFlag::B_ERROR);
             global_buffer_manager().io_done(bp);
             return 0;
         }
 
         let should_start = {
-            let ctx = IrqGuard::disable_save();
-            let should_start = self.tab.with_mut(|tab| {
+            let _ctx = IrqGuard::disable_save();
+            self.tab.with_mut(|tab| {
                 #[cfg(feature = "debug_irq")]
                 crate::println_debug!("push request");
                 tab.push_io_request(bp);
                 tab.d_active == 0
-            });
-            drop(ctx);
-            should_start
+            })
         };
 
         if should_start {
@@ -110,34 +110,36 @@ impl BlockDevice for ATABlockDevice {
     }
 
     fn start(&self) {
-        #[cfg(feature = "debug_irq")]
-        crate::println_debug!("Trying to start device");
+        loop {
+            let bp = self.tab.with_mut(|tab| {
+                let _ctx = IrqGuard::disable_save();
+                if tab.d_active != 0 {
+                    return None;
+                }
 
-        let bp = self.tab.with_mut(|tab| {
-            let _ctx = IrqGuard::disable_save();
-            if tab.d_active != 0 {
-                #[cfg(feature = "debug_irq")]
-                crate::println_debug!("Reason: Running");
-                return None;
-            }
+                let Some(bp) = tab.pop_io_request() else {
+                    return None;
+                };
 
-            let Some(bp) = tab.peek_io_request() else {
-                #[cfg(feature = "debug_irq")]
-                crate::println_debug!("Reason: No request");
-                return None;
+                tab.d_active = 1;
+                Some(bp)
+            });
+
+            let Some(bp) = bp else {
+                return;
             };
 
-            tab.d_active = 1;
-            Some(bp)
-        });
+            let ok = self.inner.with_mut(|driver| driver.transfer(bp).is_ok());
 
-        let Some(bp) = bp else {
-            #[cfg(feature = "debug_irq")]
-            crate::println_debug!("Start skipped");
-            return;
-        };
+            self.tab.with_mut(|tab| {
+                tab.d_active = 0;
+                if !ok {
+                    bp.as_mut().b_flags.insert(BufFlag::B_ERROR);
+                }
+            });
 
-        ATADriver::dev_start(bp);
+            global_buffer_manager().io_done(bp);
+        }
     }
 
     fn devtab(&self) -> &SuperCell<Devtab> {
@@ -145,15 +147,15 @@ impl BlockDevice for ATABlockDevice {
     }
 }
 
-static ATA_BLOCK_DEVICE: LazyLock<ATABlockDevice> = LazyLock::new(ATABlockDevice::new);
+static VIRTIO_BLOCK_DEVICE: LazyLock<VirtIOBlockDevice> = LazyLock::new(VirtIOBlockDevice::new);
 
-pub fn ata_block_device() -> &'static ATABlockDevice {
-    &ATA_BLOCK_DEVICE
+pub fn virtio_block_device() -> &'static VirtIOBlockDevice {
+    &VIRTIO_BLOCK_DEVICE
 }
 
 pub fn block_device_for_major(major: i16) -> Option<&'static dyn BlockDevice> {
     match major {
-        0 => Some(ata_block_device()),
+        0 => Some(virtio_block_device()),
         _ => None,
     }
 }

@@ -8,7 +8,9 @@ use riscv::{
 };
 
 use crate::{
-    constants::platform::{PLIC_PHYS_BASE, RAM_BASE, UART0_PHYS_BASE, VIRTIO_MMIO_PHYS_BASE},
+    constants::platform::{
+        PLIC_BASE, PLIC_PHYS_BASE, RAM_BASE, UART0_BASE, UART0_PHYS_BASE, VIRTIO_MMIO_BASE,
+    },
     proc::Process,
 };
 
@@ -28,10 +30,14 @@ const ROOT_INDEX_LOW: usize = 0;
 const ROOT_INDEX_KERNEL_IDENTITY: usize = KERNEL_IDENTITY_BASE / SIZE_PER_DIRECTORY_MAP;
 const ROOT_INDEX_KERNEL_HIGH: usize = KERNEL_SPACE_START_ADDRESS / SIZE_PER_DIRECTORY_MAP;
 
-const UART0_L1_INDEX: usize = UART0_PHYS_BASE / SIZE_PER_KERNEL_ENTRY_MAP;
-const PLIC_L1_INDEX: usize = PLIC_PHYS_BASE / SIZE_PER_KERNEL_ENTRY_MAP;
-const PLIC_CONTEXT_L1_INDEX: usize = 0x0c20_0000 / SIZE_PER_KERNEL_ENTRY_MAP;
-const VIRTIO_MMIO_L1_INDEX: usize = VIRTIO_MMIO_PHYS_BASE / SIZE_PER_KERNEL_ENTRY_MAP;
+const UART0_MMIO_L1_INDEX: usize =
+    (UART0_BASE - KERNEL_SPACE_START_ADDRESS) / SIZE_PER_KERNEL_ENTRY_MAP;
+const PLIC_MMIO_L1_INDEX: usize =
+    (PLIC_BASE - KERNEL_SPACE_START_ADDRESS) / SIZE_PER_KERNEL_ENTRY_MAP;
+const PLIC_CONTEXT_MMIO_L1_INDEX: usize =
+    ((PLIC_BASE + 0x20_0000) - KERNEL_SPACE_START_ADDRESS) / SIZE_PER_KERNEL_ENTRY_MAP;
+const VIRTIO_MMIO_L1_INDEX: usize =
+    (VIRTIO_MMIO_BASE - KERNEL_SPACE_START_ADDRESS) / SIZE_PER_KERNEL_ENTRY_MAP;
 
 pub const USER_PAGE_TABLE_COUNT: usize = 4;
 pub const USER_SPACE_SIZE: usize = USER_PAGE_TABLE_COUNT * SIZE_PER_USER_PAGE_TABLE_MAP;
@@ -164,14 +170,16 @@ impl IndexMut<usize> for PageTable {
 
 static mut ROOT_PAGE_DIRECTORY: PageDirectory = PageDirectory::new();
 static mut LOW_PAGE_DIRECTORY: PageDirectory = PageDirectory::new();
-static mut KERNEL_PAGE_DIRECTORY: PageDirectory = PageDirectory::new();
+static mut KERNEL_IDENTITY_DIRECTORY: PageDirectory = PageDirectory::new();
+static mut KERNEL_HIGH_DIRECTORY: PageDirectory = PageDirectory::new();
 static mut KERNEL_PAGE_TABLE: PageTable = PageTable::new();
 static mut USER_PAGE_TABLES: [PageTable; USER_PAGE_TABLE_COUNT] = [PageTable::new(); USER_PAGE_TABLE_COUNT];
 
 pub fn init_page_directory() {
     let root = page_directory_mut();
     let low = low_page_directory_mut();
-    let kernel = kernel_page_directory_mut();
+    let identity = kernel_identity_directory_mut();
+    let high = kernel_high_directory_mut();
     let kernel_leaf = kernel_page_table_mut();
 
     for entry in &mut root.entries {
@@ -180,7 +188,10 @@ pub fn init_page_directory() {
     for entry in &mut low.entries {
         entry.clear();
     }
-    for entry in &mut kernel.entries {
+    for entry in &mut identity.entries {
+        entry.clear();
+    }
+    for entry in &mut high.entries {
         entry.clear();
     }
     for entry in kernel_leaf.iter_mut() {
@@ -188,10 +199,11 @@ pub fn init_page_directory() {
     }
 
     root.entries[ROOT_INDEX_LOW].set_table_ptr(low as *const _);
-    root.entries[ROOT_INDEX_KERNEL_IDENTITY].set_table_ptr(kernel as *const _);
-    root.entries[ROOT_INDEX_KERNEL_HIGH].set_table_ptr(kernel as *const _);
+    root.entries[ROOT_INDEX_KERNEL_IDENTITY].set_table_ptr(identity as *const _);
+    root.entries[ROOT_INDEX_KERNEL_HIGH].set_table_ptr(high as *const _);
 
-    init_kernel_linear_map(kernel, kernel_leaf);
+    init_kernel_identity_map(identity);
+    init_kernel_high_map(high, kernel_leaf);
 }
 
 #[no_mangle]
@@ -251,10 +263,17 @@ pub fn page_directory_mut() -> &'static mut PageDirectory {
     }
 }
 
-fn kernel_page_directory_mut() -> &'static mut PageDirectory {
+fn kernel_identity_directory_mut() -> &'static mut PageDirectory {
     #[allow(static_mut_refs)]
     unsafe {
-        &mut KERNEL_PAGE_DIRECTORY
+        &mut KERNEL_IDENTITY_DIRECTORY
+    }
+}
+
+fn kernel_high_directory_mut() -> &'static mut PageDirectory {
+    #[allow(static_mut_refs)]
+    unsafe {
+        &mut KERNEL_HIGH_DIRECTORY
     }
 }
 
@@ -279,7 +298,25 @@ fn user_page_table_array_mut() -> &'static mut [PageTable; USER_PAGE_TABLE_COUNT
     }
 }
 
-fn init_kernel_linear_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTable) {
+fn init_kernel_identity_map(identity: &mut PageDirectory) {
+    let entry_count = PHYS_MEM_SIZE.div_ceil(SIZE_PER_KERNEL_ENTRY_MAP);
+
+    for index in 0..entry_count {
+        let paddr = RAM_BASE + index * SIZE_PER_KERNEL_ENTRY_MAP;
+        identity.entries[index].set_large_identity_raw(
+            paddr,
+            EntryFlags::VALID
+                | EntryFlags::READ
+                | EntryFlags::WRITE
+                | EntryFlags::EXECUTE
+                | EntryFlags::GLOBAL
+                | EntryFlags::ACCESSED
+                | EntryFlags::DIRTY,
+        );
+    }
+}
+
+fn init_kernel_high_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTable) {
     let entry_count = PHYS_MEM_SIZE.div_ceil(SIZE_PER_KERNEL_ENTRY_MAP);
 
     for index in 0..entry_count {
@@ -311,14 +348,10 @@ fn init_kernel_linear_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTabl
         }
     }
 
-    map_kernel_mmio_large(kernel, PLIC_L1_INDEX, PLIC_PHYS_BASE);
-    map_kernel_mmio_large(kernel, PLIC_CONTEXT_L1_INDEX, 0x0c20_0000);
-    map_kernel_mmio_large(kernel, UART0_L1_INDEX, UART0_PHYS_BASE);
-    map_kernel_mmio_large(
-        kernel,
-        VIRTIO_MMIO_L1_INDEX,
-        VIRTIO_MMIO_PHYS_BASE & !(SIZE_PER_KERNEL_ENTRY_MAP - 1),
-    );
+    map_kernel_mmio_large(kernel, UART0_MMIO_L1_INDEX, UART0_PHYS_BASE);
+    map_kernel_mmio_large(kernel, VIRTIO_MMIO_L1_INDEX, UART0_PHYS_BASE);
+    map_kernel_mmio_large(kernel, PLIC_MMIO_L1_INDEX, PLIC_PHYS_BASE);
+    map_kernel_mmio_large(kernel, PLIC_CONTEXT_MMIO_L1_INDEX, 0x0c20_0000);
 }
 
 fn map_kernel_mmio_large(kernel: &mut PageDirectory, index: usize, paddr: usize) {
