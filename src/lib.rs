@@ -8,7 +8,6 @@ mod fs;
 mod interrupt;
 #[cfg(target_arch = "x86")]
 mod kernel;
-#[cfg(target_arch = "x86")]
 mod loader;
 pub mod machine;
 pub mod mm;

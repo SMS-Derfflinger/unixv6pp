@@ -1,77 +1,82 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec, vec::Vec};
 use eonix_mm::paging::PAGE_SIZE;
 
-use crate::fs::InodeRef;
-use crate::sync::SpinExt;
 use crate::{
-    compat::{compat_flush_page_directory, compat_user_pt},
+    compat::compat_flush_page_directory,
+    fs::InodeRef,
+    machine::{global_user_page_table, EntryFlags},
+    sync::SpinExt,
+    user::MemoryDescriptor,
     Ext,
 };
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-struct NTHeader {
-    sig: usize,
-    file_header: FileHeader,
-    opt_header: OptionalHeader32,
-}
+const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
+const ELF_CLASS_64: u8 = 2;
+const ELF_DATA_LSB: u8 = 1;
+const ELF_ET_EXEC: u16 = 2;
+const ELF_EM_RISCV: u16 = 243;
+const ELF_PT_LOAD: u32 = 1;
+
+const PF_X: u32 = 1 << 0;
+const PF_W: u32 = 1 << 1;
+
+const DEFAULT_STACK_SIZE: usize = 0x10_000;
+const PTES_PER_PAGE: usize = PAGE_SIZE / size_of::<usize>();
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-struct FileHeader {
+struct ElfHeader64 {
+    ident: [u8; 16],
+    elf_type: u16,
     machine: u16,
-    section_count: u16,
-    timestamp: usize,
-    sym_table_addr: usize,
-    symbol_count: usize,
-    optional_header_len: u16,
-    characteristics: u16,
+    version: u32,
+    entry: u64,
+    phoff: u64,
+    shoff: u64,
+    flags: u32,
+    ehsize: u16,
+    phentsize: u16,
+    phnum: u16,
+    shentsize: u16,
+    shnum: u16,
+    shstrndx: u16,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-struct DataDirectory {
+struct ProgramHeader64 {
+    p_type: u32,
+    p_flags: u32,
+    p_offset: u64,
+    p_vaddr: u64,
+    p_paddr: u64,
+    p_filesz: u64,
+    p_memsz: u64,
+    p_align: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct LoadSegment {
+    offset: usize,
     vaddr: usize,
-    len: usize,
+    filesz: usize,
+    memsz: usize,
+    flags: u32,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-struct OptionalHeader32 {
-    _we_dont_care1: [u32; 4],
-    entry: usize,
-    code_base: usize,
-    data_base: usize,
-    image_base: usize,
-    _we_dont_care2: [u32; 11],
-    stack_size: usize,
-    _we_dont_care3: u32,
-    heap_size: usize,
-    _we_dont_care4: [u32; 2],
-    data_dir: [DataDirectory; 16],
-}
+impl LoadSegment {
+    fn is_writable(&self) -> bool {
+        (self.flags & PF_W) != 0
+    }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-struct SectionHeader {
-    name: [u8; 8],
-    vsize: usize,
-    vaddr: usize,
-    _we_dont_care1: u32,
-    raw_data_addr: usize,
-    _we_dont_care2: [u32; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-struct DOSHeader {
-    _we_dont_care: [u32; 15],
-    new_header_addr: usize,
+    fn end(&self) -> usize {
+        self.vaddr + self.memsz
+    }
 }
 
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct PEParser {
+pub struct ELFParser {
     pub entry: usize,
     pub text: usize,
     pub text_len: usize,
@@ -82,134 +87,175 @@ pub struct PEParser {
     pub stack_size: usize,
     pub heap_size: usize,
 
-    pe_addr: usize,
-    nt_header: Option<Box<NTHeader>>,
-    section_headers: Option<Box<[SectionHeader]>>,
+    segments: Option<Box<[LoadSegment]>>,
 }
 
-const PA_RW: usize = 1 << 1;
-
-impl SectionHeader {
-    fn name_stripped(&self) -> &[u8] {
-        let end_idx = self
-            .name
-            .iter()
-            .position(|&c| c == 0)
-            .unwrap_or(self.name.len());
-
-        &self.name[..end_idx]
-    }
-}
-
-impl PEParser {
+impl ELFParser {
     pub fn new() -> Self {
-        Default::default()
-    }
-
-    fn wanted_sections(&self, skip_text: bool) -> impl Iterator<Item = &SectionHeader> {
-        const SECTIONS: &[&[u8]] = &[b".text", b".data", b".rdata", b".rodata", b".bss"];
-
-        self.section_headers
-            .as_deref()
-            .unwrap()
-            .iter()
-            .filter(move |section| {
-                let start_idx = if skip_text { 1 } else { 0 };
-                SECTIONS[start_idx..]
-                    .iter()
-                    .find(|&&n| n == section.name_stripped())
-                    .is_some()
-            })
-    }
-
-    pub fn relocate(&mut self, inode: &InodeRef, shared_text: bool) {
-        let text_begin_pfn = self.text >> 12;
-        let text_pages = self.text_len >> 12;
-        let text_end_pfn = text_begin_pfn + text_pages;
-
-        if !shared_text {
-            for i in text_begin_pfn..text_end_pfn {
-                compat_user_pt()[i] |= PA_RW;
-            }
-
-            compat_flush_page_directory();
-        }
-
-        let nt_header = self.nt_header.as_deref().unwrap();
-        for section in self.wanted_sections(shared_text) {
-            let vstart = nt_header.opt_header.image_base + section.vaddr;
-            let len = (section.vsize + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
-
-            unsafe {
-                (vstart as *mut u8).write_bytes(0, len);
-            }
-        }
-
-        for section in self.wanted_sections(shared_text) {
-            let dst = unsafe {
-                core::slice::from_raw_parts_mut(
-                    (nt_header.opt_header.image_base + section.vaddr) as *mut u8,
-                    section.vsize,
-                )
-            };
-
-            inode.lock().read(dst, section.raw_data_addr);
-        }
-
-        if !shared_text {
-            for i in 0..text_pages {
-                compat_user_pt()[i] &= !PA_RW;
-            }
-
-            compat_flush_page_directory();
+        Self {
+            stack_size: DEFAULT_STACK_SIZE,
+            ..Default::default()
         }
     }
 
     pub fn load(&mut self, inode: &InodeRef) -> bool {
-        let mut offset = 0;
-        let mut dos_header = DOSHeader::default();
-        inode.lock().read(dos_header.as_buffer(), offset);
-
-        offset += dos_header.new_header_addr;
-        let mut nt_header: Box<NTHeader> = Box::default();
-        inode.lock().read(nt_header.as_buffer(), offset);
-
-        const NT_SIG: usize = 0x4550;
-        if nt_header.sig != NT_SIG {
+        let mut header = ElfHeader64::default();
+        if inode.lock().read(header.as_buffer(), 0).is_err() {
             return false;
         }
 
-        offset += size_of::<NTHeader>();
-        let section_count = nt_header.file_header.section_count as usize;
-        let mut section_headers: Box<[SectionHeader]> =
-            unsafe { Box::new_uninit_slice(section_count).assume_init() };
-        inode.lock().read(section_headers.as_buffer(), offset);
+        if header.ident[..4] != ELF_MAGIC
+            || header.ident[4] != ELF_CLASS_64
+            || header.ident[5] != ELF_DATA_LSB
+            || header.elf_type != ELF_ET_EXEC
+            || header.machine != ELF_EM_RISCV
+            || header.phentsize as usize != size_of::<ProgramHeader64>()
+            || header.phnum == 0
+        {
+            return false;
+        }
 
-        let OptionalHeader32 {
-            image_base,
-            code_base,
-            data_base,
-            data_dir,
-            stack_size,
-            heap_size,
-            entry,
-            ..
-        } = &nt_header.opt_header;
+        let mut phdrs = vec![ProgramHeader64::default(); header.phnum as usize];
+        if inode
+            .lock()
+            .read(phdrs.as_mut_slice().as_buffer(), header.phoff as usize)
+            .is_err()
+        {
+            return false;
+        }
 
-        self.text = image_base + code_base;
-        self.text_len = data_base - code_base;
+        let mut segments = Vec::new();
+        for phdr in phdrs {
+            if phdr.p_type != ELF_PT_LOAD {
+                continue;
+            }
 
-        self.data = image_base + data_base;
-        self.data_len = data_dir[1].vaddr - data_base;
+            let filesz = phdr.p_filesz as usize;
+            let memsz = phdr.p_memsz as usize;
+            if filesz > memsz {
+                return false;
+            }
 
-        self.stack_size = *stack_size;
-        self.heap_size = *heap_size;
+            segments.push(LoadSegment {
+                offset: phdr.p_offset as usize,
+                vaddr: phdr.p_vaddr as usize,
+                filesz,
+                memsz,
+                flags: phdr.p_flags,
+            });
+        }
 
-        self.entry = image_base + entry;
+        if segments.is_empty() {
+            return false;
+        }
 
-        self.nt_header = Some(nt_header);
-        self.section_headers = Some(section_headers);
+        segments.sort_by_key(|segment| segment.vaddr);
+
+        let text_start = segments[0].vaddr;
+        let first_writable = segments.iter().find(|segment| segment.is_writable());
+        let max_load_end = segments
+            .iter()
+            .map(LoadSegment::end)
+            .max()
+            .unwrap_or(text_start);
+        let data_start = first_writable.map(|segment| segment.vaddr).unwrap_or(max_load_end);
+        let data_end = segments
+            .iter()
+            .filter(|segment| segment.is_writable())
+            .map(LoadSegment::end)
+            .max()
+            .unwrap_or(data_start);
+
+        if text_start >= MemoryDescriptor::USER_SPACE_END
+            || data_end > MemoryDescriptor::USER_SPACE_END
+            || self.entry >= MemoryDescriptor::USER_SPACE_END
+        {
+            return false;
+        }
+
+        self.entry = header.entry as usize;
+        self.text = text_start;
+        self.text_len = data_start.saturating_sub(text_start);
+        self.data = data_start;
+        self.data_len = data_end.saturating_sub(data_start);
+        self.heap_size = 0;
+        self.stack_size = DEFAULT_STACK_SIZE;
+        self.segments = Some(segments.into_boxed_slice());
 
         true
+    }
+
+    pub fn relocate(&mut self, inode: &InodeRef, shared_text: bool) {
+        let Some(segments) = self.segments.as_deref() else {
+            return;
+        };
+
+        if !shared_text {
+            self.set_text_write(true);
+        }
+
+        for segment in segments {
+            if shared_text && !segment.is_writable() {
+                continue;
+            }
+
+            unsafe {
+                (segment.vaddr as *mut u8).write_bytes(0, segment.memsz);
+            }
+
+            if segment.filesz == 0 {
+                continue;
+            }
+
+            let dst = unsafe {
+                core::slice::from_raw_parts_mut(segment.vaddr as *mut u8, segment.filesz)
+            };
+
+            if inode.lock().read(dst, segment.offset).is_err() {
+                return;
+            }
+        }
+
+        if !shared_text {
+            self.set_text_write(false);
+        }
+    }
+
+    fn set_text_write(&self, writable: bool) {
+        if self.text_len == 0 {
+            return;
+        }
+
+        let start_page = self.text / PAGE_SIZE;
+        let page_count = align_up(self.text_len, PAGE_SIZE) / PAGE_SIZE;
+        let user_pts = global_user_page_table();
+
+        for page_idx in start_page..start_page + page_count {
+            let table_idx = page_idx / PTES_PER_PAGE;
+            let pte_idx = page_idx % PTES_PER_PAGE;
+            let pte = &mut user_pts[table_idx][pte_idx];
+            let (pfn, mut flags) = pte.get();
+            if !flags.contains(EntryFlags::VALID) {
+                continue;
+            }
+
+            if writable {
+                flags |= EntryFlags::WRITE | EntryFlags::DIRTY;
+            } else {
+                flags.remove(EntryFlags::WRITE);
+            }
+
+            pte.set(Some(pfn), flags);
+        }
+
+        compat_flush_page_directory();
+    }
+}
+
+fn align_up(value: usize, align: usize) -> usize {
+    if value == 0 {
+        0
+    } else {
+        (value + align - 1) & !(align - 1)
     }
 }

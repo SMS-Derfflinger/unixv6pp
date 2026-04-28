@@ -1,5 +1,7 @@
 use core::{
-    num::NonZero, ops::{Deref, DerefMut}, ptr::NonNull
+    num::NonZero,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
 };
 
 use alloc::boxed::Box;
@@ -9,10 +11,17 @@ use eonix_mm::{
 };
 
 use crate::{
+    compat::{compat_swap_alloc, compat_swap_free},
     constants::Signal,
+    dev::buffer::PhysicalBlock,
+    fs::{InodeRef, OpenFiles},
     interrupt::context::TrapContext,
-    mm::{phys_copy, KernelStack, PAGE_SIZE, PhysPage, USER_PAGE_MANAGER},
-    proc::{Channel, ProcessManager, context::TaskContext, manager::{SLOAD, SSWAP}},
+    mm::{phys_copy, KernelStack, PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
+    proc::{
+        context::TaskContext,
+        manager::{SLOAD, SSWAP},
+        Channel, ProcessManager,
+    },
     serial::KResult,
     sync::{IrqGuard, SpinExt},
     user::Userspace,
@@ -30,13 +39,12 @@ pub enum ProcessState {
     SSTOP = 6,
 }
 
-// TODO
 #[repr(C)]
 pub struct Text {
-    //pub disk_addr: PhysicalBlock,
+    pub disk_addr: PhysicalBlock,
     pub len_bytes: usize,
     pages: Option<&'static mut PhysPage>,
-    //inode: InodeRef,
+    inode: InodeRef,
     refcount: usize,
     in_mem_count: usize,
 }
@@ -72,17 +80,16 @@ impl TextRef {
     }
 }
 
-// TODO
 impl Text {
-    pub fn new(/*inode: InodeRef, */ len: usize) -> TextRef {
+    pub fn new(inode: InodeRef, len: usize) -> TextRef {
         let aligned_size = len.next_power_of_two();
         let order = aligned_size.trailing_zeros() - 12;
 
         let text = Box::new(Text {
-            //disk_addr: compat_swap_alloc(len),
+            disk_addr: compat_swap_alloc(len),
             pages: USER_PAGE_MANAGER.lock().alloc_order(order),
             len_bytes: len,
-            //inode,
+            inode,
             refcount: 1,
             in_mem_count: 1,
         });
@@ -132,8 +139,7 @@ impl Text {
             return;
         }
 
-        // TODO
-        //compat_swap_free(self.disk_addr, self.len_bytes);
+        compat_swap_free(self.disk_addr, self.len_bytes);
 
         unsafe {
             let _ = Box::from_raw(&raw mut *self);
@@ -223,7 +229,8 @@ impl Process {
                 .write(TrapContext::new());
         }
 
-        self.ctx.set_stack_pointer(self.kstack.task_top().addr().get());
+        self.ctx
+            .set_stack_pointer(self.kstack.task_top().addr().get());
         if let Some(entry) = entry {
             self.ctx.set_program_counter(entry);
         }
@@ -551,15 +558,15 @@ impl Process {
         // TODO: reset trace flag
 
         // Ignore all signals
-        // TODO
-        /*Userspace::get().clear_signal_handlers();
+
+        Userspace::get().clear_signal_handlers();
         for fd in 0..OpenFiles::NOFILES {
             Userspace::get().open_files.clear_f(fd);
         }
 
         if let Some(_cwd) = Userspace::get().cwd.take() {
             // TODO: put cwd
-        }*/
+        }
 
         let _ = self.text.take();
 
@@ -572,9 +579,8 @@ impl Process {
 
         self.stat = ProcessState::SZOMB;
 
-        // TODO
-        //ProcessManager::get().wake_ppid(self.ppid);
-        //ProcessManager::get().reparent(self.pid);
+        ProcessManager::get().wake_ppid(self.ppid);
+        ProcessManager::get().reparent(self.pid);
 
         ProcessManager::get().switch();
 

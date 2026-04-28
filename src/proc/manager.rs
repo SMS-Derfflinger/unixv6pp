@@ -1,6 +1,7 @@
 use core::{
     arch::naked_asm,
     ffi::CStr,
+    mem::size_of,
     num::NonZero,
     ptr::NonNull,
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
@@ -9,9 +10,15 @@ use core::{
 use alloc::{borrow::ToOwned, boxed::Box, ffi::CString, vec, vec::Vec};
 use eonix_mm::address::{Addr, PAddr};
 use eonix_sync_base::LazyLock;
+use riscv::register::sstatus::{self, SPP};
 
 use crate::{
+    compat::compat_swap_alloc,
     constants::{PosixError, Signal},
+    dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
+    fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
+    interrupt::context::{Registers, TrapContext},
+    loader::ELFParser,
     machine::{asm, switch_user_struct},
     mm::{phys_copy, KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
@@ -133,16 +140,30 @@ impl ProcessManager {
         }
     }
 
-    /*fn set_init_context(child: &mut Process) {
-        let stack_top = child.kstack.top().addr().get();
+    fn set_init_context(child: &mut Process) {
+        child.init_kernel_context(Some(go_init as usize));
+    }
 
-        child.ctx.eip = go_init as usize;
-        child.ctx.esp = stack_top;
-        child.ctx.ebp = stack_top;
-        child.ctx.ebx = 0;
-        child.ctx.esi = 0;
-        child.ctx.edi = 0;
-    }*/
+    fn prepare_user_context(
+        proc: &mut Process,
+        entry: usize,
+        user_sp: usize,
+        argc: usize,
+        argv: usize,
+    ) {
+        let context = unsafe { &mut *proc.trap_context_ptr() };
+        *context = TrapContext::new();
+
+        let mut user_sstatus = sstatus::read();
+        user_sstatus.set_spp(SPP::User);
+        user_sstatus.set_spie(true);
+
+        context.sstatus = user_sstatus;
+        context.sepc = entry;
+        context.regs.sp = user_sp;
+        context.regs.a0 = argc;
+        context.regs.a1 = argv;
+    }
 
     fn new_proc(&mut self, parent: &mut Process) -> Box<Process> {
         let mut child = Process::new_from(Self::assign_pid(), parent);
@@ -213,18 +234,17 @@ impl ProcessManager {
     ) {
         let swap_len = swap_len.map(|l| l.get()).unwrap_or(proc.size as usize);
 
-        // TODO
-        //let blkno = compat_swap_alloc(proc.size as usize);
+        let blkno = compat_swap_alloc(proc.size as usize);
 
         if let Some(text) = &mut proc.text {
             text.put_mem();
         }
 
         proc.flag |= SLOCK;
-        // TODO
-        /*global_buffer_manager()
-        .swap(blkno, proc.addr, swap_len, BufFlag::B_WRITE)
-        .expect("Swap I/O Error");*/
+
+        global_buffer_manager()
+            .swap(blkno, proc.addr, swap_len, BufFlag::B_WRITE)
+            .expect("Swap I/O Error");
 
         if do_free {
             let pages = proc.pages.take().unwrap();
@@ -234,8 +254,7 @@ impl ProcessManager {
         }
 
         // (flag & SLOAD) => addr == blkno
-        // TODO
-        //proc.addr = blkno.0 as usize;
+        proc.addr = blkno.0 as usize;
         proc.flag &= !(SLOAD | SLOCK);
 
         // Clear time since last swapin / swapout
@@ -311,7 +330,7 @@ impl ProcessManager {
         Ok(())
     }
 
-    /*pub fn exec(&mut self, proc: &mut Process, path: &[u8], argv: &[NonNull<i8>]) -> KResult<()> {
+    pub fn exec(&mut self, proc: &mut Process, path: &[u8], argv: &[NonNull<i8>]) -> KResult<()> {
         crate::println_info!("Process {} execing", proc.pid);
         let inode = FileManager
             .find(path, DirSearchMode::Open)?
@@ -333,7 +352,7 @@ impl ProcessManager {
             return Err(PosixError::ENOEXEC);
         }
 
-        let mut parser = PEParser::new();
+        let mut parser = ELFParser::new();
         if !parser.load(&inode) {
             return Err(PosixError::ENOEXEC);
         }
@@ -351,7 +370,7 @@ impl ProcessManager {
 
         let args: Vec<CString> = argv
             .iter()
-            .map(|argp| unsafe { CStr::from_ptr(argp.as_ptr()) })
+            .map(|argp| unsafe { CStr::from_ptr(argp.as_ptr() as *const u8) })
             .map(|arg_str| arg_str.to_owned())
             .collect();
 
@@ -408,6 +427,7 @@ impl ProcessManager {
         }
 
         let sp = stack.push_word(argc);
+        let argv_ptr = sp + size_of::<usize>();
 
         drop(inode);
         if self.exe_cnt >= NEXEC {
@@ -417,15 +437,10 @@ impl ProcessManager {
         self.exe_cnt -= 1;
 
         Userspace::get().clear_signal_handlers();
-
-        // Check `go_userspace()`
-        proc.ctx.ebx = parser.entry;
-        proc.ctx.esp = (&raw const TEMPORARY_STACK[5]) as usize;
-        proc.ctx.edi = sp;
-        proc.ctx.eip = go_userspace as *const () as usize;
+        Self::prepare_user_context(proc, parser.entry, sp, argc, argv_ptr);
 
         Ok(())
-    }*/
+    }
 
     pub fn wait(&mut self, proc: &mut Process) {
         crate::println_info!("Process {} finding dead son. They are:", proc.pid);
@@ -642,51 +657,23 @@ impl ProcessManager {
         crate::println_debug!("switch selftest: back on proc0");
     }
 
-    /*fn set_fork_return_context(child: &mut Process) {
-        let regs = Userspace::get().ssav[0].0 as *const Registers;
-        let ctx = Userspace::get().ssav[1].0 as *const TrapFrame;
+    fn set_fork_return_context(child: &mut Process) {
+        let parent_context = unsafe { &*Userspace::get().proc().trap_context_ptr() };
+        let child_context = unsafe { &mut *child.trap_context_ptr() };
 
-        let regs = unsafe { &*regs };
-        let ctx = unsafe { &*ctx };
-        let mut stack = Stack {
-            sp: child.kstack.top().as_ptr(),
-        };
+        *child_context = *parent_context;
+        child_context.set_return_value(0);
 
-        stack.push_word(ctx.xss);
-        stack.push_word(ctx.esp as usize);
-        stack.push_word(ctx.eflags);
-        stack.push_word(ctx.xcs);
-        stack.push_word(ctx.eip);
-        stack.push_word(regs.ecx);
-        let top = stack.push_word(regs.edx);
+        child.init_kernel_context(Some(fork_ret as *const () as usize));
+        let child_context = unsafe { &mut *child.trap_context_ptr() };
+        *child_context = *parent_context;
+        child_context.set_return_value(0);
+    }
 
-        child.ctx.eip = Self::fork_ret as usize;
-        child.ctx.esp = top;
-        child.ctx.ebp = regs.ebp;
-        child.ctx.ebx = regs.ebx;
-        child.ctx.esi = regs.esi;
-        child.ctx.edi = regs.edi;
-    }*/
-
-    /*#[unsafe(no_mangle)]
-    #[unsafe(naked)]
-    extern "C" fn fork_ret() -> ! {
-        naked_asm!(
-            "xor %eax, %eax",
-            "pop %edx",
-            "pop %ecx",
-            "iret",
-            options(att_syntax),
-        )
-    }*/
-
-    /*pub fn fork(&mut self) -> u32 {
-        // Create a reborrow
+    pub fn fork(&mut self) -> u32 {
         let mut child = self.new_proc(Userspace::get().proc());
 
-        // TODO: set the child's return value to 0
         // TODO: clear child's {c,}{s,u}time
-
         let pid = child.pid;
         Self::set_fork_return_context(&mut child);
         self.procs.push(child);
@@ -699,16 +686,16 @@ impl ProcessManager {
         let pid = child.pid;
         self.procs.push(child);
         pid
-    }*/
+    }
 
-    /*pub fn new_init_proc(&mut self) -> u32 {
+    pub fn new_init_proc(&mut self) -> u32 {
         let mut child = self.new_proc(unsafe { &mut *&raw mut *Userspace::get().proc() });
 
         let pid = child.pid;
         Self::set_init_context(&mut child);
         self.procs.push(child);
         pid
-    }*/
+    }
 
     pub fn setup_proc_zero(&mut self) {
         const PPDA_ADDR: usize = 0x400000 - 0x1000;
@@ -746,7 +733,7 @@ impl ProcessManager {
         self.procs.push(proc);
     }
 
-    /*pub fn recalc_pri(&mut self) {
+    pub fn recalc_pri(&mut self) {
         const SCHED_MAGIC: u32 = 20;
         const MAX_TIME: u32 = 127;
         const PUSER: i32 = 100;
@@ -758,62 +745,105 @@ impl ProcessManager {
                 proc.set_pri();
             }
         }
-    }*/
+    }
 }
 
-static TEMPORARY_STACK: [usize; 6] = [0; 6];
 static SHELL_PATH: [u8; 11] = *b"/Shell.exe\0";
 
-/*#[unsafe(naked)]
-extern "C" fn exec_shell() {
+#[unsafe(naked)]
+extern "C" fn go_userspace() -> ! {
     naked_asm!(
-        "mov ${shell}, %ebx", // path
-        "mov $11, %eax",      // execv
-        "xor %ecx, %ecx",     // argc
-        "xor %edx, %edx",     // argv
-        "int $0x80",
-        shell = sym SHELL_PATH,
-        options(att_syntax),
-    );
-}*/
-
-/*#[unsafe(naked)]
-extern "C" fn go_init() {
-    naked_asm!(
-        "mov ${exec_shell}, %esi",
-        "mov $0x800, %edi",
-        "mov $0x10, %ecx",
-        "rep movsl",
-        "push $0x23",     // ss
-        "push $0x800000", // esp
-        "push $0x200",    // eflags = IF
-        "push $0x1b",     // cs
-        "push $0x800",    // eip = entry
-        "iret",
-        exec_shell = sym exec_shell,
-        options(att_syntax),
+        "csrr  t0, sscratch",
+        "ld    t1, {sepc}(t0)",
+        "ld    t2, {sstatus}(t0)",
+        "csrw  sepc, t1",
+        "csrw  sstatus, t2",
+        "ld    tp,   {tp}(t0)",
+        "ld    ra,   {ra}(t0)",
+        "ld    sp,   {sp}(t0)",
+        "ld    gp,   {gp}(t0)",
+        "ld    a0,   {a0}(t0)",
+        "ld    a1,   {a1}(t0)",
+        "ld    a2,   {a2}(t0)",
+        "ld    a3,   {a3}(t0)",
+        "ld    a4,   {a4}(t0)",
+        "ld    t1,   {t1}(t0)",
+        "ld    a5,   {a5}(t0)",
+        "ld    a6,   {a6}(t0)",
+        "ld    a7,   {a7}(t0)",
+        "ld    t3,   {t3}(t0)",
+        "ld    t4,   {t4}(t0)",
+        "ld    t5,   {t5}(t0)",
+        "ld    t2,   {t2}(t0)",
+        "ld    t6,   {t6}(t0)",
+        "ld    s0,   {s0}(t0)",
+        "ld    s1,   {s1}(t0)",
+        "ld    s2,   {s2}(t0)",
+        "ld    s3,   {s3}(t0)",
+        "ld    s4,   {s4}(t0)",
+        "ld    s5,   {s5}(t0)",
+        "ld    s6,   {s6}(t0)",
+        "ld    s7,   {s7}(t0)",
+        "ld    s8,   {s8}(t0)",
+        "ld    s9,   {s9}(t0)",
+        "ld   s10,  {s10}(t0)",
+        "ld   s11,  {s11}(t0)",
+        "ld    t0,   {t0}(t0)",
+        "sret",
+        tp = const Registers::OFFSET_TP,
+        ra = const Registers::OFFSET_RA,
+        sp = const Registers::OFFSET_SP,
+        gp = const Registers::OFFSET_GP,
+        a0 = const Registers::OFFSET_A0,
+        a1 = const Registers::OFFSET_A1,
+        a2 = const Registers::OFFSET_A2,
+        a3 = const Registers::OFFSET_A3,
+        a4 = const Registers::OFFSET_A4,
+        t1 = const Registers::OFFSET_T1,
+        a5 = const Registers::OFFSET_A5,
+        a6 = const Registers::OFFSET_A6,
+        a7 = const Registers::OFFSET_A7,
+        t3 = const Registers::OFFSET_T3,
+        t4 = const Registers::OFFSET_T4,
+        t5 = const Registers::OFFSET_T5,
+        t2 = const Registers::OFFSET_T2,
+        t6 = const Registers::OFFSET_T6,
+        s0 = const Registers::OFFSET_S0,
+        s1 = const Registers::OFFSET_S1,
+        s2 = const Registers::OFFSET_S2,
+        s3 = const Registers::OFFSET_S3,
+        s4 = const Registers::OFFSET_S4,
+        s5 = const Registers::OFFSET_S5,
+        s6 = const Registers::OFFSET_S6,
+        s7 = const Registers::OFFSET_S7,
+        s8 = const Registers::OFFSET_S8,
+        s9 = const Registers::OFFSET_S9,
+        s10 = const Registers::OFFSET_S10,
+        s11 = const Registers::OFFSET_S11,
+        t0 = const Registers::OFFSET_T0,
+        sstatus = const TrapContext::OFFSET_SSTATUS,
+        sepc = const TrapContext::OFFSET_SEPC,
     )
-}*/
+}
 
-/*#[unsafe(naked)]
-extern "C" fn go_userspace() {
-    naked_asm!(
-        "mov %ebx, %eax", // eax = entry
-        "push $0x23",     // ss
-        "push %edi",      // esp
-        "push $0x200",    // eflags = IF
-        "push $0x1b",     // cs
-        "push $0x10",     // eip = runtime
-        "xor %ebx, %ebx",
-        "xor %ecx, %ecx",
-        "xor %edx, %edx",
-        "xor %esi, %esi",
-        "xor %edi, %edi",
-        "xor %ebp, %ebp",
-        "iret",
-        options(att_syntax),
-    )
-}*/
+extern "C" fn go_init() -> ! {
+    let proc = Userspace::get().proc() as *mut Process;
+    let argv: [NonNull<i8>; 0] = [];
+    let path = &SHELL_PATH[..SHELL_PATH.len() - 1];
+
+    if let Err(err) = ProcessManager::get().exec(unsafe { &mut *proc }, path, &argv) {
+        panic!("failed to exec init shell: {:?}", err);
+    }
+
+    go_userspace();
+}
+
+extern "C" fn fork_ret() -> ! {
+    let proc = Userspace::get().proc();
+    let context = unsafe { &mut *proc.trap_context_ptr() };
+    context.set_return_value(0);
+    go_userspace();
+}
 
 fn halt() {
     unsafe {
