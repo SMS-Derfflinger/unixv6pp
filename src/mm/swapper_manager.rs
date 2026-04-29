@@ -3,6 +3,8 @@ use core::num::NonZero;
 use eonix_spin::Spin;
 use eonix_sync_base::LazyLock;
 
+use crate::{constants::fs_constants, dev::buffer::PhysicalBlock, sync::SpinExt};
+
 const SWAP_SECTORS: usize = 0x800;
 const SWAP_SECTORS_OFF: usize = 0x7800;
 
@@ -144,4 +146,24 @@ impl AreaList {
         self.try_merge_next(pos);
         self.try_merge_prev(pos);
     }
+}
+
+pub fn swap_alloc(bytes: usize) -> PhysicalBlock {
+    let sectors = (bytes + fs_constants::SECTOR_SIZE - 1) / fs_constants::SECTOR_SIZE;
+    assert_ne!(sectors, 0);
+
+    let block = SWAPPER_AREAS
+        .lock()
+        .alloc(NonZero::new(sectors).expect("Alloc 0 swap blocks"))
+        .expect("Out of swap space");
+
+    PhysicalBlock(block.get() as u32)
+}
+
+pub fn swap_free(blkno: PhysicalBlock, bytes: usize) {
+    let start_blk = NonZero::new(blkno.0 as usize).expect("Free swap block 0");
+    let sectors = NonZero::new((bytes + fs_constants::SECTOR_SIZE - 1) / fs_constants::SECTOR_SIZE)
+        .expect("Free 0 swap blocks");
+
+    SWAPPER_AREAS.lock().free(start_blk, sectors);
 }

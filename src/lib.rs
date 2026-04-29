@@ -2,7 +2,6 @@
 
 extern crate alloc;
 
-pub mod compat;
 mod dev;
 mod fs;
 mod interrupt;

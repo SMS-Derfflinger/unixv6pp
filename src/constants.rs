@@ -90,6 +90,10 @@ impl TryFrom<u32> for Signal {
     }
 }
 
+pub mod fs_constants {
+    pub const SECTOR_SIZE: usize = 512;
+}
+
 pub mod platform {
     pub const RAM_BASE: usize = 0x8000_0000;
     pub const KERNEL_LOAD_BASE: usize = 0x8020_0000;

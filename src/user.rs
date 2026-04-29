@@ -4,12 +4,11 @@ use alloc::boxed::Box;
 use eonix_mm::paging::PFN;
 
 use crate::{
-    compat::compat_flush_page_directory,
     constants::{PosixError, Signal, SIGMAX},
     fs::{DirectoryEntry, IOParameter, InodeRef, OpenFiles},
     machine::{
-        global_user_page_table, EntryFlags, PageTable, PageTableEntry, USER_PAGE_TABLE_COUNT,
-        USER_SPACE_SIZE as MACHINE_USER_SPACE_SIZE,
+        flush_tlb, global_user_page_table, EntryFlags, PageTable, PageTableEntry,
+        USER_PAGE_TABLE_COUNT, USER_SPACE_SIZE as MACHINE_USER_SPACE_SIZE,
     },
     mm::PAGE_SIZE,
     proc::Process,
@@ -348,7 +347,7 @@ impl MemoryDescriptor {
                 | EntryFlags::DIRTY,
         );
 
-        compat_flush_page_directory();
+        flush_tlb();
     }
 
     pub fn establish_user(&mut self, proc: &Process) -> KResult<()> {

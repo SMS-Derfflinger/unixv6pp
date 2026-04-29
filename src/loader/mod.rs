@@ -2,9 +2,8 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use eonix_mm::paging::PAGE_SIZE;
 
 use crate::{
-    compat::compat_flush_page_directory,
     fs::InodeRef,
-    machine::{global_user_page_table, EntryFlags},
+    machine::{flush_tlb, global_user_page_table, EntryFlags},
     sync::SpinExt,
     user::MemoryDescriptor,
     Ext,
@@ -158,7 +157,9 @@ impl ELFParser {
             .map(LoadSegment::end)
             .max()
             .unwrap_or(text_start);
-        let data_start = first_writable.map(|segment| segment.vaddr).unwrap_or(max_load_end);
+        let data_start = first_writable
+            .map(|segment| segment.vaddr)
+            .unwrap_or(max_load_end);
         let data_end = segments
             .iter()
             .filter(|segment| segment.is_writable())
@@ -248,7 +249,7 @@ impl ELFParser {
             pte.set(Some(pfn), flags);
         }
 
-        compat_flush_page_directory();
+        flush_tlb();
     }
 }
 

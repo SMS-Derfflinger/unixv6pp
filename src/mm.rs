@@ -1,7 +1,10 @@
-use eonix_mm::{address::{Addr, PAddr}, paging::PFN};
+use eonix_mm::{
+    address::{Addr, PAddr},
+    paging::PFN,
+};
 
 use crate::{
-    machine::{EntryFlags, flush_tlb, kernel_page_table_mut},
+    machine::{flush_tlb, kernel_page_table_mut, EntryFlags},
     sync::IrqGuard,
 };
 
@@ -15,10 +18,8 @@ mod zone;
 pub use allocator::{phys_to_virt, virt_to_phys};
 pub use kstack::KernelStack;
 pub use page::{KernelPages, PageList, PhysPage, UserPages, PAGE_SIZE};
-pub use page_manager::{
-    free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER,
-};
-pub use swapper_manager::SWAPPER_AREAS;
+pub use page_manager::{free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_PAGE_MANAGER};
+pub use swapper_manager::{swap_alloc, swap_free, SWAPPER_AREAS};
 pub use zone::ZONE;
 
 /// Temporarily borrow two kernel PTEs to copy bytes between physical pages.
@@ -45,7 +46,8 @@ pub fn phys_copy(from: PAddr, to: PAddr, len: usize) {
         kernel_pt[BORROWED_PTE + 1].set(Some(PFN::from_val(dst / PAGE_SIZE)), flags);
         flush_tlb();
 
-        let src_ptr = (BORROW_WINDOW_BASE + BORROWED_PTE * PAGE_SIZE + src % PAGE_SIZE) as *const u8;
+        let src_ptr =
+            (BORROW_WINDOW_BASE + BORROWED_PTE * PAGE_SIZE + src % PAGE_SIZE) as *const u8;
         let dst_ptr =
             (BORROW_WINDOW_BASE + (BORROWED_PTE + 1) * PAGE_SIZE + dst % PAGE_SIZE) as *mut u8;
 

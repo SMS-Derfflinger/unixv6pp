@@ -13,14 +13,13 @@ use eonix_sync_base::LazyLock;
 use riscv::register::sstatus::{self, SPP};
 
 use crate::{
-    compat::compat_swap_alloc,
     constants::{PosixError, Signal},
     dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
     interrupt::context::{Registers, TrapContext},
     loader::ELFParser,
     machine::{asm, switch_user_struct},
-    mm::{phys_copy, KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
+    mm::{phys_copy, swap_alloc, KernelStack, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
         process::{ProcessState, Terminal, Text},
@@ -234,7 +233,7 @@ impl ProcessManager {
     ) {
         let swap_len = swap_len.map(|l| l.get()).unwrap_or(proc.size as usize);
 
-        let blkno = compat_swap_alloc(proc.size as usize);
+        let blkno = swap_alloc(proc.size as usize);
 
         if let Some(text) = &mut proc.text {
             text.put_mem();

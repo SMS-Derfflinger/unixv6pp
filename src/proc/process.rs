@@ -11,12 +11,11 @@ use eonix_mm::{
 };
 
 use crate::{
-    compat::{compat_swap_alloc, compat_swap_free},
     constants::Signal,
     dev::buffer::PhysicalBlock,
     fs::{InodeRef, OpenFiles},
     interrupt::context::TrapContext,
-    mm::{phys_copy, KernelStack, PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
+    mm::{phys_copy, swap_alloc, swap_free, KernelStack, PhysPage, PAGE_SIZE, USER_PAGE_MANAGER},
     proc::{
         context::TaskContext,
         manager::{SLOAD, SSWAP},
@@ -86,7 +85,7 @@ impl Text {
         let order = aligned_size.trailing_zeros() - 12;
 
         let text = Box::new(Text {
-            disk_addr: compat_swap_alloc(len),
+            disk_addr: swap_alloc(len),
             pages: USER_PAGE_MANAGER.lock().alloc_order(order),
             len_bytes: len,
             inode,
@@ -139,7 +138,7 @@ impl Text {
             return;
         }
 
-        compat_swap_free(self.disk_addr, self.len_bytes);
+        swap_free(self.disk_addr, self.len_bytes);
 
         unsafe {
             let _ = Box::from_raw(&raw mut *self);
