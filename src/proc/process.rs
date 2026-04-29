@@ -542,6 +542,7 @@ impl Process {
 
         Userspace::get().clear_signal_handlers();
         for fd in 0..OpenFiles::NOFILES {
+            #[cfg(feature = "debug_proc")]
             crate::println_debug!("clear fd{fd}");
             Userspace::get().open_files.clear_f(fd);
         }
