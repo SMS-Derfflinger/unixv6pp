@@ -1,12 +1,12 @@
 use eonix_sync_base::LazyLock;
 
-use crate::{proc::ProcessManager, serial, sync::SuperCell};
+use crate::{constants::Signal, proc::ProcessManager, serial, sync::SuperCell};
 
 const TTY_BUF_SIZE: usize = 512;
 const CANBSIZ: usize = 256;
 
 const CERASE: u8 = b'\x08';
-const CEOT: u8 = 0x04;
+const CEOT: u8 = 0x03;
 const CKILL: u8 = 0x15;
 
 const TTHIWAT: usize = 512;
@@ -157,6 +157,10 @@ impl Tty {
             self.rawq.put_char(0x07);
             self.delct += 1;
             ProcessManager::get().wakeup_all(self.read_wait_channel());
+        }
+
+        if ch == CEOT {
+            ProcessManager::get().raise(core::ptr::null(), Signal::SIGINT);
         }
 
         if self.flags & ECHO != 0 {
