@@ -246,12 +246,10 @@ pub fn console_tty() -> &'static SuperCell<Tty> {
     &CONSOLE_TTY
 }
 
-#[no_mangle]
-pub extern "C" fn tty_input_byte(ch: u8) {
+pub fn tty_input_byte(ch: u8) {
     console_tty().with_mut(|tty| tty.input(ch));
 }
 
-#[no_mangle]
-pub extern "C" fn tty_flush() {
+pub fn tty_flush() {
     console_tty().with_mut(Tty::flush);
 }

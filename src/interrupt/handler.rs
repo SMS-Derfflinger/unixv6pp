@@ -7,6 +7,7 @@ use riscv::{
 
 use crate::{
     constants::platform::UART0_IRQ,
+    constants::PosixError,
     interrupt::{
         context::{Registers, TrapContext},
         plic, system_call, time,
@@ -183,6 +184,7 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                 }
                 Some(irq) => {
                     plic::complete_interrupt(irq);
+                    #[cfg(feature = "debug_irq")]
                     println_info!(
                         "trap: external interrupt irq={} sepc={:#x} stval={:#x}",
                         irq,
@@ -191,10 +193,12 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                     );
                 }
                 None => {
+                    #[cfg(feature = "debug_irq")]
                     println_info!("trap: external interrupt with empty PLIC claim");
                 }
             },
             interrupt => {
+                #[cfg(feature = "debug_irq")]
                 println_info!(
                     "trap: interrupt scause={:#x} interrupt={:?} sepc={:#x} stval={:#x}",
                     context.scause.bits(),
@@ -225,19 +229,22 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                 halt_forever();
             }
             Exception::UserEnvCall => {
-                let syscall_no = context.syscall_no();
-                let syscall_args = context.syscall_args();
-                println_info!(
-                    "trap: user ecall no={} args=[{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}] sepc={:#x}",
-                    syscall_no,
-                    syscall_args[0],
-                    syscall_args[1],
-                    syscall_args[2],
-                    syscall_args[3],
-                    syscall_args[4],
-                    syscall_args[5],
-                    context.sepc
-                );
+                #[cfg(feature = "debug_syscall")]
+                {
+                    let syscall_no = context.syscall_no();
+                    let syscall_args = context.syscall_args();
+                    println_info!(
+                        "trap: user ecall no={} args=[{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}] sepc={:#x}",
+                        syscall_no,
+                        syscall_args[0],
+                        syscall_args[1],
+                        syscall_args[2],
+                        syscall_args[3],
+                        syscall_args[4],
+                        syscall_args[5],
+                        context.sepc
+                    );
+                }
                 system_call::handle_user_ecall(context);
             }
             exception @ (Exception::InstructionPageFault
