@@ -102,9 +102,6 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
     ProcessManager::get().setup_proc_zero();
     interrupt::init_trap();
 
-    #[cfg(feature = "switchtest")]
-    ProcessManager::get().run_kernel_switch_self_test();
-
     buffer_manager_initialize();
     interrupt::init_interrupt_controller();
     println_info!(
@@ -114,9 +111,6 @@ extern "C" fn riscv64_rust_entry(hart_id: usize, dtb_addr: usize) -> ! {
 
     load_file_system();
     println_info!("Unix V6++ FileSystem Loaded......OK");
-
-    #[cfg(feature = "rvdebug")]
-    interrupt_test();
 
     init_root_directory();
     open_console_tty();
@@ -189,20 +183,6 @@ fn kernel_open(pathname: *const u8, mode: u32) -> i32 {
     result
 }
 
-#[cfg(feature = "rvdebug")]
-fn interrupt_test() {
-    println_info!("before ebreak");
-    unsafe {
-        core::arch::asm!("ebreak", options(nomem, nostack));
-    }
-    println_info!("after ebreak");
-    println_info!("before illegal instruction");
-    unsafe {
-        core::arch::asm!(".word 0xffffffff", options(nomem, nostack));
-    }
-    println_info!("after illegal instruction");
-}
-
 fn clear_bss() {
     unsafe extern "C" {
         static mut __bss_start: u8;
@@ -216,24 +196,6 @@ fn clear_bss() {
     unsafe {
         core::ptr::write_bytes(start, 0, len);
     }
-}
-
-#[cfg(target_arch = "x86")]
-#[panic_handler]
-fn panic(info: &PanicInfo<'_>) -> ! {
-    let msg = info.message();
-
-    if let Some(msg) = msg.as_str() {
-        println_fatal!("KERNEL PANIC: {}", msg);
-    } else {
-        println_fatal!("KERNEL PANIC: Unknown");
-    }
-
-    if let Some(loc) = info.location() {
-        println_fatal!("Panicked at {}:{}", loc.file(), loc.line());
-    }
-
-    loop {}
 }
 
 #[panic_handler]
