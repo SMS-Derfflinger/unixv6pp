@@ -1,23 +1,13 @@
 use core::{cmp::min, ffi::CStr, ptr};
 
 use crate::{
-    interrupt::time::get_time,
-    constants::{PosixError, Signal},
-    dev::{
+    constants::{PosixError, Signal, fs_constants}, dev::{
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
-        buffer_manager::{global_buffer_manager, PPIPE},
+        buffer_manager::{PPIPE, global_buffer_manager},
         device_manager::ROOTDEV,
-    },
-    fs::{
-        self,
-        file::FileFlags,
-        file_system::FileSystem,
-        inode::{InodeFlag, InodeMode},
-        File, FileRef, Inode, InodeRef, InodeRefGuard,
-    },
-    proc::{Channel, ProcessManager},
-    sync::{IrqGuard, SpinExt},
-    user::Userspace,
+    }, fs::{
+        self, File, FileRef, Inode, InodeRef, InodeRefGuard, file::FileFlags, file_system::FileSystem, inode::{InodeFlag, InodeMode}
+    }, interrupt::time::get_time, proc::{Channel, ProcessManager}, sync::{IrqGuard, SpinExt}, user::Userspace
 };
 
 #[repr(u32)]
@@ -190,11 +180,11 @@ impl InodeRefExt for InodeRef {
 
         let mut buffer = self.readblk(LogicalBlock(0));
         while count != 0 {
-            let blkoff = offset % Inode::BLOCK_SIZE;
+            let blkoff = offset % fs_constants::BLOCK_SIZE;
             let idx = blkoff / DENTRY_SIZE;
 
             if offset != 0 && blkoff == 0 {
-                buffer = self.readblk(LogicalBlock((offset / Inode::BLOCK_SIZE) as u32));
+                buffer = self.readblk(LogicalBlock((offset / fs_constants::BLOCK_SIZE) as u32));
             }
 
             let dentry = &buffer.as_slice::<DirectoryEntry>()[idx];
@@ -280,7 +270,7 @@ impl FileManager {
         mode: DirSearchMode,
     ) -> Result<Option<InodeRefGuard>, PosixError> {
         let mut iref = if let Some(b'/') = path.first() {
-            i_get(DevId(ROOTDEV), FileSystem::ROOTINO)?
+            i_get(DevId(ROOTDEV), fs_constants::ROOTINO)?
         } else {
             InodeRefGuard::new(Userspace::get().getcwd())
         };
@@ -511,8 +501,8 @@ impl FileManager {
         inode.i_update(get_time() as i32);
         drop(inode);
 
-        let sector = FileSystem::INODE_ZONE_START_SECTOR as u32
-            + ino as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32;
+        let sector = fs_constants::INODE_SECTOR_OFF as u32
+            + ino as u32 / fs_constants::INODE_NUMBER_PER_SECTOR as u32;
 
         let buf = match global_buffer_manager().bread(dev, PhysicalBlock(sector)) {
             Ok(buf) => buf,
@@ -521,14 +511,13 @@ impl FileManager {
                 return;
             }
         };
-
-        const DISK_INODE_SIZE: usize = 64;
-        let off = (ino as usize % FileSystem::INODE_NUMBER_PER_SECTOR) * DISK_INODE_SIZE;
+        
+        let off = (ino as usize % fs_constants::INODE_NUMBER_PER_SECTOR) * fs_constants::DISK_INODE_SIZE;
         unsafe {
             ptr::copy_nonoverlapping(
                 buf.as_slice::<u8>().as_ptr().add(off),
                 stat_buf as *mut u8,
-                DISK_INODE_SIZE,
+                fs_constants::DISK_INODE_SIZE,
             );
         }
     }

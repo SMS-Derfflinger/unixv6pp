@@ -2,23 +2,12 @@ use eonix_spin::Spin;
 use eonix_sync_base::LazyLock;
 
 use crate::{
-    interrupt::time::get_time,
-    constants::PosixError,
-    dev::{
+    Ext, constants::{PosixError, fs_constants}, dev::{
         buffer::{Buffer, DevId, PhysicalBlock},
         buffer_manager::global_buffer_manager,
-    },
-    fs::{
-        self,
-        file::{File, FileFlags, OpenFiles},
-        file_system::FileSystem,
-        inode::{DiskInode, Inode, InodeFlag, InodeMode},
-        FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot,
-    },
-    proc::{Channel, ProcessManager, PINOD},
-    sync::{IrqGuard, SpinExt},
-    user::Userspace,
-    Ext,
+    }, fs::{
+        self, FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot, file::{File, FileFlags, OpenFiles}, file_system::FileSystem, inode::{DiskInode, Inode, InodeFlag, InodeMode}
+    }, interrupt::time::get_time, proc::{Channel, PINOD, ProcessManager}, sync::{IrqGuard, SpinExt}, user::Userspace
 };
 
 pub static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
@@ -111,7 +100,7 @@ impl InodeTable {
     }
 
     fn ino_blkoff(ino: i32) -> usize {
-        (ino as usize % FileSystem::INODE_NUMBER_PER_SECTOR) * size_of::<DiskInode>()
+        (ino as usize % fs_constants::INODE_NUMBER_PER_SECTOR) * size_of::<DiskInode>()
     }
 
     fn icopy(inode: &mut Inode, buf: Buffer, ino: i32) {
@@ -134,8 +123,8 @@ impl InodeTable {
         loop {
             let Some(iref) = self.get(dev, ino) else {
                 let iref = self.alloc_free(dev, ino).ok_or(PosixError::ENFILE)?;
-                let sector = FileSystem::INODE_ZONE_START_SECTOR as u32
-                    + ino as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32;
+                let sector = fs_constants::INODE_SECTOR_OFF as u32
+                    + ino as u32 / fs_constants::INODE_NUMBER_PER_SECTOR as u32;
 
                 let buf = global_buffer_manager().bread(dev, PhysicalBlock(sector))?;
                 Self::icopy(&mut *iref.0.lock(), buf, ino);

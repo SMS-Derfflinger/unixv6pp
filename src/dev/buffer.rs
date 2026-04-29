@@ -3,7 +3,7 @@ use core::ptr::NonNull;
 use bitflags::bitflags;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
 
-use crate::dev::buffer_manager::global_buffer_manager;
+use crate::{constants::fs_constants, dev::buffer_manager::global_buffer_manager};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,7 +169,7 @@ pub struct Buf {
 }
 
 impl Buf {
-    pub const BLOCK_SIZE: usize = 512;
+    pub const BLOCK_SIZE: usize = fs_constants::BLOCK_SIZE;
 
     pub const fn new() -> Self {
         Self {

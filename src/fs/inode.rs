@@ -1,9 +1,9 @@
 use crate::{
-    constants::PosixError,
+    constants::{PosixError, fs_constants},
     dev::{
         block_device::block_device_for_dev,
         buffer::{Buffer, DevId, LogicalBlock, PhysicalBlock},
-        buffer_manager::{global_buffer_manager, PPIPE, PRIBIO},
+        buffer_manager::{PPIPE, PRIBIO, global_buffer_manager},
         char_device::{char_device_for_dev, char_device_read, char_device_write},
     },
     fs::{
@@ -95,7 +95,7 @@ pub struct Inode {
 }
 
 impl Inode {
-    pub const BLOCK_SIZE: usize = 512;
+    pub const BLOCK_SIZE: usize = fs_constants::BLOCK_SIZE;
     pub const ADDRESS_PER_INDEX_BLOCK: usize = Self::BLOCK_SIZE / size_of::<i32>();
     pub const SMALL_FILE_BLOCK: usize = 6;
     pub const LARGE_FILE_BLOCK: usize = 128 * 2 + 6;
@@ -403,8 +403,8 @@ impl Inode {
         }
 
         let sector = PhysicalBlock(
-            FileSystem::INODE_ZONE_START_SECTOR as u32
-                + self.i_number as u32 / FileSystem::INODE_NUMBER_PER_SECTOR as u32,
+            fs_constants::INODE_SECTOR_OFF as u32
+                + self.i_number as u32 / fs_constants::INODE_NUMBER_PER_SECTOR as u32,
         );
         let mut buf = global_buffer_manager().bread(self.i_dev, sector).unwrap();
 
@@ -427,7 +427,7 @@ impl Inode {
             },
         };
 
-        let offset = self.i_number as usize % FileSystem::INODE_NUMBER_PER_SECTOR;
+        let offset = self.i_number as usize % fs_constants::INODE_NUMBER_PER_SECTOR;
         buf.as_slice_mut()[offset] = disk_inode;
 
         global_buffer_manager().bwrite(buf).unwrap();

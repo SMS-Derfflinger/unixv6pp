@@ -3,8 +3,7 @@ use core::{array, ptr};
 use eonix_spin::Spin;
 
 use crate::{
-    interrupt::time::get_time,
-    constants::PosixError,
+    constants::{fs_constants, PosixError},
     dev::{
         buffer::{Buf, Buffer, DevId, PhysicalBlock},
         buffer_manager::global_buffer_manager,
@@ -15,6 +14,7 @@ use crate::{
         inode::{DiskInode, Inode},
         InodeRef, SuperBlockRef,
     },
+    interrupt::time::get_time,
     proc::{ProcessManager, PINOD},
     sync::{IrqGuard, SpinExt},
     user::Userspace,
@@ -183,19 +183,11 @@ impl Mount {
 }
 
 pub struct FileSystem {
-    pub m_mount: [Mount; Self::NMOUNT],
+    pub m_mount: [Mount; fs_constants::NMOUNT],
     updlock: bool,
 }
 
 impl FileSystem {
-    pub const NMOUNT: usize = 5;
-
-    pub const SUPER_BLOCK_SECTOR_NUMBER: usize = 512;
-    pub const ROOTINO: i32 = 1;
-
-    pub const INODE_NUMBER_PER_SECTOR: usize = 8;
-    pub const INODE_ZONE_START_SECTOR: usize = 514;
-
     fn install_loaded_super_block(&mut self, loaded_super_block: DiskSuperBlock, time: i32) {
         let super_block = SuperBlock::from_disk(loaded_super_block, time);
         self.m_mount[0].m_dev = DevId(ROOTDEV);
@@ -211,7 +203,7 @@ impl FileSystem {
             let buf = global_buffer_manager()
                 .bread(
                     DevId(ROOTDEV),
-                    PhysicalBlock((Self::SUPER_BLOCK_SECTOR_NUMBER + i) as u32),
+                    PhysicalBlock((fs_constants::SUPERBLOCK_SECTOR_OFF + i) as u32),
                 )
                 .map_err(|_| FileSystemError::LoadSuperBlockFailed)?;
 
@@ -234,7 +226,7 @@ impl FileSystem {
             let mut buf = global_buffer_manager()
                 .get_blk(
                     dev,
-                    PhysicalBlock((Self::SUPER_BLOCK_SECTOR_NUMBER + i) as u32),
+                    PhysicalBlock((fs_constants::SUPERBLOCK_SECTOR_OFF + i) as u32),
                 )
                 .map_err(|_| FileSystemError::BufferUnavailable)?;
 
@@ -263,14 +255,14 @@ impl FileSystem {
             let buf = global_buffer_manager()
                 .bread(
                     dev,
-                    PhysicalBlock(Self::INODE_ZONE_START_SECTOR as u32 + i as u32),
+                    PhysicalBlock(fs_constants::INODE_SECTOR_OFF as u32 + i as u32),
                 )
                 .map_err(|_| FileSystemError::BufferUnavailable)?;
 
             for disk_inode in buf
                 .as_slice::<DiskInode>()
                 .iter()
-                .take(Self::INODE_NUMBER_PER_SECTOR)
+                .take(fs_constants::INODE_NUMBER_PER_SECTOR)
             {
                 ino += 1;
 

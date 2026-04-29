@@ -5,14 +5,11 @@ use eonix_sync_base::LazyLock;
 
 use crate::{constants::fs_constants, dev::buffer::PhysicalBlock, sync::SpinExt};
 
-const SWAP_SECTORS: usize = 0x800;
-const SWAP_SECTORS_OFF: usize = 0x7800;
-
 pub static SWAPPER_AREAS: LazyLock<Spin<AreaList>> = LazyLock::new(|| {
     let mut areas = AreaList::new();
     areas.free(
-        NonZero::new(SWAP_SECTORS_OFF).unwrap(),
-        NonZero::new(SWAP_SECTORS).unwrap(),
+        NonZero::new(fs_constants::SWAP_SECTOR_OFF).unwrap(),
+        NonZero::new(fs_constants::SWAP_SECTORS).unwrap(),
     );
 
     Spin::new(areas)
