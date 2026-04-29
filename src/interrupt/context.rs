@@ -83,6 +83,7 @@ pub struct TrapContext {
     pub sepc: usize,
     pub scause: Scause,
     pub stval: usize,
+    pub kernel_sp: usize,
 }
 
 impl TrapContext {
@@ -90,6 +91,7 @@ impl TrapContext {
     pub const OFFSET_SEPC: usize = offset_of!(TrapContext, sepc);
     pub const OFFSET_SCAUSE: usize = offset_of!(TrapContext, scause);
     pub const OFFSET_STVAL: usize = offset_of!(TrapContext, stval);
+    pub const OFFSET_KERNEL_SP: usize = offset_of!(TrapContext, kernel_sp);
 
     pub const fn new() -> Self {
         Self {
@@ -130,6 +132,7 @@ impl TrapContext {
             sepc: 0,
             scause: Scause::from_bits(0),
             stval: 0,
+            kernel_sp: 0,
         }
     }
 

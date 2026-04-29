@@ -75,6 +75,7 @@ impl Process {
             tty: parent.tty,
             sigmap: 0,
             pages: None,
+            trap_context: TrapContext::new(),
             ctx: TaskContext::new(),
             kstack,
         });
@@ -141,6 +142,7 @@ impl ProcessManager {
 
         context.sstatus = user_sstatus;
         context.sepc = entry;
+        context.kernel_sp = proc.kstack.top().addr().get();
         context.regs.sp = user_sp;
         context.regs.a0 = argc;
         context.regs.a1 = argv;
@@ -361,7 +363,7 @@ impl ProcessManager {
         let shared_text = false;
         proc.text = Some(text.clone());
 
-        let newlen = PAGE_SIZE + mem.data_len + mem.stack_len;
+        let newlen = mem.resident_len();
         proc.expand(newlen);
 
         mem.establish_user(proc);
@@ -403,12 +405,12 @@ impl ProcessManager {
             stack.push_word(argp);
         }
 
-        let argv = stack.top();
+        let argv_ptr = stack.top();
 
         // Pad with two zeros to have the stack aligned to 16 bytes
         stack.push_word(0);
         stack.push_word(0);
-        let argv = stack.push_word(argv);
+        stack.push_word(argv_ptr);
         let sp = stack.push_word(argc);
 
         drop(inode);
@@ -419,7 +421,7 @@ impl ProcessManager {
         self.exe_cnt -= 1;
 
         Userspace::get().clear_signal_handlers();
-        Self::prepare_user_context(proc, parser.entry, sp, argc, argv);
+        Self::prepare_user_context(proc, parser.entry, sp, argc, argv_ptr);
 
         Ok(())
     }
@@ -599,42 +601,22 @@ impl ProcessManager {
     }
 
     fn set_fork_return_context(child: &mut Process) {
-        let parent_context = unsafe { &*Userspace::get().proc().trap_context_ptr() };
-        let child_context = unsafe { &mut *child.trap_context_ptr() };
-        let parent_fork_ret_slot = unsafe { *((parent_context.regs.sp + 0x28) as *const usize) };
+        let parent_context = Userspace::get().ssav[1].0 as *const TrapContext;
+        let parent_context = unsafe { &*parent_context };
 
         crate::println_info!(
-            "fork ctx: parent pid={} sepc={:#x} ra={:#x} sp={:#x} stack_ra={:#x}",
+            "fork ctx: parent pid={} sepc={:#x} ra={:#x} sp={:#x}",
             Userspace::get().proc().pid,
             parent_context.sepc,
             parent_context.regs.ra,
-            parent_context.regs.sp,
-            parent_fork_ret_slot
+            parent_context.regs.sp
         );
-
-        *child_context = *parent_context;
-        child_context.set_return_value(0);
 
         child.init_kernel_context(Some(fork_ret as *const () as usize));
         let child_context = unsafe { &mut *child.trap_context_ptr() };
         *child_context = *parent_context;
+        child_context.kernel_sp = child.kstack.top().addr().get();
         child_context.set_return_value(0);
-
-        let current = Userspace::get().proc() as *mut Process;
-        switch_user_struct(child);
-        Userspace::get().mem.map_to_actual_pt(child);
-        let child_fork_ret_slot = unsafe { *((child_context.regs.sp + 0x28) as *const usize) };
-        switch_user_struct(unsafe { &*current });
-        Userspace::get().mem.map_to_actual_pt(unsafe { &*current });
-
-        crate::println_info!(
-            "fork ctx: child pid={} sepc={:#x} ra={:#x} sp={:#x} stack_ra={:#x}",
-            child.pid,
-            child_context.sepc,
-            child_context.regs.ra,
-            child_context.regs.sp,
-            child_fork_ret_slot
-        );
     }
 
     pub fn fork(&mut self) -> u32 {
@@ -687,6 +669,7 @@ impl ProcessManager {
             tty: core::ptr::null(),
             sigmap: 0,
             pages: None,
+            trap_context: TrapContext::new(),
             ctx: TaskContext::new(),
             kstack: KernelStack::new(),
         });
@@ -805,18 +788,15 @@ extern "C" fn go_init() -> ! {
     go_userspace();
 }
 
+#[unsafe(naked)]
 extern "C" fn fork_ret() -> ! {
-    let proc = Userspace::get().proc();
-    let context = unsafe { &mut *proc.trap_context_ptr() };
-    crate::println_info!(
-        "fork_ret: pid={} sepc={:#x} ra={:#x} sp={:#x}",
-        proc.pid,
-        context.sepc,
-        context.regs.ra,
-        context.regs.sp
-    );
-    context.set_return_value(0);
-    go_userspace();
+    naked_asm!(
+        "csrr  t0, sscratch",
+        "sd    zero, {a0}(t0)",
+        "j     {go_userspace}",
+        a0 = const Registers::OFFSET_A0,
+        go_userspace = sym go_userspace,
+    )
 }
 
 fn halt() {

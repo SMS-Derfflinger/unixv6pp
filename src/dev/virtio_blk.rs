@@ -1,4 +1,6 @@
-use core::{ptr::NonNull, slice};
+use core::{ptr::{self, NonNull}, slice};
+
+use alloc::{boxed::Box, vec};
 
 use eonix_mm::address::Addr;
 use virtio_drivers::{
@@ -147,6 +149,10 @@ unsafe impl Hal for VirtioHal {
         let paddr = alloc.phys().addr();
         let vaddr = NonNull::new(phys_to_virt(alloc.phys())).unwrap();
 
+        unsafe {
+            ptr::write_bytes(vaddr.as_ptr(), 0, alloc_pages * PAGE_SIZE);
+        }
+
         core::mem::forget(alloc);
         (pseudo_phys_to_bus(paddr), vaddr)
     }
@@ -161,11 +167,41 @@ unsafe impl Hal for VirtioHal {
         NonNull::new(paddr as *mut u8).unwrap()
     }
 
-    unsafe fn share(buffer: NonNull<[u8]>, _direction: BufferDirection) -> PhysAddr {
-        pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(buffer.as_ptr().cast::<u8>()))
+    unsafe fn share(buffer: NonNull<[u8]>, direction: BufferDirection) -> PhysAddr {
+        let len = buffer.len();
+        let mut shared = vec![0u8; len].into_boxed_slice();
+
+        if matches!(direction, BufferDirection::DriverToDevice | BufferDirection::Both) {
+            unsafe {
+                buffer
+                    .as_ptr()
+                    .cast::<u8>()
+                    .copy_to(shared.as_mut_ptr(), len);
+            }
+        }
+
+        let paddr = pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(shared.as_mut_ptr()));
+        let _ = Box::into_raw(shared);
+        paddr
     }
 
-    unsafe fn unshare(_paddr: PhysAddr, _buffer: NonNull<[u8]>, _direction: BufferDirection) {}
+    unsafe fn unshare(paddr: PhysAddr, buffer: NonNull<[u8]>, direction: BufferDirection) {
+        let len = buffer.len();
+        let vaddr = phys_to_virt(eonix_mm::address::PAddr::from_val(bus_to_pseudo_phys(paddr)));
+        let shared = unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(vaddr, len)) };
+
+        if matches!(
+            direction,
+            BufferDirection::DeviceToDriver | BufferDirection::Both
+        ) {
+            unsafe {
+                buffer
+                    .as_ptr()
+                    .cast::<u8>()
+                    .copy_from(shared.as_ptr(), len);
+            }
+        }
+    }
 }
 
 fn pseudo_phys_to_bus(paddr: usize) -> usize {

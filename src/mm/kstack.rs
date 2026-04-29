@@ -1,7 +1,6 @@
-use core::{mem::size_of, ptr::NonNull};
+use core::ptr::NonNull;
 
 use crate::{
-    interrupt::context::TrapContext,
     mm::{phys_to_virt, KernelPages, PAGE_SIZE},
 };
 
@@ -26,20 +25,6 @@ impl KernelStack {
             phys_to_virt(self.pages.phys())
                 .wrapping_add(KSTACK_SIZE)
                 .cast(),
-        )
-        .unwrap()
-    }
-
-    /// 为 trap frame 预留栈顶空间，普通内核执行栈从更低地址开始使用。
-    pub fn task_top(&self) -> NonNull<usize> {
-        let top = self.top().addr().get() - size_of::<TrapContext>();
-        NonNull::new((top & !0xf) as *mut usize).unwrap()
-    }
-
-    /// 当前进程专属 trap frame 固定放在内核栈顶端。
-    pub fn trap_context(&self) -> NonNull<TrapContext> {
-        NonNull::new(
-            (self.top().addr().get() - size_of::<TrapContext>()) as *mut TrapContext,
         )
         .unwrap()
     }

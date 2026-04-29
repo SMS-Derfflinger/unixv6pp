@@ -172,6 +172,7 @@ pub struct Process {
     pub tty: *const Terminal,
     pub sigmap: usize,
     pub pages: Option<&'static mut PhysPage>,
+    pub trap_context: TrapContext,
     pub ctx: TaskContext,
 
     /// 每个进程独立的内核栈
@@ -187,22 +188,17 @@ impl Process {
     }
 
     pub fn init_kernel_context(&mut self, entry: Option<usize>) {
-        unsafe {
-            self.kstack
-                .trap_context()
-                .as_ptr()
-                .write(TrapContext::new());
-        }
+        self.trap_context = TrapContext::new();
+        self.trap_context.kernel_sp = self.kstack.top().addr().get();
 
-        self.ctx
-            .set_stack_pointer(self.kstack.task_top().addr().get());
+        self.ctx.set_stack_pointer(self.kstack.top().addr().get());
         if let Some(entry) = entry {
             self.ctx.set_program_counter(entry);
         }
     }
 
     pub fn trap_context_ptr(&mut self) -> *mut TrapContext {
-        self.kstack.trap_context().as_ptr()
+        &raw mut self.trap_context
     }
 
     pub fn task_context_ptr(&mut self) -> *mut TaskContext {
@@ -475,7 +471,7 @@ impl Process {
         let mem = &mut Userspace::get().mem;
         mem.stack_len += change;
 
-        let newlen = PAGE_SIZE + mem.data_len + mem.stack_len;
+        let newlen = mem.resident_len();
         mem.establish_user(self)?;
 
         self.expand(newlen);
@@ -508,7 +504,7 @@ impl Process {
 
         let change = newlen as isize - mem.data_len as isize;
         mem.data_len = newlen;
-        let newlen = newlen + PAGE_SIZE + mem.stack_len;
+        let newlen = mem.resident_len();
 
         if change < 0 {
             let change_abs = -change as usize;

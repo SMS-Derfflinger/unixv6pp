@@ -60,6 +60,10 @@ pub(crate) unsafe extern "C" fn _trap_entry() -> ! {
         "sd    t1, {scause}(a0)",
         "sd    t2, {sstatus}(a0)",
         "sd    t3, {stval}(a0)",
+        "andi  t1, t2, 0x100",
+        "bnez  t1, 1f",
+        "ld    sp, {kernel_sp}(a0)",
+        "1:",
         "call {trap_handler}",
         "csrr  t0, sscratch",
         "ld    t1, {sepc}(t0)",
@@ -133,6 +137,7 @@ pub(crate) unsafe extern "C" fn _trap_entry() -> ! {
         sepc = const TrapContext::OFFSET_SEPC,
         scause = const TrapContext::OFFSET_SCAUSE,
         stval = const TrapContext::OFFSET_STVAL,
+        kernel_sp = const TrapContext::OFFSET_KERNEL_SP,
         trap_handler = sym trap_handler,
     );
 }

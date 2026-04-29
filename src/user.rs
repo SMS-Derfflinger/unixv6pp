@@ -247,6 +247,10 @@ impl MemoryDescriptor {
     pub const USER_SPACE_START: usize = 0;
     pub const USER_SPACE_END: usize = Self::USER_SPACE_START + Self::USER_SPACE_SIZE;
 
+    fn align_up_page(len: usize) -> usize {
+        len.div_ceil(PAGE_SIZE) * PAGE_SIZE
+    }
+
     pub fn new() -> Self {
         let user_pts = unsafe { Box::new_zeroed().assume_init() };
 
@@ -262,6 +266,12 @@ impl MemoryDescriptor {
 
     pub fn len(&self) -> usize {
         PAGE_SIZE + self.text_len + self.data_len + self.stack_len
+    }
+
+    pub fn resident_len(&self) -> usize {
+        PAGE_SIZE
+            + Self::align_up_page(self.data_len)
+            + Self::align_up_page(self.stack_len)
     }
 
     pub fn end(&self) -> usize {
