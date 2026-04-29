@@ -2,19 +2,19 @@
 
 extern crate alloc;
 
+mod constants;
 mod dev;
 mod fs;
 mod interrupt;
 mod loader;
 pub mod machine;
 pub mod mm;
-pub mod proc;
-pub mod tty;
-mod user;
-mod constants;
 mod print;
+pub mod proc;
 mod serial;
 pub mod sync;
+pub mod tty;
+mod user;
 
 use core::arch::naked_asm;
 use core::panic::PanicInfo;

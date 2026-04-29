@@ -4,7 +4,7 @@ use riscv::register::time;
 
 use crate::{
     constants::platform::CPU_FREQ_HZ,
-    interrupt::{context::TrapContext, schedule_on_user_return},
+    interrupt::context::TrapContext,
     machine::asm::enable_interrupts,
     proc::{Channel, ProcessManager, ProcessState},
     serial::KResult,
@@ -56,7 +56,7 @@ pub fn handle_timer_interrupt(context: &mut TrapContext) {
     // fetch_add returns the old value, add 1 to get current jiffies.
     let ticks = TICKS.fetch_add(1, Ordering::Release) + 1;
 
-    if ticks < TICKS_PER_INTERRUPT {
+    if ticks < INTERRUPTS_PER_SECOND {
         set_next_timer();
         return;
     }
@@ -98,8 +98,6 @@ pub fn handle_timer_interrupt(context: &mut TrapContext) {
         current.process_signal(context);
     }
     current.set_pri();
-
-    schedule_on_user_return(context);
 }
 
 /// Set a timer that should wake us up at or earlier than `wake`.

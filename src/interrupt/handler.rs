@@ -6,11 +6,10 @@ use riscv::{
 };
 
 use crate::{
-    constants::platform::UART0_IRQ,
-    constants::PosixError,
+    constants::{platform::UART0_IRQ, PosixError},
     interrupt::{
         context::{Registers, TrapContext},
-        plic, system_call, time,
+        plic, schedule_on_user_return, system_call, time,
     },
     println_fatal, println_info, serial, tty,
 };
@@ -179,7 +178,10 @@ fn halt_forever() -> ! {
 extern "C" fn trap_handler(context: &mut TrapContext) {
     match context.cause() {
         Trap::Interrupt(i) => match Interrupt::from_number(i).unwrap() {
-            Interrupt::SupervisorTimer => time::handle_timer_interrupt(context),
+            Interrupt::SupervisorTimer => {
+                time::handle_timer_interrupt(context);
+                schedule_on_user_return(context);
+            }
             Interrupt::SupervisorExternal => match plic::claim_interrupt() {
                 Some(UART0_IRQ) => {
                     while let Some(byte) = serial::serial_try_read_byte() {
@@ -251,6 +253,7 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                     );
                 }
                 system_call::handle_user_ecall(context);
+                schedule_on_user_return(context);
             }
             exception @ (Exception::InstructionPageFault
             | Exception::LoadPageFault

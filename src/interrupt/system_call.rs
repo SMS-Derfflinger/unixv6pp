@@ -96,8 +96,6 @@ pub fn handle_user_ecall(context: &mut TrapContext) {
     }
 
     Userspace::get().proc().set_pri();
-
-    schedule_on_user_return(context);
 }
 
 fn copy_args(context: &TrapContext) {
