@@ -5,17 +5,12 @@ extern crate alloc;
 mod dev;
 mod fs;
 mod interrupt;
-#[cfg(target_arch = "x86")]
-mod kernel;
 mod loader;
 pub mod machine;
 pub mod mm;
 pub mod proc;
 pub mod tty;
 mod user;
-#[cfg(target_arch = "x86")]
-mod vesa;
-
 mod constants;
 mod print;
 mod serial;
