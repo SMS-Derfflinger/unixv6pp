@@ -28,6 +28,7 @@ intrusive-collections = { version = "0.9.7", default-features = false, features 
 bitflags = "2.11.0"
 sbi = "0.3.0"
 riscv = { version = "0.13.0", features = ["s-mode"] }
+virtio-drivers = { version = "0.11.0" }
 
 [features]
 default = []
