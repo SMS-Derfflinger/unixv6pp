@@ -507,7 +507,7 @@ impl FileManager {
         let inode = pinode.lock();
         let ino = inode.i_number;
         let dev = inode.i_dev;
-        inode.i_update(get_time() as i32);
+        inode.i_update(get_time() as u32);
         drop(inode);
 
         let sector = fs_constants::INODE_SECTOR_OFF as u32

@@ -173,17 +173,7 @@ fn halt_forever() -> ! {
 extern "C" fn trap_handler(context: &mut TrapContext) {
     match context.cause() {
         Trap::Interrupt(i) => match Interrupt::from_number(i).unwrap() {
-            Interrupt::SupervisorTimer => {
-                let tick = time::handle_timer_interrupt();
-                if tick <= 3 || (tick % time::INTERRUPTS_PER_SECOND as u64) == 0 {
-                    println_info!(
-                        "trap: timer tick={} sepc={:#x} stval={:#x}",
-                        tick,
-                        context.sepc,
-                        context.stval
-                    );
-                }
-            }
+            Interrupt::SupervisorTimer => time::handle_timer_interrupt(context),
             Interrupt::SupervisorExternal => match plic::claim_interrupt() {
                 Some(UART0_IRQ) => {
                     while let Some(byte) = serial::serial_try_read_byte() {

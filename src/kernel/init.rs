@@ -1,4 +1,4 @@
-use core::{arch::naked_asm, mem::MaybeUninit, ptr, sync::atomic::compiler_fence};
+use core::{arch::naked_asm, ptr, sync::atomic::compiler_fence};
 
 use crate::{
     compat::compat_flush_page_directory,
@@ -8,9 +8,6 @@ use crate::{
     kernel::kernel::rust_kernel_initialize,
     machine::{
         asm::enable_interrupts,
-        chip::{
-            cmos_read_byte_high, cmos_read_byte_low, cmos_read_time, init_peripherals, SystemTime,
-        },
         enable_page_protection, init_gdt, init_idt, init_page_directory, init_user_page_table,
         load_gdt, load_idt,
     },
@@ -22,7 +19,7 @@ use crate::{
     vesa::{vesa_clear, vesa_init, VbeModeInfo},
 };
 
-use super::{diagnose::_diagnose_trace_on, syscall::_lib_open, utility::_make_kernel_time};
+use super::{diagnose::_diagnose_trace_on, syscall::_lib_open};
 
 const KERNEL_SPACE_START_ADDRESS: usize = 0xc0000000;
 const VESA_MODE_INFO_ADDR: usize = KERNEL_SPACE_START_ADDRESS + 0x7e00;
@@ -143,9 +140,8 @@ fn init_vesa() {
 }
 
 fn init_kernel_time() {
-    let mut time = MaybeUninit::<SystemTime>::uninit();
-    cmos_read_time(time.as_mut_ptr());
-    set_time(_make_kernel_time(time.as_ptr()));
+    let time = cmos_read_time();
+    set_time(time.to_kernel_time());
 }
 
 fn read_memory_size() {

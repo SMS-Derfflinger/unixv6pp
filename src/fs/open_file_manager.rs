@@ -2,12 +2,23 @@ use eonix_spin::Spin;
 use eonix_sync_base::LazyLock;
 
 use crate::{
-    Ext, constants::{PosixError, fs_constants}, dev::{
+    constants::{fs_constants, PosixError},
+    dev::{
         buffer::{Buffer, DevId, PhysicalBlock},
         buffer_manager::global_buffer_manager,
-    }, fs::{
-        self, FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot, file::{File, FileFlags, OpenFiles}, file_system::FileSystem, inode::{DiskInode, Inode, InodeFlag, InodeMode}
-    }, interrupt::time::get_time, proc::{Channel, PINOD, ProcessManager}, sync::{IrqGuard, SpinExt}, user::Userspace
+    },
+    fs::{
+        self,
+        file::{File, FileFlags, OpenFiles},
+        file_system::FileSystem,
+        inode::{DiskInode, Inode, InodeFlag, InodeMode},
+        FileRef, FileSlot, InodeRef, InodeRefGuard, InodeSlot,
+    },
+    interrupt::time::get_time,
+    proc::{Channel, ProcessManager, PINOD},
+    sync::{IrqGuard, SpinExt},
+    user::Userspace,
+    Ext,
 };
 
 pub static GLOBAL_OPEN_FILE_TABLE: LazyLock<Spin<OpenFileTable>> =
@@ -190,7 +201,7 @@ impl InodeTable {
             let _ = fs::global_file_system().i_free(inode.i_dev, inode.i_number);
         }
 
-        inode.i_update(get_time() as i32);
+        inode.i_update(get_time() as u32);
         inode.prele();
         inode.i_flag = InodeFlag::empty();
         inode.i_number = -1;
@@ -204,7 +215,7 @@ impl InodeTable {
             }
 
             inode.i_flag |= InodeFlag::ILOCK;
-            inode.i_update(get_time() as i32);
+            inode.i_update(get_time() as u32);
             inode.prele();
         }
     }

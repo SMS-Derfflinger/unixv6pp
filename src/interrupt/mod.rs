@@ -1,16 +1,17 @@
 use riscv::register::sie;
 
 use crate::{
-    interrupt::handler::_trap_entry,
+    interrupt::{context::TrapContext, handler::_trap_entry},
     machine::asm,
     proc::ProcessManager,
     serial,
+    sync::IrqGuard,
 };
 
 pub mod context;
-pub mod system_call;
 pub mod handler;
 pub mod plic;
+pub mod system_call;
 pub mod time;
 
 pub fn init_trap() {
@@ -29,4 +30,18 @@ pub fn init_interrupt_controller() {
     }
 
     asm::enable_interrupts();
+}
+
+pub fn schedule_on_user_return(context: &mut TrapContext) {
+    if !context.is_user() {
+        return;
+    }
+
+    let _ctx = IrqGuard::disable_save();
+
+    if ProcessManager::get().runrun <= 0 {
+        return;
+    }
+
+    ProcessManager::get().switch();
 }

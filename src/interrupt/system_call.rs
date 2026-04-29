@@ -2,11 +2,14 @@ use core::ptr::NonNull;
 
 use crate::{
     constants::{PosixError, Signal, PSLEP},
-    interrupt::{context::TrapContext, time::get_time},
+    interrupt::{
+        context::TrapContext,
+        schedule_on_user_return,
+        time::{get_time, sleep_user_until},
+    },
     proc::ProcessManager,
     serial::KResult,
-    sync::IrqGuard,
-    user::Userspace,
+    user::{Pointer, Userspace},
 };
 
 mod syscall_number {
@@ -70,7 +73,7 @@ pub fn handle_user_ecall(context: &mut TrapContext) {
     }
 
     context.advance_sepc(4);
-    Userspace::get().ssav[1] = crate::user::Pointer(context as *mut _ as usize);
+    Userspace::get().ssav[1] = Pointer(context as *mut _ as usize);
     Userspace::get().ar0 = &raw mut context.regs.a0;
     Userspace::get().error = None;
     copy_args(context);
@@ -92,6 +95,8 @@ pub fn handle_user_ecall(context: &mut TrapContext) {
     }
 
     Userspace::get().proc().set_pri();
+
+    schedule_on_user_return(context);
 }
 
 fn copy_args(context: &TrapContext) {
@@ -192,26 +197,10 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
             Ok(0)
         }
         sys::SLEEP => {
-            let _ctx = IrqGuard::disable_save();
-            let wake_time = get_time() + Userspace::get().args[0] as u32;
+            let sleep_time = Userspace::get().args[0];
+            let wake_time = get_time() + sleep_time;
 
-            loop {
-                let now = get_time();
-                let tout = time_tout();
-
-                if wake_time <= now {
-                    break;
-                }
-
-                if tout <= now || tout > wake_time {
-                    time_set_tout(wake_time);
-                }
-
-                Userspace::get()
-                    .proc()
-                    .sleep_user(time_tout_address(), PSLEP)?;
-            }
-
+            sleep_user_until(wake_time, PSLEP)?;
             Ok(0)
         }
         sys::SYNC => trap_void(crate::fs::syscall_sync),
