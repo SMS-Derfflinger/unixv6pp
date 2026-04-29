@@ -133,7 +133,7 @@ impl ProcessManager {
         argc: usize,
         argv: usize,
     ) {
-        let context = unsafe { &mut *proc.trap_context_ptr() };
+        let context = &mut proc.trap_context;
         *context = TrapContext::new();
 
         let mut user_sstatus = sstatus::read();
@@ -253,7 +253,11 @@ impl ProcessManager {
             }
 
             #[cfg(feature = "debug_irq")]
-            crate::println_debug!("waking up chan={:#x} pid {:2}", chan.channel_addr(), proc.pid);
+            crate::println_debug!(
+                "waking up chan={:#x} pid {:2}",
+                chan.channel_addr(),
+                proc.pid
+            );
             proc.set_run();
         }
     }
@@ -309,7 +313,12 @@ impl ProcessManager {
         Ok(())
     }
 
-    pub fn exec(&mut self, proc: &mut Process, path: &[u8], argv: &[NonNull<i8>]) -> KResult<()> {
+    pub fn exec(
+        &mut self,
+        proc: &mut Process,
+        path: &[u8],
+        argv: &[NonNull<i8>],
+    ) -> KResult<usize> {
         crate::println_info!("Process {} execing", proc.pid);
         let inode = FileManager
             .find(path, DirSearchMode::Open)?
@@ -405,13 +414,7 @@ impl ProcessManager {
             stack.push_word(argp);
         }
 
-        let argv_ptr = stack.top();
-
-        // Pad with two zeros to have the stack aligned to 16 bytes
-        stack.push_word(0);
-        stack.push_word(0);
-        stack.push_word(argv_ptr);
-        let sp = stack.push_word(argc);
+        let sp = stack.top();
 
         drop(inode);
         if self.exe_cnt >= NEXEC {
@@ -421,9 +424,9 @@ impl ProcessManager {
         self.exe_cnt -= 1;
 
         Userspace::get().clear_signal_handlers();
-        Self::prepare_user_context(proc, parser.entry, sp, argc, argv_ptr);
+        Self::prepare_user_context(proc, parser.entry, sp, argc, sp);
 
-        Ok(())
+        Ok(proc.trap_context.regs.a0)
     }
 
     pub fn wait(&mut self, proc: &mut Process) -> KResult<u32> {

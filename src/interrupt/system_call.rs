@@ -149,9 +149,7 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
             let argv = unsafe { core::slice::from_raw_parts(argv_ptr, argc) };
 
             crate::println_info!("Execing: {}", core::str::from_utf8(path).unwrap());
-            pm.exec(proc, path, argv)?;
-
-            Ok(0)
+            pm.exec(proc, path, argv)
         }
         sys::CHDIR => trap_void(crate::fs::syscall_chdir),
         sys::TIME => Ok(super::time::get_time() as usize),
