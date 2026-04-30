@@ -2,6 +2,7 @@ use core::{mem::MaybeUninit, ptr::NonNull};
 
 use eonix_mm::{address::{PAddr, PRange}, paging::{PFN, Zone}};
 
+use crate::constants::platform::RAM_BASE;
 use crate::mm::PAGE_SIZE;
 
 use super::PhysPage;
@@ -29,7 +30,7 @@ impl MemoryZone {
         let offset = unsafe { ptr.offset_from(page_array().as_ptr()) };
         match offset {
             ..0 | PAGE_COUNTI.. => panic!("Overflow"),
-            offset => PFN::from_val(offset as usize),
+            offset => PFN::from_val((RAM_BASE / PAGE_SIZE) + offset as usize),
         }
     }
 }
@@ -38,15 +39,21 @@ impl Zone for MemoryZone {
     type Page = PhysPage;
 
     fn contains_prange(&self, range: PRange) -> bool {
-        range.end() <= PAddr::from_val(MEM_SIZE)
+        range.start() >= PAddr::from_val(RAM_BASE)
+            && range.end() <= PAddr::from_val(RAM_BASE + MEM_SIZE)
     }
 
     fn get_page(&self, pfn: PFN) -> Option<NonNull<Self::Page>> {
-        if usize::from(pfn) >= PAGE_COUNT {
+        let base_pfn = RAM_BASE / PAGE_SIZE;
+        let Some(index) = usize::from(pfn).checked_sub(base_pfn) else {
+            return None;
+        };
+
+        if index >= PAGE_COUNT {
             return None;
         }
 
-        Some(NonNull::from_ref(&page_array()[usize::from(pfn)]))
+        Some(NonNull::from_ref(&page_array()[index]))
     }
 }
 

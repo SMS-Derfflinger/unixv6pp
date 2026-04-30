@@ -16,7 +16,7 @@ pub use page_manager::{free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_
 pub use swapper_manager::{swap_alloc, swap_free, SWAPPER_AREAS};
 pub use zone::ZONE;
 
-/// Copy bytes between pseudo-physical addresses through the kernel linear map.
+/// Copy bytes between physical addresses through the kernel linear map.
 pub fn phys_copy(from: PAddr, to: PAddr, len: usize) {
     if len == 0 || from == to {
         return;

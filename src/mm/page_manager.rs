@@ -6,6 +6,7 @@ use eonix_mm::{
 use eonix_spin::Spin;
 
 use crate::{
+    constants::platform::RAM_BASE,
     mm::{
         page::PAGE_SIZE,
         zone::{init_zone, MemoryZone, MEM_SIZE, ZONE},
@@ -47,11 +48,17 @@ pub fn init_page_managers() {
         fn __kernel_end();
     }
 
-    let kernel_end = (__kernel_end as usize) - crate::constants::platform::RAM_BASE;
+    let kernel_end = __kernel_end as usize;
     let kernel_end = kernel_end.div_ceil(PAGE_SIZE) * PAGE_SIZE;
 
-    let krange = PRange::new(PAddr::from_val(kernel_end), PAddr::from_val(0x3ff000));
-    let urange = PRange::new(PAddr::from_val(0x400000), PAddr::from_val(MEM_SIZE));
+    let krange = PRange::new(
+        PAddr::from_val(kernel_end),
+        PAddr::from_val(RAM_BASE + 0x3ff000),
+    );
+    let urange = PRange::new(
+        PAddr::from_val(RAM_BASE + 0x400000),
+        PAddr::from_val(RAM_BASE + MEM_SIZE),
+    );
 
     init_zone();
 

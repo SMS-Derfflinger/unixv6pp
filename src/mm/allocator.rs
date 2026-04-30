@@ -7,6 +7,7 @@ use slab_allocator::{SlabAlloc, SlabPageAlloc};
 
 use super::{PageList, PhysPage};
 use crate::{
+    constants::platform::{KERNEL_VIRT_BASE, RAM_BASE},
     mm::page_manager::{alloc_kernel_page, free_page, KERNEL_PAGE_MANAGER},
     println_info,
     sync::SpinExt as _,
@@ -18,7 +19,7 @@ struct SlabPageAllocImpl;
 static SLAB_ALLOCATOR: LazyLock<SlabAlloc<SlabPageAllocImpl, 10>> =
     LazyLock::new(|| SlabAlloc::new_in(SlabPageAllocImpl));
 
-const VIRT_OFFSET: usize = 0xC0000000;
+const VIRT_OFFSET: usize = KERNEL_VIRT_BASE - RAM_BASE;
 
 pub fn phys_to_virt(paddr: PAddr) -> *mut u8 {
     let addr = paddr.addr() + VIRT_OFFSET;

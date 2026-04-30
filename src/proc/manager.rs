@@ -13,6 +13,7 @@ use eonix_sync_base::LazyLock;
 use riscv::register::sstatus::{self, SPP};
 
 use crate::{
+    constants::platform::RAM_BASE,
     constants::{PosixError, Signal},
     dev::{buffer::BufFlag, buffer_manager::global_buffer_manager},
     fs::{DirSearchMode, FileManager, InodeMode, InodeRefExt},
@@ -643,7 +644,7 @@ impl ProcessManager {
     }
 
     pub fn setup_proc_zero(&mut self) {
-        const PPDA_ADDR: usize = 0x400000 - 0x1000;
+        const PPDA_ADDR: usize = RAM_BASE + 0x400000 - 0x1000;
 
         // 0 号进程是调度器（SSYS），永远运行在内核态。
         // RISC-V 下不再依赖 TSS esp0，而是通过 sscratch 绑定当前 trap 上下文。

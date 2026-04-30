@@ -14,7 +14,7 @@ use virtio_drivers::{
 
 use crate::{
     constants::platform::{
-        KERNEL_VIRT_BASE, RAM_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_COUNT, VIRTIO_MMIO_STRIDE,
+        KERNEL_VIRT_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_COUNT, VIRTIO_MMIO_STRIDE,
     },
     dev::buffer::{BufFlag, BufRef},
     mm::{free_page, phys_to_virt, virt_to_phys, KernelPages, PAGE_SIZE},
@@ -154,12 +154,12 @@ unsafe impl Hal for VirtioHal {
         }
 
         core::mem::forget(alloc);
-        (pseudo_phys_to_bus(paddr), vaddr)
+        (paddr, vaddr)
     }
 
     unsafe fn dma_dealloc(paddr: PhysAddr, _vaddr: NonNull<u8>, pages: usize) -> i32 {
         let alloc_pages = pages.max(1).next_power_of_two();
-        free_page(bus_to_pseudo_phys(paddr), alloc_pages * PAGE_SIZE);
+        free_page(paddr, alloc_pages * PAGE_SIZE);
         0
     }
 
@@ -180,14 +180,14 @@ unsafe impl Hal for VirtioHal {
             }
         }
 
-        let paddr = pseudo_phys_to_bus(kernel_ptr_to_pseudo_phys(shared.as_mut_ptr()));
+        let paddr = kernel_ptr_to_phys(shared.as_mut_ptr());
         let _ = Box::into_raw(shared);
         paddr
     }
 
     unsafe fn unshare(paddr: PhysAddr, buffer: NonNull<[u8]>, direction: BufferDirection) {
         let len = buffer.len();
-        let vaddr = phys_to_virt(eonix_mm::address::PAddr::from_val(bus_to_pseudo_phys(paddr)));
+        let vaddr = phys_to_virt(eonix_mm::address::PAddr::from_val(paddr));
         let shared = unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(vaddr, len)) };
 
         if matches!(
@@ -204,19 +204,11 @@ unsafe impl Hal for VirtioHal {
     }
 }
 
-fn pseudo_phys_to_bus(paddr: usize) -> usize {
-    RAM_BASE + paddr
-}
-
-fn bus_to_pseudo_phys(paddr: usize) -> usize {
-    paddr - RAM_BASE
-}
-
-fn kernel_ptr_to_pseudo_phys(ptr: *mut u8) -> usize {
+fn kernel_ptr_to_phys(ptr: *mut u8) -> usize {
     let addr = ptr.addr();
     if addr >= KERNEL_VIRT_BASE {
         virt_to_phys(ptr).addr()
     } else {
-        addr - RAM_BASE
+        addr
     }
 }

@@ -41,6 +41,7 @@ SECTIONS
         __bss_end = .;
     } > RAM
 
+    . = ALIGN(0x1000);
     __kernel_end = .;
 
     /DISCARD/ :

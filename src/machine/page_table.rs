@@ -42,8 +42,6 @@ const VIRTIO_MMIO_L1_INDEX: usize =
 pub const USER_PAGE_TABLE_COUNT: usize = 4;
 pub const USER_SPACE_SIZE: usize = USER_PAGE_TABLE_COUNT * SIZE_PER_USER_PAGE_TABLE_MAP;
 
-const MACHINE_PFN_BASE: usize = RAM_BASE >> 12;
-
 const PTE_V: u64 = 1 << 0;
 const PTE_R: u64 = 1 << 1;
 const PTE_W: u64 = 1 << 2;
@@ -119,15 +117,14 @@ impl PageTableEntry {
 
     pub fn set(&mut self, pfn: Option<PFN>, flags: EntryFlags) {
         self.0 = pfn
-            .map(|pfn| encode_leaf_entry_pseudo(usize::from(pfn) << 12, flags))
+            .map(|pfn| encode_large_leaf_raw(usize::from(pfn) << 12, flags))
             .unwrap_or(0);
     }
 
     pub fn get(&self) -> (PFN, EntryFlags) {
         let flags = decode_entry_flags(self.0);
         let pfn = if flags.contains(EntryFlags::VALID) {
-            let machine_pfn = ((self.0 >> PPN_SHIFT) as usize).saturating_sub(MACHINE_PFN_BASE);
-            PFN::from_val(machine_pfn)
+            PFN::from_val((self.0 >> PPN_SHIFT) as usize)
         } else {
             PFN::from_val(0)
         };
@@ -323,7 +320,7 @@ fn init_kernel_high_map(kernel: &mut PageDirectory, kernel_leaf: &mut PageTable)
     for index in 0..entry_count {
         if index == KERNEL_PAGED_WINDOW_INDEX {
             for (pte_idx, pte) in kernel_leaf.iter_mut().enumerate() {
-                let paddr = KERNEL_PAGED_WINDOW_BASE + pte_idx * PAGE_SIZE;
+                let paddr = RAM_BASE + KERNEL_PAGED_WINDOW_BASE + pte_idx * PAGE_SIZE;
                 pte.set(
                     Some(PFN::from_val(paddr >> 12)),
                     EntryFlags::VALID
@@ -373,16 +370,7 @@ fn encode_table_ptr<T>(table: *const T) -> u64 {
 
 fn encode_large_leaf_raw(paddr: usize, flags: EntryFlags) -> u64 {
     let pfn = paddr >> 12;
-    ((pfn as u64) << PPN_SHIFT) | encode_leaf_flags(flags)
-}
-
-fn encode_leaf_entry_pseudo(paddr: usize, flags: EntryFlags) -> u64 {
-    let machine_paddr = RAM_BASE + paddr;
-    encode_large_leaf_raw(machine_paddr, flags)
-}
-
-fn encode_leaf_flags(flags: EntryFlags) -> u64 {
-    flags.bits()
+    ((pfn as u64) << PPN_SHIFT) | flags.bits()
 }
 
 fn decode_entry_flags(entry: u64) -> EntryFlags {
