@@ -112,13 +112,13 @@ impl ProcessManager {
     }
 
     fn switch_to(current: &mut Process, next: &mut Process) {
+        let _irq = IrqGuard::disable_save();
         switch_user_struct(next);
         Userspace::get().mem.map_to_actual_pt(next);
         //Userspace::get().proc = &raw mut *next;
         asm::write_sscratch(next.trap_context_ptr() as usize);
 
         unsafe {
-            let _ctx = IrqGuard::disable_save();
             TaskContext::switch(&mut current.ctx, &mut next.ctx);
         }
     }

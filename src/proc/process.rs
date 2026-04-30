@@ -462,8 +462,11 @@ impl Process {
             }
         }
 
-        switch_user_struct(self);
-        Userspace::get().mem.map_to_actual_pt(self);
+        {
+            let _irq = IrqGuard::disable_save();
+            switch_user_struct(self);
+            Userspace::get().mem.map_to_actual_pt(self);
+        }
     }
 
     pub fn sstack(&mut self) -> KResult<()> {
@@ -484,6 +487,7 @@ impl Process {
             phys_copy(dst - change, dst, 1);
         }
 
+        let _irq = IrqGuard::disable_save();
         mem.map_to_actual_pt(self);
         Ok(())
     }

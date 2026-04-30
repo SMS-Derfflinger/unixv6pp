@@ -247,7 +247,6 @@ pub extern "C" fn _user_page_table_array() -> *mut PageTable {
 }
 
 pub fn switch_user_struct(proc: &Process) {
-    let _irq = IrqGuard::disable_save();
     let pfn = PFN::from_val(proc.addr >> 12);
     kernel_page_table_mut()[KERNEL_UAREA_PTE_INDEX]
         .set(Some(pfn), EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE);
