@@ -431,7 +431,9 @@ impl ProcessManager {
 
         loop {
             let mut has_child = false;
-            for p in &mut self.procs {
+            let mut zombie_idx = None;
+
+            for (idx, p) in self.procs.iter_mut().enumerate() {
                 if p.ppid != proc.pid {
                     continue;
                 }
@@ -446,22 +448,24 @@ impl ProcessManager {
                 has_child = true;
 
                 if p.stat == ProcessState::SZOMB {
-                    // wait() 系统调用返回子进程的 pid
-                    let pid = p.pid;
-
-                    // 清理僵尸进程
-                    p.stat = ProcessState::SNULL;
-                    p.pid = 0;
-                    p.ppid = 0;
-                    p.pending_signal = None;
-                    p.flag = 0;
-
-                    // greatbridf: don't consider child time accounting for now.
-                    // maybe add them back later...
-
-                    crate::println_info!("[{pid:2}] end wait", pid = proc.pid);
-                    return Ok(pid);
+                    zombie_idx = Some(idx);
+                    break;
                 }
+            }
+
+            if let Some(idx) = zombie_idx {
+                // wait() 系统调用返回子进程的 pid
+                let pid = self.procs[idx].pid;
+
+                // Drop the zombie process completely so its kernel stack and
+                // other owned kernel allocations are returned to the allocators.
+                self.procs.remove(idx);
+
+                // greatbridf: don't consider child time accounting for now.
+                // maybe add them back later...
+
+                crate::println_info!("[{pid:2}] end wait", pid = proc.pid);
+                return Ok(pid);
             }
 
             if has_child {

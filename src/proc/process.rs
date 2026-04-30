@@ -551,6 +551,11 @@ impl Process {
             // TODO: put cwd
         }
 
+        // `Userspace` lives inside the process u-area, so Rust never runs its
+        // destructor. Free the heap-backed user page-table array explicitly.
+        let user_pts = unsafe { core::ptr::read(&Userspace::get().mem.user_pts) };
+        drop(user_pts);
+
         let _ = self.text.take();
 
         // TODO: save exit status
