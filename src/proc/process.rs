@@ -232,11 +232,18 @@ impl Process {
             self.exit();
         }
 
-        Userspace::get().clear_error();
+        unsafe {
+            (context.regs.sp as *mut u8)
+                .wrapping_byte_sub(size_of::<TrapContext>())
+                .cast::<TrapContext>()
+                .write(*context);
+        }
 
-        let old_pc = context.sepc;
         context.sepc = handler;
-        context.regs.ra = old_pc;
+        context.regs.ra = 0x10; // sigret_trampoline in vdso
+        context.regs.sp -= size_of::<TrapContext>();
+
+        Userspace::get().clear_error();
     }
 
     pub fn should_process(&self) -> bool {

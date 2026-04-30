@@ -1,7 +1,8 @@
 use core::ffi::CStr;
 
 use alloc::boxed::Box;
-use eonix_mm::paging::PFN;
+use eonix_mm::paging::{Folio, PFN};
+use eonix_sync_base::LazyLock;
 
 use crate::{
     constants::{PosixError, Signal, SIGMAX},
@@ -10,7 +11,7 @@ use crate::{
         flush_tlb, global_user_page_table, EntryFlags, PageTable, PageTableEntry,
         USER_PAGE_TABLE_COUNT, USER_SPACE_SIZE as MACHINE_USER_SPACE_SIZE,
     },
-    mm::PAGE_SIZE,
+    mm::{phys_to_virt, KernelPages, PAGE_SIZE},
     proc::Process,
     serial::KResult,
 };
@@ -269,9 +270,7 @@ impl MemoryDescriptor {
     }
 
     pub fn resident_len(&self) -> usize {
-        PAGE_SIZE
-            + Self::align_up_page(self.data_len)
-            + Self::align_up_page(self.stack_len)
+        PAGE_SIZE + Self::align_up_page(self.data_len) + Self::align_up_page(self.stack_len)
     }
 
     pub fn end(&self) -> usize {
@@ -345,6 +344,32 @@ impl MemoryDescriptor {
 
             pte.set(Some(pfn), flags);
         }
+
+        static VDSO_PFN: LazyLock<PFN> = LazyLock::new(|| {
+            let page = KernelPages::alloc(0);
+            let page_ptr = phys_to_virt(page.phys());
+
+            // li a7, 49
+            // ecall
+            const SIGRET_TRAMPOLINE: [u32; 2] = [0x03100893, 0x00000073];
+
+            unsafe {
+                core::ptr::write_bytes(page_ptr, 0, PAGE_SIZE);
+                page_ptr
+                    .add(0x10)
+                    .cast::<u32>()
+                    .copy_from_nonoverlapping(SIGRET_TRAMPOLINE.as_ptr(), SIGRET_TRAMPOLINE.len());
+            }
+
+            let pfn = page.pfn();
+            core::mem::forget(page);
+            pfn
+        });
+
+        real_pt[0][0].set(
+            Some(*VDSO_PFN.get()),
+            EntryFlags::VALID | EntryFlags::EXECUTE | EntryFlags::READ | EntryFlags::USER,
+        );
 
         flush_tlb();
     }

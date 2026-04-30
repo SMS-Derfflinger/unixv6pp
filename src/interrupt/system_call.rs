@@ -59,9 +59,10 @@ mod syscall_number {
     pub const SETGID: usize = 46;
     pub const GETGID: usize = 47;
     pub const SSIG: usize = 48;
+    pub const SIGRET: usize = 49;
 
     pub fn is_unimplemented(number: usize) -> bool {
-        matches!(number, 27 | 33 | 40 | 45 | 49..=63)
+        matches!(number, 27 | 33 | 40 | 45 | 50..=63)
     }
 }
 
@@ -80,7 +81,7 @@ pub fn handle_user_ecall(context: &mut TrapContext) {
     copy_args(context);
 
     let syscall_no = context.syscall_no();
-    let mut syscall_result = handle_in_rust(syscall_no);
+    let mut syscall_result = handle_in_rust(syscall_no, context);
 
     if Userspace::get().signal_pending {
         syscall_result = Err(PosixError::EINTR);
@@ -120,7 +121,7 @@ fn trap_void(handler: fn()) -> KResult<usize> {
     }
 }
 
-fn handle_in_rust(number: usize) -> KResult<usize> {
+fn handle_in_rust(number: usize, context: &mut TrapContext) -> KResult<usize> {
     use syscall_number as sys;
 
     match number {
@@ -220,6 +221,15 @@ fn handle_in_rust(number: usize) -> KResult<usize> {
                 .proc()
                 .set_signal_handler(signal, func)
                 .map(|retval| retval as usize)
+        }
+        sys::SIGRET => {
+            let saved_context = context.regs.sp as *const TrapContext;
+
+            unsafe {
+                *context = saved_context.read();
+            }
+
+            Ok(context.regs.a0)
         }
         _ => Err(PosixError::ENOSYS),
     }
