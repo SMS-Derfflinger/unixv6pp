@@ -96,6 +96,10 @@ PHONY += qemu-riscv64
 qemu-riscv64: src/kernel.elf target/disk.img
 	$(QEMU_RISCV64) $(QEMU_RISCV64_FLAGS) $(QEMU_RISCV64_DISK) -kernel src/kernel.elf
 
+PHONY += qemu-riscv64g
+qemu-riscv64g: src/kernel.elf target/disk.img
+	$(QEMU_RISCV64) $(QEMU_RISCV64_FLAGS) $(QEMU_RISCV64_DISK) $(QEMU_GDB_FLAGS) -kernel src/kernel.elf
+
 src/kernel.elf: src FORCE
 	$(call cmd,submake,kernel.elf)
 
@@ -118,7 +122,7 @@ COMMA :=,
 
 PHONY += debug
 debug:
-	-@RUST_GDB=x86_64-elf-gdb rust-gdb --symbols=src/kernel.exe \
+	-@RUST_GDB=riscv64-unknown-elf-gdb rust-gdb --symbols=src/kernel.elf \
 		-iex 'set pagination off' \
 		-iex 'set output-radix 16' \
 		-iex 'set print asm-demangle on' \

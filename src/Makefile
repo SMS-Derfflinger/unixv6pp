@@ -26,7 +26,7 @@ rust: $(rust-lib)
 $(rust-lib): FORCE
 	cd $(abs_srctree) && CARGO_TARGET_DIR=$(rust-output-dir) cargo +nightly-2026-04-07 rustc $(CARGOFLAGS)
 
-kernel.elf: $(rust-lib)
+kernel.elf: $(rust-lib) FORCE
 	rust-lld -flavor gnu -m elf64lriscv -T $(abs_srctree)/src/kernel-riscv64.ld \
 		--whole-archive $(rust-lib) --no-whole-archive -o $@
 
