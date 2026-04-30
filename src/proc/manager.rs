@@ -113,7 +113,7 @@ impl ProcessManager {
     fn switch_to(current: &mut Process, next: &mut Process) {
         switch_user_struct(next);
         Userspace::get().mem.map_to_actual_pt(next);
-        Userspace::get().proc = &raw mut *next;
+        //Userspace::get().proc = &raw mut *next;
         asm::write_sscratch(next.trap_context_ptr() as usize);
 
         unsafe {
@@ -150,7 +150,7 @@ impl ProcessManager {
 
     fn new_proc(&mut self, parent: &mut Process) -> Box<Process> {
         let mut child = Process::new_from(Self::assign_pid(), parent);
-        let mut cur_addr = PAddr::from_val(parent.addr);
+        let cur_addr = PAddr::from_val(parent.addr);
         let cur_size = parent.size;
 
         let mut new_user = Box::new(Userspace::get().clone());
@@ -160,19 +160,12 @@ impl ProcessManager {
         let order = aligned_size.trailing_zeros() - 12;
         let new_pages = USER_PAGE_MANAGER.lock().alloc_order(order);
 
-        let ctx = IrqGuard::disable_save();
+        let _ctx = IrqGuard::disable_save();
         Userspace::replace(&mut new_user);
 
         if let Some(pages) = new_pages {
-            let mut cnt = parent.size;
-            let mut to_addr = pages.phys();
             child.addr = pages.phys().addr();
-            while cnt != 0 {
-                cnt -= 1;
-                phys_copy(cur_addr, to_addr, 1);
-                cur_addr = cur_addr + 1;
-                to_addr = to_addr + 1;
-            }
+            phys_copy(cur_addr, pages.phys(), parent.size as usize);
             child.pages = Some(pages);
         } else {
             parent.stat = ProcessState::SIDL;

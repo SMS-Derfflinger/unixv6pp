@@ -1,12 +1,6 @@
-use eonix_mm::{
-    address::{Addr, PAddr},
-    paging::PFN,
-};
+use core::ptr;
 
-use crate::{
-    machine::{flush_tlb, kernel_page_table_mut, EntryFlags},
-    sync::IrqGuard,
-};
+use eonix_mm::address::PAddr;
 
 mod allocator;
 mod kstack;
@@ -22,53 +16,16 @@ pub use page_manager::{free_page, init_page_managers, KERNEL_PAGE_MANAGER, USER_
 pub use swapper_manager::{swap_alloc, swap_free, SWAPPER_AREAS};
 pub use zone::ZONE;
 
-/// Temporarily borrow two kernel PTEs to copy bytes between physical pages.
+/// Copy bytes between pseudo-physical addresses through the kernel linear map.
 pub fn phys_copy(from: PAddr, to: PAddr, len: usize) {
-    const BORROWED_PTE: usize = 256;
-    const BORROW_WINDOW_BASE: usize = 0xc020_0000;
-
-    let _ctx = IrqGuard::disable_save();
-    let kernel_pt = kernel_page_table_mut();
-
-    let original_src = kernel_pt[BORROWED_PTE].get();
-    let original_dst = kernel_pt[BORROWED_PTE + 1].get();
-    let flags = EntryFlags::VALID
-        | EntryFlags::READ
-        | EntryFlags::WRITE
-        | EntryFlags::ACCESSED
-        | EntryFlags::DIRTY;
-
-    for offset in 0..len {
-        let src = from.addr() + offset;
-        let dst = to.addr() + offset;
-
-        kernel_pt[BORROWED_PTE].set(Some(PFN::from_val(src / PAGE_SIZE)), flags);
-        kernel_pt[BORROWED_PTE + 1].set(Some(PFN::from_val(dst / PAGE_SIZE)), flags);
-        flush_tlb();
-
-        let src_ptr =
-            (BORROW_WINDOW_BASE + BORROWED_PTE * PAGE_SIZE + src % PAGE_SIZE) as *const u8;
-        let dst_ptr =
-            (BORROW_WINDOW_BASE + (BORROWED_PTE + 1) * PAGE_SIZE + dst % PAGE_SIZE) as *mut u8;
-
-        unsafe {
-            dst_ptr.write_volatile(src_ptr.read_volatile());
-        }
+    if len == 0 || from == to {
+        return;
     }
 
-    kernel_pt[BORROWED_PTE].set(
-        original_src
-            .1
-            .contains(EntryFlags::VALID)
-            .then_some(original_src.0),
-        original_src.1,
-    );
-    kernel_pt[BORROWED_PTE + 1].set(
-        original_dst
-            .1
-            .contains(EntryFlags::VALID)
-            .then_some(original_dst.0),
-        original_dst.1,
-    );
-    flush_tlb();
+    let src_ptr = phys_to_virt(from) as *const u8;
+    let dst_ptr = phys_to_virt(to);
+
+    unsafe {
+        ptr::copy(src_ptr, dst_ptr, len);
+    }
 }
