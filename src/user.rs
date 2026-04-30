@@ -346,17 +346,6 @@ impl MemoryDescriptor {
             pte.set(Some(pfn), flags);
         }
 
-        // Keep the null page mapped temporarily for phys-copy helpers.
-        real_pt[0][0].set(
-            Some(PFN::from_val(0)),
-            EntryFlags::VALID
-                | EntryFlags::READ
-                | EntryFlags::WRITE
-                | EntryFlags::USER
-                | EntryFlags::ACCESSED
-                | EntryFlags::DIRTY,
-        );
-
         flush_tlb();
     }
 
