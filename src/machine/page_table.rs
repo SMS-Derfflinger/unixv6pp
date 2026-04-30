@@ -11,7 +11,7 @@ use crate::{
     constants::platform::{
         PLIC_BASE, PLIC_PHYS_BASE, RAM_BASE, UART0_BASE, UART0_PHYS_BASE, VIRTIO_MMIO_BASE,
     },
-    proc::Process,
+    proc::Process, sync::IrqGuard,
 };
 
 const PAGE_SIZE: usize = 0x1000;
@@ -250,6 +250,7 @@ pub extern "C" fn _user_page_table_array() -> *mut PageTable {
 }
 
 pub fn switch_user_struct(proc: &Process) {
+    let _irq = IrqGuard::disable_save();
     let pfn = PFN::from_val(proc.addr >> 12);
     kernel_page_table_mut()[KERNEL_UAREA_PTE_INDEX]
         .set(Some(pfn), EntryFlags::VALID | EntryFlags::READ | EntryFlags::WRITE);
