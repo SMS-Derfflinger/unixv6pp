@@ -194,8 +194,8 @@ fn clear_bss() {
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo<'_>) -> ! {
-    println_fatal!("rust_kernel: panic");
+fn panic(info: &PanicInfo<'_>) -> ! {
+    println_fatal!("Kernel panic at {:?}: {}", info.location(), info.message());
     loop {
         unsafe {
             core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
