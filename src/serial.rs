@@ -86,13 +86,3 @@ pub fn serial_try_read_byte() -> Option<u8> {
     uart_init_once();
     (read_reg(LSR) & LSR_RX_READY != 0).then(|| read_reg(RBR_THR_DLL))
 }
-
-pub fn serial_write_hex(value: usize) {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-
-    serial_write("0x");
-    for shift in (0..(core::mem::size_of::<usize>() * 2)).rev() {
-        let nibble = ((value >> (shift * 4)) & 0xf) as usize;
-        put_byte(HEX[nibble]);
-    }
-}

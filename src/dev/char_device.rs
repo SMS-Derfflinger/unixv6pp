@@ -59,7 +59,7 @@ impl CharDevice for ConsoleDevice {
         if tty.is_null() {
             *tty = NonNull::dangling().as_ptr();
         }
-        console_tty().with_mut(|tty| tty.open());
+        console_tty().open();
         Ok(())
     }
 
@@ -72,11 +72,11 @@ impl CharDevice for ConsoleDevice {
         loop {
             let ctx = IrqGuard::disable_save();
 
-            if let Some(nread) = console_tty().with_mut(|tty| tty.read_available(out)) {
+            if let Some(nread) = console_tty().read_available(out) {
                 return Ok(nread);
             }
 
-            let chan = console_tty().with(|tty| tty.read_wait_channel());
+            let chan = console_tty().read_wait_channel();
             Userspace::get()
                 .proc()
                 .sleep_user_with_irq_guard(chan, TTIPRI, ctx)?;
@@ -85,7 +85,7 @@ impl CharDevice for ConsoleDevice {
 
     fn write(&self, dev: i16, data: &[u8]) -> Result<usize, PosixError> {
         Self::validate(dev)?;
-        Ok(console_tty().with_mut(|tty| tty.write(data)))
+        Ok(console_tty().write(data))
     }
 }
 
