@@ -6,12 +6,13 @@ use riscv::{
 };
 
 use crate::{
-    constants::{platform::UART0_IRQ, PosixError},
+    constants::{platform::UART0_IRQ, PosixError, Signal},
     interrupt::{
         context::{Registers, TrapContext},
         plic, schedule_on_user_return, system_call, time,
     },
     println_fatal, println_info, serial, tty,
+    user::Userspace,
 };
 
 #[unsafe(naked)]
@@ -226,6 +227,10 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
                 context.advance_sepc(2);
             }
             Exception::IllegalInstruction => {
+                if context.is_user() {
+                    Userspace::get().proc().raise(Signal::SIGILL);
+                    Userspace::get().proc().process_signal(context);
+                }
                 println_fatal!(
                     "trap: illegal instruction scause={:#x} sepc={:#x} stval={:#x} user={}",
                     context.scause.bits(),
@@ -258,6 +263,10 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
             exception @ (Exception::InstructionPageFault
             | Exception::LoadPageFault
             | Exception::StorePageFault) => {
+                if context.is_user() {
+                    Userspace::get().proc().raise(Signal::SIGSEGV);
+                    Userspace::get().proc().process_signal(context);
+                }
                 let access = page_fault_access(exception);
                 println_fatal!(
                     "trap: {} page fault sepc={:#x} stval={:#x} sp={:#x} user={}",
@@ -275,6 +284,10 @@ extern "C" fn trap_handler(context: &mut TrapContext) {
             | Exception::InstructionFault
             | Exception::LoadFault
             | Exception::StoreFault => {
+                if context.is_user() {
+                    Userspace::get().proc().raise(Signal::SIGBUS);
+                    Userspace::get().proc().process_signal(context);
+                }
                 println_fatal!(
                     "trap: bad access exception={:?} scause={:#x} sepc={:#x} stval={:#x} user={}",
                     Exception::from_number(e).unwrap(),
