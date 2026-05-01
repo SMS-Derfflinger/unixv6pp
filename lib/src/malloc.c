@@ -2,7 +2,7 @@
 #include <malloc.h>
 #include <stdio.h>
 
-#define PAGE_SIZE 12288
+#define PAGE_SIZE 4096
 
 char *malloc_begin = NULL;
 char *malloc_end = NULL;
@@ -14,18 +14,19 @@ typedef struct flist {
 
 struct flist *malloc_head = NULL;
 
-void* malloc(unsigned int size)
+void* malloc(unsigned long size)
 {
     if (malloc_begin == NULL)
     {
-        /* code */
         malloc_begin = (char*) sbrk(0);
-        malloc_end = (char*) sbrk(PAGE_SIZE);
+        if (malloc_begin == (void*) -1 || sbrk(PAGE_SIZE) == (void*) -1)
+        {
+            return NULL;
+        }
+        malloc_end = malloc_begin + PAGE_SIZE;
         malloc_head = (void*) malloc_begin;
         malloc_head->size = sizeof(struct flist);
-        
         malloc_head->nlink = NULL;
-
     }
     if (size == 0)
     {
@@ -37,7 +38,7 @@ void* malloc(unsigned int size)
     // find a place to insert
     while(iter->nlink)
     {
-        if ((int)(iter->nlink) - iter->size - (int)iter >= size)
+        if ((unsigned long) ((char *) iter->nlink - ((char *) iter + iter->size)) >= size)
         {
             struct flist *temp = (void*) ((char *)iter + (iter->size));
             temp->nlink = iter->nlink;
@@ -48,20 +49,34 @@ void* malloc(unsigned int size)
         iter = iter->nlink;
     }
     // not found
-    int expand = size - (malloc_end - (char *)iter - (iter->size));
-    expand = ((expand + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-    malloc_end = (char*) sbrk(expand);
+    long expand = (long) size - (malloc_end - (char *) iter - iter->size);
+    if (expand < 0)
+    {
+        expand = 0;
+    }
+    else
+    {
+        expand = ((expand + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+    }
+    if (expand > 0)
+    {
+        if (sbrk(expand) == (void*) -1)
+        {
+            return NULL;
+        }
+        malloc_end += expand;
+    }
     iter->nlink = (void*) ((char *)iter + (iter->size));
     iter = iter->nlink;
     iter->size = size;
     iter->nlink = NULL;
-    printf("%u\n", iter);
+    printf("%p\n", iter);
     return (char*)iter + sizeof(struct flist);
 }
 
 int free(void* addr)
 {
-    char * real_addr = addr - 8;
+    char * real_addr = (char *) addr - sizeof(struct flist);
     struct flist* iter = malloc_head;
     struct flist* last = malloc_head;
     if (addr == 0)
@@ -79,7 +94,11 @@ int free(void* addr)
                 char *pos = (char *)last + last->size;
                 if (malloc_end - pos > PAGE_SIZE * 2)
                 {
-                    malloc_end = (void*) sbrk(-((malloc_end - pos) / PAGE_SIZE * PAGE_SIZE));
+                    long shrink = (malloc_end - pos) / PAGE_SIZE * PAGE_SIZE;
+                    if (sbrk(-shrink) != (void*) -1)
+                    {
+                        malloc_end -= shrink;
+                    }
                 }
             }
             return 0;

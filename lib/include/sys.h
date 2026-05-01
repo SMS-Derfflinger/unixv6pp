@@ -53,7 +53,7 @@ int sleep(unsigned int seconds);
 
 int brk(void * newEndDataAddr);
 
-void* sbrk(int increment);
+void* sbrk(long increment);
 
 int syncFileSystem();
 

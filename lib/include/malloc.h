@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-void* malloc(unsigned int);
+void* malloc(unsigned long);
 int free(void*);
 
 #endif

@@ -3,6 +3,8 @@
 #include "stdio.h"
 #include "syscall.h"
 
+typedef unsigned long uptr;
+
 int execv(char *pathname, char *argv[])
 {
 	int argc = 0;
@@ -42,13 +44,26 @@ int sleep(unsigned int seconds)
 }
 
 /* 使用errno需要include "stdlib.h" */
+static uptr cached_break = 0;
+
+static uptr raw_brk(void *new_end_data_addr)
+{
+	long res = __syscall1(17, (long) new_end_data_addr);
+	if (res >= 0)
+		return (uptr) res;
+	errno = -1 * res;
+	return 0;
+}
+
 int brk(void * newEndDataAddr)
 {
-	long res = __syscall1(17, (long) newEndDataAddr);
-	if (res >= 0)
-		return (int) res;
-	errno = -1 * res;
-	printf("%d\n", errno);
+	uptr res = raw_brk(newEndDataAddr);
+	if (res != 0)
+	{
+		if (newEndDataAddr != 0)
+			cached_break = (uptr) newEndDataAddr;
+		return 0;
+	}
 	return -1;
 }
 
@@ -113,15 +128,39 @@ int trace(int lines)
 	return __syscall_ret(__syscall1(29, lines));
 }
 
-unsigned long fakeedata = 0;
-void* sbrk(int increment)
+void* sbrk(long increment)
 {
-	if (fakeedata == 0)
+	if (cached_break == 0)
 	{
-		fakeedata = brk(0);
+		cached_break = raw_brk(0);
+		if (cached_break == 0)
+			return (void*) -1;
 	}
-	unsigned long newedata = fakeedata + increment - 1;
-	brk((void*) (((newedata >> 12) + 1) << 12));
-	fakeedata = newedata + 1;
-	return (void*) fakeedata;
+
+	uptr old_break = cached_break;
+	if (increment == 0)
+		return (void*) old_break;
+
+	if (increment > 0 && (uptr) increment > ~0UL - old_break)
+	{
+		errno = 12;
+		return (void*) -1;
+	}
+	if (increment < 0)
+	{
+		long available = (long) old_break;
+		if (increment < -available)
+		{
+			errno = 12;
+			return (void*) -1;
+		}
+	}
+
+	uptr new_break = (uptr) ((long) old_break + increment);
+
+	if (raw_brk((void*) new_break) == 0)
+		return (void*) -1;
+
+	cached_break = new_break;
+	return (void*) old_break;
 }

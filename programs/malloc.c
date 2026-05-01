@@ -11,7 +11,7 @@ int main1()
     //printf("end of data is : %d\n", a);
     //printf("Malloc success\n");
     //int b = sbrk(128); 
-    int i, j;
+    int i;
     printf("test of malloc\n"); 
     int *c = malloc(128);
     printf("end of data after is : %d\n", c);
@@ -24,19 +24,15 @@ int main1()
     printf("end of data after is : %d\n", e);
 
     void *array[256] = {NULL};
-    for (j = 0; j < 32; ++j)
-    {
-        for (i = 1; i < 128; ++i)
-        {
-            array[i] = malloc(i);
-            printf("test of malloc on %d:%d;\n", j, i);
-        }
-        for (i = 1; i < 128; ++i)
-        {
-            free(array[i]);
-            printf("test of free on %d:%d;\n", j, i);
-        } 
+
+    for (i = 1; i < 128; ++i) {
+        array[i] = malloc(i);
+        printf("test of malloc on %d;\n", i);
     }
+    for (i = 1; i < 128; ++i) {
+        free(array[i]);
+        printf("test of free on %d;\n", i);
+    } 
  
     //free(c);
     //free((void*)a);

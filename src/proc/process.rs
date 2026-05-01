@@ -501,25 +501,36 @@ impl Process {
 
     pub fn sbrk(&mut self, brk: usize) -> KResult<usize> {
         let mem = &mut Userspace::get().mem;
-        let newlen = brk - mem.data;
 
         if brk == 0 {
             return Ok(mem.data + mem.data_len);
         }
 
-        mem.establish_user(self)?;
+        if brk < mem.data {
+            return Err(PosixError::ENOMEM);
+        }
 
-        if newlen == mem.data_len {
+        let old_data_len = mem.data_len;
+        let old_resident_len = mem.resident_len();
+        let new_data_len = brk - mem.data;
+
+        if new_data_len == old_data_len {
             return Ok(brk);
         }
 
-        let change = newlen as isize - mem.data_len as isize;
-        mem.data_len = newlen;
-        let newlen = mem.resident_len();
+        mem.data_len = new_data_len;
+        if let Err(err) = mem.establish_user(self) {
+            mem.data_len = old_data_len;
+            mem.establish_user(self)?;
+            return Err(err);
+        }
 
-        if change < 0 {
-            let change_abs = -change as usize;
-            let mut dst = PAddr::from_val(self.addr + newlen - mem.stack_len);
+        let new_resident_len = mem.resident_len();
+        let resident_change = new_resident_len as isize - old_resident_len as isize;
+
+        if resident_change < 0 {
+            let change_abs = (-resident_change) as usize;
+            let mut dst = PAddr::from_val(self.addr + new_resident_len - mem.stack_len);
             let mut cnt = mem.stack_len;
 
             while cnt != 0 {
@@ -527,16 +538,16 @@ impl Process {
                 phys_copy(dst + change_abs, dst, 1);
                 dst = dst + 1;
             }
-            self.expand(newlen);
-        } else {
-            self.expand(newlen);
-            let mut dst = PAddr::from_val(self.addr + newlen);
+            self.expand(new_resident_len);
+        } else if resident_change > 0 {
+            self.expand(new_resident_len);
+            let mut dst = PAddr::from_val(self.addr + new_resident_len);
             let mut cnt = mem.stack_len;
 
             while cnt != 0 {
                 cnt -= 1;
                 dst = dst - 1;
-                phys_copy(dst - change as usize, dst, 1);
+                phys_copy(dst - resident_change as usize, dst, 1);
             }
         }
 
