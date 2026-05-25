@@ -19,3 +19,5 @@ build
 compile_commands.json
 eonix_hal
 Thesis/
+.opencode/
+translate/
